@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24"  # initial github commit
+VERSION="3.24A"  # .nf b after .na bugfix
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3199,15 +3199,15 @@ class Pph(Book):
 
     closing = ""
     if 'b' == nft:
-      t.append("<div class='lg-container-b'{}>".format(ssty))
+      t.append("<div class='lg-container-b'>")
       closing = ".nf-"
     if 'l' == nft:
-      t.append("<div class='lg-container-l'{}>".format(ssty))
+      t.append("<div class='lg-container-l'>")
       closing = ".nf-"
     if 'r' == nft:
-      t.append("<div class='lg-container-r'{}>".format(ssty))
+      t.append("<div class='lg-container-r'>")
       closing = ".nf-"
-    t.append("  <div class='linegroup'>")
+    t.append("  <div class='linegroup'{}>".format(ssty))
     if mo:
       t.append("    <div class='group0'>")
     else:
