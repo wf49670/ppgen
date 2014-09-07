@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24A"  # .nf b after .na bugfix
+VERSION="3.24B"  # moved Latin-1 conversion into preprocess
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -816,6 +816,8 @@ class Ppt(Book):
       for j,ch in enumerate(self.mau):
         for i in range(len(self.wb)): # O=n^2
           self.wb[i] = re.sub(ch, self.mal[j], self.wb[i])
+      # user-defined character mapping complete, now do default mapping to Latin-1
+      self.utoLat()
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # <lang> tags ignored in text version.
@@ -1046,7 +1048,7 @@ class Ppt(Book):
     f1.close()
 
   # -------------------------------------------------------------------------------------
-  # convert utf-8 to Latin-1 in self.eb
+  # convert utf-8 to Latin-1 in self.wb
   def utoLat(self):
     described = {}
     d = {
@@ -1150,7 +1152,7 @@ class Ppt(Book):
     }
 
     t = defaultdict(int)
-    for i, line in enumerate(self.eb):
+    for i, line in enumerate(self.wb):
       s = ""
       for c in line: # for every character
         if c in d: # is it in the list of converting characters?
@@ -1162,16 +1164,16 @@ class Ppt(Book):
           else:
             s += "[{}]".format(unicodedata.name(c))
             described[c] = 1
-      self.eb[i] = s
+      self.wb[i] = s
 
     # show what was converted
     self.lprint("\nUTF-8 characters converted:")
-    self.lprint("  {:5}{:6} {}".format("char","count","description"))
-    self.lprint("  {:5}{:6} {}".format("----","-----","----------------------------------------"))
+    self.lprint("  {:5}{:5} {}".format("char","count","description"))
+    self.lprint("  {:5}{:5} {}".format("----","-----","----------------------------------------"))
     for ch in t:
-      self.lprint("  {:5}{:6} {}".format(d[ch], t[ch], unicodedata.name(ch)))
+      self.lprint("  {:5}{:5} {}".format(d[ch], t[ch], unicodedata.name(ch)))
 
-    while not self.eb[-1]:
+    while not self.wb[-1]:
       self.eb.pop()
 
     if len(described) > 0:
@@ -1187,7 +1189,7 @@ class Ppt(Book):
   # save emit buffer in Latin-1 encoding to specified latfile
   def saveLat1(self, fn):
 
-    self.utoLat()
+    # self.utoLat()  moved to preprocessing
       
     # write Latin-1 file (text output, Latin-1)
     # note: using codecs.open allows specific line terminators.
