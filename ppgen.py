@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24B"  # moved Latin-1 conversion into preprocess
+VERSION="3.24C" # bugfix: moved Latin-1 and .ma into preprocess-common
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -291,6 +291,14 @@ class Book(object):
       t = self.nfstack.pop() # pops a tuple
       return t
     
+    # if source file is UTF-8 and requested encoding is Latin-1, down-convert
+    if self.encoding == "utf_8" and self.renc == "l":
+      for j,ch in enumerate(self.mau):
+        for i in range(len(self.wb)): # O=n^2
+          self.wb[i] = re.sub(ch, self.mal[j], self.wb[i])
+      # user-defined character mapping complete, now do default mapping to Latin-1
+      self.utoLat()
+          
     # .if conditionals (moved to preProcessCommon 28-Aug-2014)
     text = []
     keep = True
@@ -810,14 +818,6 @@ class Ppt(Book):
   def preprocess(self):
 
     self.preProcessCommon()
-
-    # if source file is UTF-8 and requested encoding is Latin-1, down-convert
-    if self.encoding == "utf_8" and self.renc == "l":
-      for j,ch in enumerate(self.mau):
-        for i in range(len(self.wb)): # O=n^2
-          self.wb[i] = re.sub(ch, self.mal[j], self.wb[i])
-      # user-defined character mapping complete, now do default mapping to Latin-1
-      self.utoLat()
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # <lang> tags ignored in text version.
@@ -3901,6 +3901,11 @@ def main():
   if 'u' in args.output_format:
     ppt = Ppt(args, "u")
     ppt.run()
+    
+  # Latin-1 only
+  # if 'l' in args.output_format:
+  #   ppt = Ppt(args, "l")
+  #   ppt.run()    
 
   if 'h' in args.output_format:
     print("creating HTML version")
