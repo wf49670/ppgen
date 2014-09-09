@@ -12,9 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24D" # auto-width tables strip()
-  # added name= to <a tags in addition to id=
-  # rounded max-width to 2 decimal places
+VERSION="3.24E" # spaces within .nf blocks
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -344,8 +342,8 @@ class Book(object):
     i = 0
     del self.mau[:]
     del self.mal[:]
-    self.mau.append("—") 
-    self.mal.append("--")    
+    self.mau.append("—")   # maps a dash in UTF-8 to "--" in Latin-1 
+    self.mal.append("--")
     while i < len(self.wb):
       m = re.match(r"\.ma ", self.wb[i])
       if m:
@@ -534,9 +532,12 @@ class Book(object):
       if re.match(r"\.ig ",self.wb[i]): # single line
         del self.wb[i]
       if ".ig" == self.wb[i]: # multi-line
-        while self.wb[i] != ".ig-":
+        while i < len(self.wb) and self.wb[i] != ".ig-":
           del self.wb[i]
-        del self.wb[i] # the ".ig-"
+        if i < len(self.wb):
+          del self.wb[i] # the ".ig-"
+        else:
+          self.fatal("unterminated .ig command")
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1430,7 +1431,7 @@ class Ppt(Book):
         self.warn("undefined register: {}".format(registerName))
     self.cl += 1
 
-  # no-fill, centered
+  # no-fill, centered (test)
   def doNfc(self, mo):
     t = []
     i = self.cl + 1 # skip the .nf c line
@@ -1466,7 +1467,7 @@ class Ppt(Book):
       self.crash_w_context("unterminated block. started with:", self.cl)
     return maxw
 
-  # no-fill, left
+  # no-fill, left (text)
   # honors leading spaces; allows .ce and .rj
   def doNfl(self, mo):
     
@@ -1522,7 +1523,7 @@ class Ppt(Book):
     self.eb.append(".RS 1")
     self.cl = i + 1 # skip the closing .nf-
 
-  # no-fill, block
+  # no-fill, block (text)
   def doNfb(self, mo):
     t = []
     regBW = self.calculateBW(".nf-")
@@ -1571,7 +1572,7 @@ class Ppt(Book):
     t.append(".RS 1")
     self.eb.extend(t)
 
-  # no-fill, right
+  # no-fill, right (text)
   def doNfr(self, mo):
     self.eb.append(".RS 1")
     regBW = self.calculateBW(".nf-")
@@ -1607,9 +1608,9 @@ class Ppt(Book):
     self.cl = i + 1 # skip the closing .nf-
     self.eb.append(".RS 1")
 
-  # .nf no-fill blocks, all types
+  # .nf no-fill blocks, all types (text)
   # called first, then dispatched
-  def doNf(self):
+  def doNf(self): 
     # not expecting a request to close. get here on open
     # m = re.match(r"\.nf .-", self.wb[self.cl])
     m = re.match(r"\.nf-", self.wb[self.cl])
@@ -1781,13 +1782,7 @@ class Ppt(Book):
   
     # process each row of table
     while self.wb[self.cl] != ".ta-":
-      
-      # warn if UTF-8 width is different than Latin-1 width
-      # if re.search("[œæ]", self.wb[self.cl]):
-      #   self.warn("ligature in line may affect column alignment in Latin-1 text:\n    {}".format(self.wb[self.cl]))
-      # if re.search("—", self.wb[self.cl]):
-      #   self.warn("mdash in line may affect column alignment in Latin-1 text:\n    {}".format(self.wb[self.cl]))
-        
+              
       # blank line
       # an empty line in source generates a one char vertical gap
       if empty.match(self.wb[self.cl]):
@@ -2466,17 +2461,7 @@ class Pph(Book):
       self.wb[i] = re.sub(r"◺(.*?)◿", r'<sub>\1</sub>', self.wb[i])
 
       # use entities if user is writing any "--" or "----" to the HTML file
-      self.wb[i] = self.wb[i].replace("--", "&mdash;")
-
-      """      
-      while "--" in self.wb[i]:
-        self.wb[i] = re.sub(r"([^\-])\-\-\-\-$", r'\1&mdash;&mdash;', self.wb[i]) # end of line
-        self.wb[i] = re.sub(r"^\-\-\-\-([^\-])", r'&mdash;&mdash;\1', self.wb[i]) # start of line
-        self.wb[i] = re.sub(r"([^\-])\-\-\-\-([^\-])", r'\1&mdash;&mdash;\2', self.wb[i]) # mid-line
-        self.wb[i] = re.sub(r"([^\-])\-\-$", r'\1&mdash;', self.wb[i]) # end of line
-        self.wb[i] = re.sub(r"^\-\-([^\-])", r'&mdash;\1', self.wb[i]) # start of line
-        self.wb[i] = re.sub(r"([^\-])\-\-([^\-])", r'\1&mdash;\2', self.wb[i]) # mid-line
-      """
+      # self.wb[i] = self.wb[i].replace("--", "&mdash;")  # removed  9-Sep-2011
                      
       self.wb[i] = re.sub(r"\[oe\]", r'&oelig;', self.wb[i])
       self.wb[i] = re.sub(r"\[ae\]", r'&aelig;', self.wb[i])
@@ -3127,7 +3112,7 @@ class Pph(Book):
     del self.wb[self.cl]
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-  # no-fill, centered
+  # no-fill, centered (HTML)
   # takes no internal justification commands
   # note: mo is currently ignored for centered blocks.
   def doNfc(self, mo):
@@ -3166,6 +3151,10 @@ class Pph(Book):
       else:
         t.append("    <div>" + self.wb[i].strip() + "</div>")
       i += 1
+    # there may be a pending mt left if the .ce was entirely empty (Walt)
+    if pending_mt > 0: # force line
+      t.append("    <div style='margin-top:{}em'>".format(pending_mt) + "&nbsp;" + "</div>")
+      pending_mt = 0    
     t.append("  </div>")
     t.append("</div>")
     t.append("")
@@ -3174,7 +3163,7 @@ class Pph(Book):
     self.cl = startloc + len(t)
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-  # no-fill, block. block type specified
+  # no-fill, block. block type specified. any type except centered
   def doNfb(self, nft, mo):
     # any poetry triggers the same CSS
     if 'b' == nft:
@@ -3219,6 +3208,7 @@ class Pph(Book):
       t.append("    <div class='group'>")
 
     i += 1
+    cpvs = 0
     while self.wb[i] != closing:
 
       # a centered line inside a no-fill block
@@ -3246,8 +3236,12 @@ class Pph(Book):
         continue
 
       if self.wb[i] == "":
-        t.append("    </div>")
-        t.append("    <div class='group'>")
+        if cpvs == 0:
+          t.append("    </div>")
+          t.append("    <div class='group'>")
+          cpvs += 1
+        else:
+          cpvs += 1
       else:
         # need to calculate leading space for this line.
         # there may be some tags *before* the leading space
@@ -3258,15 +3252,20 @@ class Pph(Book):
           ss += m.group(0)
           tmp = re.sub(r"^<[^>]+>", "", tmp)
           m = re.match(r"^<[^>]+>", tmp)
-        leadsp = len(tmp) - len(tmp.lstrip())        
+        leadsp = len(tmp) - len(tmp.lstrip()) 
+        if cpvs > 0:
+          spvs = " style='margin-top:{}em' ".format(cpvs)
+        else:      
+          spvs = ""
         if leadsp > 0:
           # create an indent class
           iclass = "in{}".format(leadsp)
           iamt = str(-3 + leadsp/2) # calculate based on -3 base
           self.css.addcss("[227] .linegroup .{} {{ text-indent: {}em; }}".format(iclass, iamt))
-          t.append("      <div class='line {}'>{}</div>".format(iclass, ss+tmp.lstrip()))
+          t.append("      <div class='line {0}' {1}>{2}</div>".format(iclass, spvs, ss+tmp.lstrip()))
         else:
-          t.append("      <div class='line'>{}</div>".format(ss+tmp))
+          t.append("      <div class='line' {0}>{1}</div>".format(spvs, ss+tmp))
+        cpvs = 0  # reset pending vertical space
       i += 1
 
     t.append("    </div>")
@@ -3636,12 +3635,14 @@ class Pph(Book):
   def cleanup(self):
     h1cnt = 0
     for i in range(len(self.wb)):
+      self.wb[i] = re.sub("\s+>", ">", self.wb[i])  # spaces before close ">"
       self.wb[i] = re.sub("<p  ", "<p ", self.wb[i])
       # next line broke German, where a space is significant before ">"
       # self.wb[i] = re.sub(" >", ">", self.wb[i])
       self.wb[i] = re.sub("⑦", "#", self.wb[i]) # used in links
       if re.search("<h1", self.wb[i]): # expect to find one h1 in the file
         h1cnt += 1
+        
     i = 0
     while not re.search(r"<style type=\"text/css\">", self.wb[i]):
       i += 1
@@ -3702,13 +3703,14 @@ class Pph(Book):
 
   # 03-Apr-2014 .rj or .rj 3, etc. for HTML
   def doRj(self):
-    s = self.fetchStyle() # style line with current parameters
-    rstyle = s + "text-align:right;"
     m = re.match(r"\.rj (\d+)", self.wb[self.cl]) # number of lines specified
     if m:
       del self.wb[self.cl]
       nlines = int(m.group(1))
       while nlines > 0:
+        s = self.fetchStyle() # style line with current parameters
+        rstyle = s + "text-align:right;"
+        self.pvs = 0  # if there is a pending vertial space, only use it once on first line
         self.wb[self.cl] = "<div style='{}'>{}</div>".format(rstyle, self.wb[self.cl])
         self.cl += 1
         nlines -= 1
