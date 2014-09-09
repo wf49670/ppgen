@@ -12,7 +12,9 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24C" # bugfix: moved Latin-1 and .ma into preprocess-common
+VERSION="3.24D" # auto-width tables strip()
+  # added name= to <a tags in addition to id=
+  # rounded max-width to 2 decimal places
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1654,7 +1656,7 @@ class Ppt(Book):
     self.eb.append(".RS 1")
     self.cl += 1
     
-  # Table code, text (new Aug 2014)
+  # Table code, text
   def doTable(self):
     
     # get maximum width of specified cell by scanning all rows in table
@@ -1670,7 +1672,8 @@ class Ppt(Book):
         u = self.wb[j].split("|")
         if len(u) != ncols:
             self.fatal("table has wrong number of columns:\n{}".format(self.wb[j]))
-        maxw = max(maxw, len(u[c]))
+        t = u[c].strip()
+        maxw = max(maxw, len(t)) # ignore lead/trail whitespace
         j += 1
       return maxw
     
@@ -2259,15 +2262,15 @@ class Pph(Book):
       if "<target id" in self.wb[i]:   
         m = re.search("<target id='(.*?)'>", self.wb[i])
         while m:
-          self.wb[i] = re.sub("<target id='(.*?)'>", "<a id='{}' />".format(m.group(1)), self.wb[i], 1)
+          self.wb[i] = re.sub("<target id='(.*?)'>", "<a id='{0}' name='{0}' />".format(m.group(1)), self.wb[i], 1)
           m = re.search("<target id='(.*?)'>", self.wb[i])
         m = re.search("<target id=\"(.*?)\">", self.wb[i])
         while m:
-          self.wb[i] = re.sub("<target id=\"(.*?)\">", "<a id='{}' />".format(m.group(1)), self.wb[i], 1)
+          self.wb[i] = re.sub("<target id=\"(.*?)\">", "<a id='{0}' name='{}' />".format(m.group(1)), self.wb[i], 1)
           m = re.search("<target id=\"(.*?)\">", self.wb[i])
         m = re.search("<target id=(.*?)>", self.wb[i])
         while m:
-          self.wb[i] = re.sub("<target id=(.*?)>", "<a id='{}' />".format(m.group(1)), self.wb[i], 1)
+          self.wb[i] = re.sub("<target id=(.*?)>", "<a id='{0}' name='{0}' />".format(m.group(1)), self.wb[i], 1)
           m = re.search("<target id=(.*?)>", self.wb[i])          
       i += 1
     
@@ -3371,7 +3374,8 @@ class Pph(Book):
         u = self.wb[j].split("|")
         if len(u) != ncols:
             self.fatal("table has wrong number of columns:\n{}".format(self.wb[j]))
-        maxw = max(maxw, len(u[c]))
+        t = re.sub(r"<.*?>", "", u[c].strip())  # adjust column width for inline tags
+        maxw = max(maxw, len(t))
         j += 1
       return maxw
 
@@ -3506,7 +3510,7 @@ class Pph(Book):
     sty = "margin: auto; "
     if not "wide" in topt:
       φ = (1 + sqrt(5))/2.0 # tribute Nigel
-      sty += "max-width:{}em; ".format(totalwidth/φ)
+      sty += "max-width:{}em; ".format("%.2f" % (totalwidth/φ))
     if self.pvs > 0:  # pending vertical space
       sty += "margin-top: {}em".format(self.pvs)
       self.pvs=0
