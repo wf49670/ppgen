@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24E" # spaces within .nf blocks
+VERSION="3.24F" # trailing space of .nf block as back-propogated margin-bottom
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3139,6 +3139,7 @@ class Pph(Book):
 
     self.css.addcss("[873] .nf-center { text-align:center; }")
     i += 1
+    printable_lines_in_block = 0
     pending_mt = 0
     while self.wb[i] != ".nf-":      
       if "" == self.wb[i]:
@@ -3147,13 +3148,18 @@ class Pph(Book):
         continue
       if pending_mt > 0:
         t.append("    <div style='margin-top:{}em'>".format(pending_mt) + self.wb[i].strip() + "</div>")
+        printable_lines_in_block += 1
         pending_mt = 0
       else:
         t.append("    <div>" + self.wb[i].strip() + "</div>")
+        printable_lines_in_block += 1        
       i += 1
-    # there may be a pending mt left if the .ce was entirely empty (Walt)
-    if pending_mt > 0: # force line
-      t.append("    <div style='margin-top:{}em'>".format(pending_mt) + "&nbsp;" + "</div>")
+    # at block end.
+    if printable_lines_in_block == 0:
+        self.fatal("empty .nf block")
+    # there may be a pending mt at the block end.
+    if pending_mt > 0:
+      t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(pending_mt), t[-1])
       pending_mt = 0    
     t.append("  </div>")
     t.append("</div>")
@@ -3209,6 +3215,7 @@ class Pph(Book):
 
     i += 1
     cpvs = 0
+    printable_lines_in_block = 0
     while self.wb[i] != closing:
 
       # a centered line inside a no-fill block
@@ -3239,7 +3246,6 @@ class Pph(Book):
         if cpvs == 0:
           t.append("    </div>")
           t.append("    <div class='group'>")
-          cpvs += 1
         else:
           cpvs += 1
       else:
@@ -3263,10 +3269,21 @@ class Pph(Book):
           iamt = str(-3 + leadsp/2) # calculate based on -3 base
           self.css.addcss("[227] .linegroup .{} {{ text-indent: {}em; }}".format(iclass, iamt))
           t.append("      <div class='line {0}' {1}>{2}</div>".format(iclass, spvs, ss+tmp.lstrip()))
+          printable_lines_in_block += 1
         else:
           t.append("      <div class='line' {0}>{1}</div>".format(spvs, ss+tmp))
+          printable_lines_in_block += 1          
         cpvs = 0  # reset pending vertical space
       i += 1
+      
+    # at block end.
+    if printable_lines_in_block == 0:
+        self.fatal("empty .nf block")
+
+    # there may be a pending mt at the block end.
+    if cpvs > 0:
+      t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(cpvs), t[-1])
+      cpvs = 0          
 
     t.append("    </div>")
     t.append("  </div>")
