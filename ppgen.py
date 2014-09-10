@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24G" # mdash handling finalized
+VERSION="3.24H" # long line report (75)
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -85,6 +85,8 @@ class Book(object):
   
   mau = [] # UTF-8
   mal = [] # user-defined Latin-1  
+  
+  linelimitwarning = 75
 
   def __init__(self, args, renc):
     del self.wb[:]
@@ -138,7 +140,7 @@ class Book(object):
         return (attr, the_id, m.group(0))
     else:
       # should never get here
-      self.fatal("could not process {} in {}".format(tgt, attr)) ##
+      self.fatal("could not process {} in {}".format(tgt, attr)) 
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # load file from specified source file
@@ -1044,11 +1046,20 @@ class Ppt(Book):
   # -------------------------------------------------------------------------------------
   # save emit buffer in UTF-8 encoding to specified dstfile (text output, UTF-8)
   def saveFileU(self, fn):
+    longcount = 0
     while not self.eb[-1]:
       self.eb.pop()
     f1 = codecs.open(fn, "w", "utf-8")
     for index,t in enumerate(self.eb):
-      f1.write( "{:s}\r\n".format(t.rstrip()) )
+      s = t.rstrip()
+      if len(s) > self.linelimitwarning:
+        longcount += 1
+        if longcount == 4:
+          self.warn("additional long lines not reported")
+        if longcount < 4:
+          m = re.match(r".{0,60}\s", s)
+          self.warn("long line (>{}) beginning:\n  {}....".format(self.linelimitwarning, m.group(0)))          
+      f1.write( "{:s}\r\n".format(s) )
     f1.close()
 
   # -------------------------------------------------------------------------------------
@@ -1192,20 +1203,21 @@ class Ppt(Book):
   # -------------------------------------------------------------------------------------
   # save emit buffer in Latin-1 encoding to specified latfile
   def saveLat1(self, fn):
-
-    # self.utoLat()  moved to preprocessing
-      
     # write Latin-1 file (text output, Latin-1)
     # note: using codecs.open allows specific line terminators.
     # using .open would write platform-specific line terminators.
     f1 = codecs.open(fn, "w", "ISO-8859-1")
+    longcount = 0
     for index,t in enumerate(self.eb):
       s = t.rstrip()
-
-      if len(s) > 75:
-        self.lprint("long line in Latin-1 file: {}".format(s))
-
-      f1.write( "{:s}\r\n".format(s))
+      if len(s) > self.linelimitwarning:
+        longcount += 1
+        if longcount == 4:
+          self.warn("additional long lines not reported")
+        if longcount < 4:
+          m = re.match(r".{0,60}\s", s)
+          self.warn("long line (>{}) beginning:\n  {}....".format(self.linelimitwarning, m.group(0)))
+      f1.write( "{:s}\r\n".format(s) )
     f1.close()
 
   # ----- process method group ----------------------------------------------------------
