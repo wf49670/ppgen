@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24H" # long line report (75)
+VERSION="3.24I" # allow escaped dash; warn on "&mdash;-"
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -418,6 +418,7 @@ class Book(object):
       self.wb[i] = self.wb[i].replace(r"\]", "④")
       self.wb[i] = self.wb[i].replace(r"\<", "⑤")
       self.wb[i] = self.wb[i].replace(r"\:", "⑥")
+      self.wb[i] = self.wb[i].replace(r"\-", "⑨")
       # spacing
       self.wb[i] = self.wb[i].replace(r'\ ', "ⓢ") # non-breaking space
       self.wb[i] = self.wb[i].replace(r'\_', "ⓢ") # alternate non-breaking space
@@ -1003,6 +1004,7 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("④", "]")
       self.eb[i] = self.eb[i].replace("⑤", "<")
       self.eb[i] = self.eb[i].replace("⑥", ":")
+      self.eb[i] = self.eb[i].replace("⑨", "-")     
       # text space replacement
       self.eb[i] = self.eb[i].replace("ⓢ", " ") # non-breaking space
       self.eb[i] = self.eb[i].replace("Ⓢ", " ") # non-breaking space in a small cap gets upcased.
@@ -2477,7 +2479,12 @@ class Pph(Book):
       # if this is Latin-1 output. Otherwise, trust the PPer.
       if self.encoding == 'latin_1' and self.renc == "h":
         self.wb[i] = self.wb[i].replace("--", "&mdash;")
-                     
+      # flag an odd number of dashes
+      if "&mdash;-" in self.wb[i]:
+        self.warn("&mdash; with hyphen: {}".format(self.wb[i]))
+      # ok now to unprotect those we didn't want to go to &mdash; entity
+      self.wb[i] = re.sub(r"⑨", '-', self.wb[i])
+                           
       self.wb[i] = re.sub(r"\[oe\]", r'&oelig;', self.wb[i])
       self.wb[i] = re.sub(r"\[ae\]", r'&aelig;', self.wb[i])
       self.wb[i] = re.sub(r"\[OE\]", r'&OElig;', self.wb[i])
