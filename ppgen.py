@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24I" # allow escaped dash; warn on "&mdash;-"
+VERSION="3.24J" # identidier name checks
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -130,6 +130,10 @@ class Book(object):
         the_id = m.group(1)
         attr = re.sub(m.group(0), "", attr)
         done = True
+
+    # if the user was looking for an "id-", then check it.
+    if tgt == "id":
+      self.checkId(the_id)  
 
     if done:
       if np == 1:
@@ -1972,7 +1976,7 @@ class Pph(Book):
     Book.__init__(self, args, renc)
     self.dstfile = re.sub("-src", "", self.srcfile.split('.')[0]) + ".html"
     self.css = self.userCSS()
-
+  
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # internal class to manage CSS as it is added at runtime
   class userCSS(object):
@@ -2089,6 +2093,15 @@ class Pph(Book):
         ck3c = m.group(1)
         self.wb[i] = re.sub(ck0, "class='{0} {1}' {2} ".format(ck1c, ck3c, ck2), self.wb[i])
 
+  # -------------------------------------------------------------------------------------
+  # courtesy id check
+  #
+  # ID and NAME tokens must begin with a letter ([A-Za-z]) and may be followed by any number
+  # of letters, digits ([0-9]), hyphens ("-"), underscores ("_"), colons (":"), and periods (".").
+  def checkId(self, s):
+    if not re.match(r"[A-Za-z][A-Za-z0-9\-_\:\.]*", s):
+      self.fatal("illegal identifier: {}".format(s))
+  
   # -------------------------------------------------------------------------------------
   # preprocess working buffer (HTML)
   def preprocess(self):
@@ -2686,6 +2699,7 @@ class Pph(Book):
       m = re.search(r"id=[\"']?(.+?)($|[\"' ])", rend)
       if m:
         id = m.group(1)
+        self.checkId(id)  # validate identifier name
 
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
@@ -2737,6 +2751,7 @@ class Pph(Book):
       m = re.search(r"id=[\"']?(.+?)($|[\"' ])", rend)
       if m:
         id = m.group(1)
+        self.checkId(id)
 
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
@@ -2792,6 +2807,7 @@ class Pph(Book):
       m = re.search(r"id=[\"']?(.+?)($|[\"' ])", rend)
       if m:
         id = m.group(1)
+        self.checkId(id)
 
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
