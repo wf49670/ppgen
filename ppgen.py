@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24F" # trailing space of .nf block as back-propogated margin-bottom
+VERSION="3.24G" # mdash handling finalized
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -338,7 +338,8 @@ class Book(object):
         self.fatal("misformatted closing tags")
     
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # process character mappings 16-Jul-2014
+    # process character mappings
+    # character mappings are from the UTF-8 representation to Latin-1
     i = 0
     del self.mau[:]
     del self.mal[:]
@@ -2461,7 +2462,9 @@ class Pph(Book):
       self.wb[i] = re.sub(r"◺(.*?)◿", r'<sub>\1</sub>', self.wb[i])
 
       # use entities if user is writing any "--" or "----" to the HTML file
-      # self.wb[i] = self.wb[i].replace("--", "&mdash;")  # removed  9-Sep-2011
+      # if this is Latin-1 output. Otherwise, trust the PPer.
+      if self.encoding == 'latin_1' and self.renc == "h":
+        self.wb[i] = self.wb[i].replace("--", "&mdash;")
                      
       self.wb[i] = re.sub(r"\[oe\]", r'&oelig;', self.wb[i])
       self.wb[i] = re.sub(r"\[ae\]", r'&aelig;', self.wb[i])
