@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24J" # identidier name checks
+VERSION="3.24K" # bandaids for display title and pn in table
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -432,8 +432,10 @@ class Book(object):
       # special characters
       # leave alone if in literal block (correct way, not yet implemented)
       # map &nbsp; to non-breaking space
-      self.wb[i] = self.wb[i].replace("&nbsp;", "ⓢ") # ampersand
-      self.wb[i] = self.wb[i].replace("&", "Ⓩ") # ampersand
+      # 10-Sep-2014: I don't fully understand why I did this mapping
+      if not self.wb[i].startswith(".dt"):
+        self.wb[i] = self.wb[i].replace("&nbsp;", "ⓢ") # ampersand
+        self.wb[i] = self.wb[i].replace("&", "Ⓩ") # ampersand
       
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # define macro
@@ -3403,8 +3405,6 @@ class Pph(Book):
         else: # non-numeric footnote
          self.fatal("non-numeric footnote: {}".format(self.wb[self.cl]))    
 
-  # - * - begin experimental - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * -  
-
   # tables .ta r:5 l:20 r:5 or .ta rlr
   #
   # tables in HTML and derivatives use percent for geometry.
@@ -3592,21 +3592,31 @@ class Pph(Book):
         self.cl += 1
         continue
 
+      # if there is a page number here, pull it and save it
+      # so leading spaces will work
+      # inject it into the data of the first <td> on this line
+      savedpage = ""
+      m = re.search(r"(⑯.*?⑰)", self.wb[self.cl])
+      if m:
+        savedpage = m.group(1)
+        self.wb[self.cl] = re.sub(m.group(1), "", self.wb[self.cl])
+
       v = self.wb[self.cl].split('|') #
       t.append("  <tr>")
-      for k in range(len(v)):
+      # iterate over the td elements
+      for k,data in enumerate(v):
         valgn = ""
         padding = ""
                   
         if k < len(v) - 1: # each column not the last gets padding to the right
-           padding +='padding-right:1em;'
+           padding +='padding-right:1em;'      
         # convert leading spaces to padding
         t1 = v[k]
         t2 = re.sub(r"^ⓢ+","", v[k])
         if len(t1) - len(t2) > 0:
           padleft = (len(t1) - len(t2))*0.7
           padding += 'padding-left:{}em'.format(padleft)
-          v[k] = t2
+          v[k] = savedpage + t2
         t.append("    <td style='{}{}{}'>".format(valigns[k],haligns[k],padding) + v[k].strip() + "</td>")
       t.append("  </tr>")
       self.cl += 1
