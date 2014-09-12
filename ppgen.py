@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24K" # bandaids for display title and pn in table
+VERSION="3.24L" # parsing consecutive macro definitions.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -457,6 +457,7 @@ class Book(object):
         del self.wb[i] # the closing .dm-
         # macro is stored in t[]
         self.macro[macroid] = t
+        i -= 1
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -3213,7 +3214,7 @@ class Pph(Book):
   def doNfb(self, nft, mo):
     # any poetry triggers the same CSS
     if 'b' == nft:
-      self.css.addcss("[215] .lg-container-b { text-align: center; }")
+      self.css.addcss("[215] .lg-container-b { text-align: center; }")  # alignment of entire block
       self.css.addcss("[216] @media handheld { .lg-container-b { clear: both; }}")
     if 'l' == nft:
       self.css.addcss("[217] .lg-container-l { text-align: left; }")
@@ -3221,7 +3222,8 @@ class Pph(Book):
     if 'r' == nft:
       self.css.addcss("[219] .lg-container-r { text-align: right; }")
       self.css.addcss("[220] @media handheld { .lg-container-r { clear: both; }}")
-    self.css.addcss("[221] .linegroup { display: inline-block; text-align: left; }")
+      
+    self.css.addcss("[221] .linegroup { display: inline-block; text-align: left; }")  # alignment inside block
     self.css.addcss("[222] @media handheld { .linegroup { display: block; margin-left: 1.5em; }}")
     if mo:
       self.css.addcss("[223] .linegroup .group0 { margin: 0 auto; }")
@@ -3625,8 +3627,6 @@ class Pph(Book):
     self.wb[startloc:self.cl+1] = t
     self.cl = startloc + len(t)
     
-  # - * - end experimental - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - * - 
-
   # Drop Image
   # .di i_b_009.jpg 100 170 1.3
   def doDropimage(self):
