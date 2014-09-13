@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24N" # allow .nr pnc to set page number color
+VERSION="3.24P" # bugfix for lang= rendering in HTML.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2345,11 +2345,15 @@ class Pph(Book):
     # <lang="fr">merci</lang>
     # <span lang="fr xml:lang="fr">merci</span>
     for i in range(len(self.wb)):
-      m = re.search(r"<lang=[\"']?([^>]+)[\"']?>",self.wb[i])
+      # m = re.search(r"<lang=[\"']?([^>]+)[\"']?>",self.wb[i])
+      m = re.search(r"<lang=[\"']?([^\"']+)[\"']>",self.wb[i])
       while m:
         langspec = m.group(1)
-        self.wb[i] = re.sub(m.group(0), "<span lang=\"{0}\" xml:lang=\"{0}\">".format(langspec), self.wb[i], 1)
+        self.wb[i] = re.sub(m.group(0), "<span LANG=\"{0}\" xml:LANG=\"{0}\">".format(langspec), self.wb[i], 1)
         m = re.search(r"<lang=[\"']?([^>]+)[\"']?>",self.wb[i])
+      if "lang=" in self.wb[i]:
+        self.fatal("incorrect lang markup: {}".format(self.wb[i]))  # TODO: protect if inside .li
+      self.wb[i] = re.sub("LANG", "lang", self.wb[i])
       self.wb[i] = re.sub(r"<\/lang>","</span>",self.wb[i])
     
     # -------------------------------------------------------------------------
