@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24M" # page number CSS change
+VERSION="3.24N" # allow .nr pnc to set page number color
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2576,7 +2576,7 @@ class Pph(Book):
       self.css.addcss("[106]         text-indent:0em;text-align:right;position:absolute;")
       self.css.addcss("[107]         border:1px solid " + self.nregs["pnc"] + ";padding:1px 3px;font-style:normal;")
       self.css.addcss("[108]         font-variant:normal;font-weight:normal;text-decoration:none; }")
-      self.css.addcss("[109] .pageno:after { color: gray; content: attr(title); }")  # new 3.24M
+      self.css.addcss("[109] .pageno:after { color: " + self.nregs["pnc"] + "; content: attr(title); }")  # new 3.24M
     else:
       self.css.addcss("[100] body { margin-left:8%;margin-right:8%; }")
 
