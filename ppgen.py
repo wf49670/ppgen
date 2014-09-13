@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24L" # parsing consecutive macro definitions.
+VERSION="3.24M" # page number CSS change
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2050,7 +2050,8 @@ class Pph(Book):
     # unwrap page number spans
     i = 0
     while i < len(self.wb):
-      m = re.search("(.*?)(<span class='pagenum'><a.*?a></span>)(.*)$", self.wb[i])
+      # m = re.search("(.*?)(<span class='pagenum'><a.*?a></span>)(.*)$", self.wb[i])
+      m = re.search("(.*?)(<span class='pageno'>.*?</span>)(.*)$", self.wb[i])  # new 3.24M
       if m:
         t = []
         if m.group(1):
@@ -2512,14 +2513,13 @@ class Pph(Book):
       if m:
         ptmp = m.group(1)
         if self.pnshow:  # visible page number
+          # in a paragraph usually, but can be orphaned (repaired later)
           self.wb[i] = re.sub(r"⑯(.+)⑰",
-            "<span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(ptmp),
-            self.wb[i]) # in a paragraph usually, but can be orphaned (repaired later)
+          "<span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ptmp),
+          self.wb[i])
+          # "<span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(ptmp)   # pre-3.24M
         elif self.pnlink:  # just the link
-          self.wb[i] = re.sub(r"⑯(.+)⑰",
-            "<a name='Page_{0}' id='Page_{0}'></a>".format(ptmp),
-            self.wb[i]) # in a paragraph
-
+          self.wb[i] = re.sub(r"⑯(.+)⑰", "<a name='Page_{0}' id='Page_{0}'></a>".format(ptmp), self.wb[i])
       i += 1
 
     # internal page links
@@ -2572,10 +2572,11 @@ class Pph(Book):
 
     if self.pnshow:
       self.css.addcss("[100] body { margin-left:8%;margin-right:10%; }")
-      self.css.addcss("[105] .pagenum { right:1%;font-size:x-small;background-color:inherit;color:" + self.nregs["pnc"] + ";")
-      self.css.addcss("[106]          text-indent:0em;text-align:right;position:absolute;")
-      self.css.addcss("[107]          border:1px solid " + self.nregs["pnc"] + ";padding:1px 3px;font-style:normal;")
-      self.css.addcss("[108]          font-variant:normal;font-weight:normal;text-decoration:none; }")
+      self.css.addcss("[105] .pageno { right:1%;font-size:x-small;background-color:inherit;color:" + self.nregs["pnc"] + ";")
+      self.css.addcss("[106]         text-indent:0em;text-align:right;position:absolute;")
+      self.css.addcss("[107]         border:1px solid " + self.nregs["pnc"] + ";padding:1px 3px;font-style:normal;")
+      self.css.addcss("[108]         font-variant:normal;font-weight:normal;text-decoration:none; }")
+      self.css.addcss("[109] .pageno:after { color: gray; content: attr(title); }")  # new 3.24M
     else:
       self.css.addcss("[100] body { margin-left:8%;margin-right:8%; }")
 
@@ -2720,7 +2721,8 @@ class Pph(Book):
     t.append("<div>")
     if pnum != "":
       if self.pnshow:
-        t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
+        # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
+        t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
       elif self.pnlink:
         t.append("  <a name='Page_{0}' id='Page_{0}'></a>".format(pnum))
     if id != "":
@@ -2777,7 +2779,8 @@ class Pph(Book):
       self.css.addcss("[576] .chapter { }")
     if pnum != "":
       if self.pnshow:
-        t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
+        # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
+        t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
       elif self.pnlink:
         t.append("  <a name='Page_{0}' id='Page_{0}'></a>".format(pnum))
     if id != "":
@@ -2829,7 +2832,8 @@ class Pph(Book):
     if pnum != "":
       t.append("<div>")
       if self.pnshow:
-        t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
+        # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
+        t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
       elif self.pnlink:
         t.append("  <a name='Page_{0}' id='Page_{0}'></a>".format(pnum))
     if id != "":
@@ -2963,17 +2967,17 @@ class Pph(Book):
       if img_align == "c":
         self.css.addcss("[600] .figcenter { clear:both; max-width:100%; margin:2em auto; text-align:center; }")
         if caption_present:
-            self.css.addcss("[601] div.figcenter p { text-align:center; text-indent:0; }") # new 15-Aug text-indent:0
+            self.css.addcss("[601] div.figcenter p { text-align:center; text-indent:0; }")
       if img_align == "l":
         self.css.addcss("[602] .figleft { clear:left; float:left; margin:4% 4% 4% 0; }")
         self.css.addcss("[603] @media handheld { .figleft { float:left; }}")
         if caption_present:
-            self.css.addcss("[603] div.figleft p { text-align:center; text-indent:0; }") # new 15-Aug text-indent:0
+            self.css.addcss("[603] div.figleft p { text-align:center; text-indent:0; }")
       if img_align == "r":
         self.css.addcss("[604] .figright { clear:right; float:right; margin:4% 0 4% 4%; }")
-        self.css.addcss("[605] @media handheld { .figright { float:right; }}")
+        self.css.addcss("[605] @media handheld { .figright { float:right; text-align: right; }}")
         if caption_present:
-            self.css.addcss("[603] div.figleft p { text-align:center; text-indent:0; }") # new 15-Aug text-indent:0
+            self.css.addcss("[603] div.figright p { text-align:center; text-indent:0; }") 
           
       # if any image is in document
       self.css.addcss("[603] img { max-width:100%; height:auto; }")
@@ -3723,13 +3727,15 @@ class Pph(Book):
     if h1cnt != 1:
       self.warn("exactly one <h1> element is required.")
     
+    # puts free-standing pagenumbers into a div
     blvl = 0
     for i in range(len(self.wb)):
       if "<div" in self.wb[i]: blvl += 1
       if "<p" in self.wb[i]: blvl += 1
       if "</div" in self.wb[i]: blvl -= 1
       if "</p" in self.wb[i]: blvl -= 1
-      if blvl == 0 and re.match(r"<span class='pagenum'.*?<\/span>$", self.wb[i]):
+      # if blvl == 0 and re.match(r"<span class='pagenum'.*?<\/span>$", self.wb[i]):
+      if blvl == 0 and re.match(r"<span class='pageno'.*?<\/span>$", self.wb[i]):      # new 3.24M
         self.wb[i] = "<div>{}</div>".format(self.wb[i])
 
   # called to retrieve a style string representing current display parameters
