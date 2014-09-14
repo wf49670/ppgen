@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24P" # bugfix for lang= rendering in HTML.
+VERSION="3.24R" # ellipsis and other special characters inside small-caps
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1003,8 +1003,9 @@ class Ppt(Book):
           count -= 1
       i += 1
 
+    # restore tokens
     for i, line in enumerate(self.eb):
-      self.eb[i] = self.eb[i].replace("ⓓ", ".")
+      self.eb[i] = re.sub("ⓓ|Ⓓ", ".", self.eb[i])  # ellipsis dots
       self.eb[i] = self.eb[i].replace("①", "{")
       self.eb[i] = self.eb[i].replace("②", "}")
       self.eb[i] = self.eb[i].replace("③", "[")
@@ -1013,11 +1014,10 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("⑥", ":")
       self.eb[i] = self.eb[i].replace("⑨", "-")     
       # text space replacement
-      self.eb[i] = self.eb[i].replace("ⓢ", " ") # non-breaking space
-      self.eb[i] = self.eb[i].replace("Ⓢ", " ") # non-breaking space in a small cap gets upcased.
-      self.eb[i] = self.eb[i].replace("ⓣ", "") # zero space
-      self.eb[i] = self.eb[i].replace("ⓤ", " ") # thin space
-      self.eb[i] = self.eb[i].replace("ⓥ", " ") # thick space
+      self.eb[i] = re.sub("ⓢ|Ⓢ", " ", self.eb[i]) # non-breaking space
+      self.eb[i] = re.sub("ⓣ|Ⓣ", " ", self.eb[i]) # zero space
+      self.eb[i] = re.sub("ⓤ|Ⓤ", " ", self.eb[i]) # thin space
+      self.eb[i] = re.sub("ⓥ|Ⓥ", " ", self.eb[i]) # thick space
       # ampersand
       self.eb[i] = self.eb[i].replace("Ⓩ", "&")
       # superscripts
