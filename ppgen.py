@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24S" # courtesy check: illustration names not uppercase, no spaces
+VERSION="3.24T" # bugfix: lang without quotes
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2346,11 +2346,11 @@ class Pph(Book):
     # <span lang="fr xml:lang="fr">merci</span>
     for i in range(len(self.wb)):
       # m = re.search(r"<lang=[\"']?([^>]+)[\"']?>",self.wb[i])
-      m = re.search(r"<lang=[\"']?([^\"']+)[\"']>",self.wb[i])
+      m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
       while m:
         langspec = m.group(1)
         self.wb[i] = re.sub(m.group(0), "<span LANG=\"{0}\" xml:LANG=\"{0}\">".format(langspec), self.wb[i], 1)
-        m = re.search(r"<lang=[\"']?([^>]+)[\"']?>",self.wb[i])
+        m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
       if "lang=" in self.wb[i]:
         self.fatal("incorrect lang markup: {}".format(self.wb[i]))  # TODO: protect if inside .li
       self.wb[i] = re.sub("LANG", "lang", self.wb[i])
