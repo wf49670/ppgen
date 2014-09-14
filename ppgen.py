@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24R" # ellipsis and other special characters inside small-caps
+VERSION="3.24S" # courtesy check: illustration names not uppercase, no spaces
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2901,6 +2901,10 @@ class Pph(Book):
           
     # 02-Jul-2014 thanks for this code, Nigel
     def checkIllo(fname): # assure that fn exists in images folder
+      if " " in fname:
+        self.warn("cannot have spaces in illustration filenames.")
+      if re.search("[A-Z]", fname):
+        self.warn("illustration filenames must be lower case.")
       fullname = os.path.join(os.path.dirname(self.srcfile),"images",fname)
       if not os.path.isfile(fullname):
         self.warn("file {} not in images folder".format(fullname))
