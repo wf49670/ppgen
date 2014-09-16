@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24U" # bugfix pagenumbers in tables
+VERSION="3.25" # consistent table width
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1720,10 +1720,17 @@ class Ppt(Book):
     # remove table summary if present.
     if "s=" in self.wb[self.cl]:
       self.wb[self.cl] = self.get_id("s", self.wb[self.cl], 1)
-    # remove table options if present.
-    if "o=" in self.wb[self.cl]:
-      self.wb[self.cl] = self.get_id("o", self.wb[self.cl], 1)
-          
+      
+    # pull out optional user-specified Epub//Mobi width %
+    tw_epub = ""
+    if "ew=" in self.wb[self.cl]:
+      self.wb[self.cl], tw_epub = self.get_id("ew", self.wb[self.cl])       
+      
+    # pull out optional user-specified HTML width %
+    tw_html = ""
+    if "w=" in self.wb[self.cl]:
+      self.wb[self.cl], tw_html = self.get_id("w", self.wb[self.cl])   
+                
     # table forms:
     # .ta r:5 l:20 l:5  => use specified width and wrap if necessary
     # .ta rll  => calculate width of columns, no wrap
@@ -2096,6 +2103,7 @@ class Pph(Book):
         m = re.search(r"'(.*?)'", ck3)
         ck3c = m.group(1)
         self.wb[i] = re.sub(ck0, "class='{0} {1}' {2} ".format(ck1c, ck3c, ck2), self.wb[i])
+        self.wb[i] = re.sub("\s\s*", " ", self.wb[i]) # courtesy whitespace cleanup
 
   # -------------------------------------------------------------------------------------
   # courtesy id check
@@ -3465,11 +3473,16 @@ class Pph(Book):
     tsum = ""
     if "s=" in self.wb[self.cl]:
       self.wb[self.cl], tsum = self.get_id("s", self.wb[self.cl])
+
+    # pull out optional user-specified Epub//Mobi width %
+    tw_epub = ""
+    if "ew=" in self.wb[self.cl]:
+      self.wb[self.cl], tw_epub = self.get_id("ew", self.wb[self.cl])       
     
-    # pull out options if present.
-    topt = ""
-    if "o=" in self.wb[self.cl]:
-      self.wb[self.cl], topt = self.get_id("o", self.wb[self.cl])
+    # pull out optional user-specified HTML width %
+    tw_html = ""
+    if "w=" in self.wb[self.cl]:
+      self.wb[self.cl], tw_html = self.get_id("w", self.wb[self.cl])  
     
     # tables forms:
     # .ta r:5 l:20 l:5  => use specified width and wrap if necessary
@@ -3559,31 +3572,26 @@ class Pph(Book):
       k1 += 1    
 
     t = []
+    
+    s = "margin: auto;"  # start building class for table
 
-    # self.tcnt has table counter so each table can have a unique class
-    # thisclass_html = 'margin-left:auto; margin-right:auto; width:{}%'.format(tablewidth)
-    # self.css.addcss("[520] .tablet{0:02d} {{".format(self.tcnt) + thisclass_html + "}")
-    # thisclass_tablet = 'margin-left:{0}%; margin-right:{0}%; width:{1}%'.format(lmarpct,tablewidth)
-    # self.css.addcss("[521] @media handheld {{ .tablet{0:02d} {{".format(self.tcnt) + thisclass_tablet + "} }")
-    # t.append("<table class='tablet{:02d}'>".format(self.tcnt))
-
-    # if tsum != "":
-    #   tsum = re.sub("'", "\\'", tsum)
-    # sty = "margin-left: {}%; width:{}%; ".format(lmarpct, tablewidth)
-    # if self.pvs > 0:
-    #   sty += "margin-top: {}em".format(self.pvs)
-    #   self.pvs=0
-    # t.append("<table style='{}' summary='{}'>".format(sty, tsum))
-
-    sty = "margin: auto; "
-    if not "wide" in topt:
-      φ = (1 + sqrt(5))/2.0 
-      sty += "max-width:{}em; ".format("%.2f" % (totalwidth/φ))
-      ## sty += "width:{}%; ".format(int(100*(totalwidth/72)))
     if self.pvs > 0:  # pending vertical space
-      sty += "margin-top: {}em".format(self.pvs)
+      s += " margin-top: {}em; ".format(self.pvs)
       self.pvs=0
-    t.append("<table style='{}' summary='{}'>".format(sty, tsum))   
+
+    # if user specified table width (in %), put in a class and attach to table
+    # if user also specified table width for epub, put that in a media handheld class
+    # fudge factor if ppgen calculates it: 20% to allow for an ALL CAPS (wide) column
+    if tw_html != "":
+      s += " width:{}; ".format(tw_html)  # use what we are told
+    else:
+      s += " width:{}%; ".format( int(120*(totalwidth/72)) )  # calculate our owm, with fudge factor
+      
+    self.css.addcss("[670] .table{0} {{ {1} }}".format(self.tcnt, s))
+    if tw_epub != "":
+      self.css.addcss("[671] @media handheld {{ .table{} {{ width:{}; }} }}".format(self.tcnt, tw_epub))
+    
+    t.append("<table class='table{}' summary='{}'>".format(self.tcnt, tsum))
     
     # set relative widths of columns
     t.append("<colgroup>")
