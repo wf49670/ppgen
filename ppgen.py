@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.24T" # bugfix: lang without quotes
+VERSION="3.24U" # bugfix pagenumbers in tables
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3529,7 +3529,7 @@ class Pph(Book):
       totalwidth += int(u[1]) # no added space in HTML
       j += 1
     totalwidth -= 1    
-
+  
     pwidths = [None] * ncols
     # convert character widths to percentages for HTML
     tablewidth = int(100*(totalwidth / 72))
@@ -3577,8 +3577,9 @@ class Pph(Book):
 
     sty = "margin: auto; "
     if not "wide" in topt:
-      φ = (1 + sqrt(5))/2.0 # tribute Nigel
+      φ = (1 + sqrt(5))/2.0 
       sty += "max-width:{}em; ".format("%.2f" % (totalwidth/φ))
+      ## sty += "width:{}%; ".format(int(100*(totalwidth/72)))
     if self.pvs > 0:  # pending vertical space
       sty += "margin-top: {}em".format(self.pvs)
       self.pvs=0
@@ -3630,6 +3631,8 @@ class Pph(Book):
         if len(t1) - len(t2) > 0:
           padleft = (len(t1) - len(t2))*0.7
           padding += 'padding-left:{}em'.format(padleft)
+        # inject saved page number if this is first column
+        if k == 0:
           v[k] = savedpage + t2
         t.append("    <td style='{}{}{}'>".format(valigns[k],haligns[k],padding) + v[k].strip() + "</td>")
       t.append("  </tr>")
