@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.25B" # margin percentages for tables for epub
+VERSION="3.25C" # validate some columnar data present in each table
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3550,6 +3550,11 @@ class Pph(Book):
       j += 1
     
     pwidths = [None] * ncols
+
+    # make sure we have a table
+    if totalwidth == 0:
+      self.fatal("no columns detected in table starting: {}".format(il_line))
+
     # convert character widths to percentages for HTML
     tablewidth = int(100*(totalwidth / 72))
     pctused = 0
