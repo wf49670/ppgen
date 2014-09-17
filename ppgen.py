@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.25" # consistent table width
+VERSION="3.25A" # force percentage in w= and ew=
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2315,8 +2315,10 @@ class Pph(Book):
     while i < len(self.wb):
       if self.wb[i].startswith(".nf"): # find a no-fill block
         tagstack = []
-        i += 1
-        while not self.wb[i].startswith(".nf"): # as long as we are in a .nf
+        i += 1 # step inside the .nf block
+        while not self.wb[i].startswith(".nf-"): # as long as we are in a .nf
+          if self.wb[i].startswith(".nf "):
+            self.crash_w_context("nested no-fill block:", i)
           # find all tags on this line; ignore <a and </a tags completely for this purpose
           t = re.findall("<\/?[^a][^>]*>", self.wb[i]) 
           sstart = "" # what to prepend to the line
@@ -3459,6 +3461,7 @@ class Pph(Book):
     valigns = list() # 't', 'b', or 'm' default 't'
     widths = list() # column widths
     totalwidth = 0
+    il_line = self.wb[self.cl]
 
     # look for continuation characters; restore to one line
     k1 = self.cl
@@ -3477,12 +3480,16 @@ class Pph(Book):
     # pull out optional user-specified Epub//Mobi width %
     tw_epub = ""
     if "ew=" in self.wb[self.cl]:
-      self.wb[self.cl], tw_epub = self.get_id("ew", self.wb[self.cl])       
+      self.wb[self.cl], tw_epub = self.get_id("ew", self.wb[self.cl])
+      if "%" not in tw_epub:
+        self.fatal("please specify table epub width as percent, i.e. \"{0}%\" \n on line: {1}".format(tw_epub, il_line))
     
     # pull out optional user-specified HTML width %
     tw_html = ""
     if "w=" in self.wb[self.cl]:
-      self.wb[self.cl], tw_html = self.get_id("w", self.wb[self.cl])  
+      self.wb[self.cl], tw_html = self.get_id("w", self.wb[self.cl]) 
+      if "%" not in tw_html:
+        self.fatal("please specify table HTML width as percent, i.e. \"{0}%\" \n on line: {1}".format(tw_html, il_line))     
     
     # tables forms:
     # .ta r:5 l:20 l:5  => use specified width and wrap if necessary
@@ -3585,7 +3592,8 @@ class Pph(Book):
     if tw_html != "":
       s += " width:{}; ".format(tw_html)  # use what we are told
     else:
-      s += " width:{}%; ".format( int(120*(totalwidth/72)) )  # calculate our owm, with fudge factor
+      our_width = min( 100, int(120*(totalwidth/72)) )  # limit to 100%
+      s += " width:{}%; ".format( our_width )  # calculate percentage, with fudge factor
       
     self.css.addcss("[670] .table{0} {{ {1} }}".format(self.tcnt, s))
     if tw_epub != "":
