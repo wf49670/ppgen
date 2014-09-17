@@ -12,7 +12,7 @@ import shlex
 import random, inspect
 from math import sqrt
 
-VERSION="3.25A" # force percentage in w= and ew=
+VERSION="3.25B" # margin percentages for tables for epub
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3548,8 +3548,7 @@ class Pph(Book):
       widths.append(int(u[1]))
       totalwidth += int(u[1]) # no added space in HTML
       j += 1
-    totalwidth -= 1    
-  
+    
     pwidths = [None] * ncols
     # convert character widths to percentages for HTML
     tablewidth = int(100*(totalwidth / 72))
@@ -3593,11 +3592,16 @@ class Pph(Book):
       s += " width:{}; ".format(tw_html)  # use what we are told
     else:
       our_width = min( 100, int(120*(totalwidth/72)) )  # limit to 100%
-      s += " width:{}%; ".format( our_width )  # calculate percentage, with fudge factor
-      
+      left_indent_pct = (100 - our_width) // 2
+      right_indent_pct = 100 - our_width - left_indent_pct
+      s += " margin-left: {}%; margin-right:{}%; width:{}%; ".format( left_indent_pct, right_indent_pct, our_width )
     self.css.addcss("[670] .table{0} {{ {1} }}".format(self.tcnt, s))
+    
     if tw_epub != "":
-      self.css.addcss("[671] @media handheld {{ .table{} {{ width:{}; }} }}".format(self.tcnt, tw_epub))
+      epw = int(re.sub("%", "", tw_epub)) # as integer
+      left_indent_pct = (100 - epw) // 2
+      right_indent_pct = 100 - epw - left_indent_pct      
+      self.css.addcss("[671] @media handheld {{ .table{} {{ margin-left: {}%; margin-right:{}%; width:{}%; }} }}".format(self.tcnt, left_indent_pct, right_indent_pct, epw))
     
     t.append("<table class='table{}' summary='{}'>".format(self.tcnt, tsum))
     
