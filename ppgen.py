@@ -14,7 +14,7 @@ from math import sqrt
 import struct
 import imghdr
 
-VERSION="3.26" # illustration code rewrite
+VERSION="3.26A" # bugfix: illustration boundary condition
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3020,7 +3020,12 @@ class Pph(Book):
     # entry point to process illustration (HTML)      
         
     ia = parse_illo(self.wb[self.cl]) # parse .il line
-    caption_present = self.wb[self.cl+1].startswith(".ca")
+    
+    caption_present = False
+    try:
+      caption_present = self.wb[self.cl+1].startswith(".ca")
+    except:
+      pass
 
     # build the CSS for this illustration
     #
