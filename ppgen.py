@@ -11,8 +11,10 @@ from collections import defaultdict
 import shlex
 import random, inspect
 from math import sqrt
+import struct
+import imghdr
 
-VERSION="3.25C" # validate some columnar data present in each table
+VERSION="3.26" # illustration code rewrite
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2463,7 +2465,8 @@ class Pph(Book):
         m = re.search(r"<c=[\"']?(.*?)[\"']?>", self.wb[i])
       self.wb[i] = re.sub("<\/c>", "</span>", self.wb[i],1)
 
-      # 27-Jun-2014 <g> is now a stylized em in HTML
+      # <g> is now a stylized em in HTML
+      # using a @media handheld, in epub/mobi it is italicized, with normal letter spacing
       m = re.search(r"<g>", self.wb[i])
       if m:
         self.wb[i] = re.sub(r"<g>", "<em class='gesperrt'>", self.wb[i])
@@ -2647,6 +2650,9 @@ class Pph(Book):
     del self.wb[self.cl]  # .li-
 
   # .pb page break
+  # display a page break in HTML on a browser.
+  # in epub/mobi, a physical page break is used so use a
+  # @media handheld to make the horizontal rule invisible
   def doPb(self):
     self.css.addcss("[465] div.pbb { page-break-before:always; }")
     self.css.addcss("[466] hr.pb { border:none;border-bottom:1px solid; margin:1em auto; }")        
@@ -2790,7 +2796,7 @@ class Pph(Book):
       t.append("<div>")
     else:
       t.append("<div class='chapter'>") # will force file break
-      self.css.addcss("[576] .chapter { }")
+      self.css.addcss("[576] .chapter { clear:both; }")
     if pnum != "":
       if self.pnshow:
         # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
@@ -2897,19 +2903,12 @@ class Pph(Book):
   # .il illustrations
   # .il id=i01 fn=illus-fpc.jpg w=332 alt=illus-fpcf.jpg
   # .ca Dick was taken by surprise.
-  #
-  # cw=  caption width
-  # id= identifier (ok)
-  # cj=  caption justification
-  # fn= filename (ok)
-  # link= linked-to file (ok)
-  # alt=  alternate text
-  # w= displayed width (ok)
-  # align= left, center, right default center (ok)
   
   def doIllo(self):
-          
-    # 02-Jul-2014 thanks for this code, Nigel
+            
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+    # check that file exists
+    #              
     def checkIllo(fname): # assure that fn exists in images folder
       if " " in fname:
         self.warn("cannot have spaces in illustration filenames.")
@@ -2918,153 +2917,240 @@ class Pph(Book):
       fullname = os.path.join(os.path.dirname(self.srcfile),"images",fname)
       if not os.path.isfile(fullname):
         self.warn("file {} not in images folder".format(fullname))
-
-    linkto_file = ""
-    m = re.match(r"\.il (.*)", self.wb[self.cl])
-    rep = 1 # source lines to replace
-    if m:
-      attr = m.group(1)
-            
-      # pull out optional caption width
-      ocw = 0  # zero means it hasn't been set by the user
-      if "cw=" in attr:
-        attr, ocws = self.get_id("cw",attr)  # as a string
-        ocws = re.sub("%", "", ocws)  # remove courtesy %
-        ocw = int(ocws)  
-
-      # pull out optional caption justification
-      # (l)eft, (c)enter, (r)ight, (f)ull
-      cj = 0  # zero means it hasn't been set by the user
-      if "cj=" in attr:
-        attr, cj = self.get_id("cj",attr)
       
-      # pull out id if present
-      iid = ""
-      if "id=" in attr:
-        attr, the_id = self.get_id("id",attr)
-        iid = "id='{}' ".format(the_id)    
-
-      # now the filenames
-      display_file = ""  # file that is displayed
-      if "fn=" in attr:
-        attr, display_file = self.get_id("fn", attr)
-        checkIllo(display_file)        
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+    # given the .il line, parse all arguments
+    # returns an "ia" dictionary:
+    #    "ifn"    fn="image-001.jpg"
+    #    "link"   optional link="image-001f.jpg"
+    #    "cw"     optional caption width ("50%", "%" only)
+    #    "align"  (l)eft, (c)enter, (r)ight
+    #    "iw"     requested browser image width, in percent
+    #    "ew"     requested epub image width, in percent
+    #    "eh"     epub height (experimental)
+    #    "cj"     caption justification
+    #    "id"     user-supplied id for image
+    #    "alt"    alternate text for image
+    #
+    def parse_illo(s):
+      s0 = s[:]  # original .il line
+      ia = {}
+      
+      # primary image filename
+      ifn = ""
+      if "fn=" in s:
+        s, ifn = self.get_id("fn", s)
       else:
-        self.fatal("no display file specified in {}".format(self.wb[self.cl]))
-
-      linkto_file = ""  # file that is linked to
-      if "link=" in attr:
-        attr, linkto_file = self.get_id("link", attr)
-        checkIllo(linkto_file)        
-        
-      alt_text = ""
-      if "alt=" in attr:
-        attr, alt_text = self.get_id("alt", attr)
-
-      # image width
-      iw = 0
-      if "w=" in attr:
-        attr, swid = self.get_id("w", attr)
-        swid = re.sub("px", "", swid)  # courtesy allow 350px or 350
-        iw = int(swid)
-      else:  
-        self.fatal("no image width specified in {}".format(self.wb[self.cl]))
-
-      # align attributes
-      # l, c, r, left, center, right
-      img_align = "c"
-      if "align=" in attr:
-        attr, s = self.get_id("align", attr)
-        img_align = s[0]
-
-      caption_present = False
-      if self.cl+1 < len(self.wb) and re.match(r"\.ca", self.wb[self.cl+1]):
-        caption_present = True
-
-      # build the CSS for this illustration
-      if img_align == "c":
-        self.css.addcss("[600] .figcenter { clear:both; max-width:100%; margin:2em auto; text-align:center; }")
-        if caption_present:
-            self.css.addcss("[601] div.figcenter p { text-align:center; text-indent:0; }")
-      if img_align == "l":
-        self.css.addcss("[602] .figleft { clear:left; float:left; margin:4% 4% 4% 0; }")
-        self.css.addcss("[603] @media handheld { .figleft { float:left; }}")
-        if caption_present:
-            self.css.addcss("[603] div.figleft p { text-align:center; text-indent:0; }")
-      if img_align == "r":
-        self.css.addcss("[604] .figright { clear:right; float:right; margin:4% 0 4% 4%; }")
-        self.css.addcss("[605] @media handheld { .figright { float:right; text-align: right; }}")
-        if caption_present:
-            self.css.addcss("[603] div.figright p { text-align:center; text-indent:0; }") 
-          
-      # if any image is in document
-      self.css.addcss("[603] img { max-width:100%; height:auto; }")
+        self.fatal("no display file specified in {}".format(s0))      
+      ia["ifn"] = ifn
       
-      # make CSS name from igc counter
-      ign = "ig{:03d}".format(self.igc)
-      icn = "ic{:03d}".format(self.igc)
-      self.igc += 1     
+      # link to alternate (larger) image
+      link = ""
+      if "link=" in s:
+        s, link = self.get_id("link", s)
+        checkIllo(link)       
+      ia["link"] = link
+      
+      # optional caption width
+      cw = "" 
+      if "cw=" in s:
+        s, cw = self.get_id("cw",s)
+        if "%" not in cw:
+          self.fatal("caption width must be specified in percent")
+      ia["cw"] = cw
+      
+      # align attributes. l, c, r, left, center, right
+      img_align = "c" # default
+      if "align=" in s:
+        s, s1 = self.get_id("align", s)
+        img_align = s1[0]  # use first letter "right" -> "r"
+      ia["align"] = img_align
+                
+      # user-requested image width
+      # can be pixels (px) or percent (%) at this point
+      iw = ""
+      if "w=" in s:
+        s, iw = self.get_id("w", s)
+        # if not "%" in iw:
+        #   self.fatal("width, if specified, must be in percent")
+      ia["iw"] = iw
+      
+      # user-requested epub width in %
+      ew = ""
+      if "ew=" in s:
+        s, ew = self.get_id("ew", s)
+        if not "%" in ew:
+          self.fatal("epub width, if specified, must be in percent")
+      ia["ew"] = ew 
 
+      # user-requested epub height in %
+      eh = ""
+      if "eh=" in s:
+        s, eh = self.get_id("eh", s)
+        if not "%" in eh:
+          self.fatal("epub height, if specified, must be in percent")
+      ia["eh"] = eh      
+                      
+      # caption justification; (l)eft, (c)enter, (r)ight, (f)ull
+      my_cj = ""
+      if "cj=" in s:
+        s, cj = self.get_id("cj",s)
+        my_cj = cj[0]
+      ia["cj"] = my_cj
+
+      # user-requested id
+      id = ""
+      if "id=" in s:
+        s, the_id = self.get_id("id",s)
+      ia["id"] = id
+
+      # alt text for image
+      alt = ""
+      if "alt=" in s:
+        s, alt_text = self.get_id("alt",s)
+      ia["alt"] = id
+                            
+      # no "=" should remain in .il string
+      if "=" in s:
+        s = re.sub("\.il", "", s).strip()
+        self.warn("unprocessed value in illustration: {}".format(s))
+      return(ia)
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+    # entry point to process illustration (HTML)      
+        
+    ia = parse_illo(self.wb[self.cl]) # parse .il line
+    caption_present = self.wb[self.cl+1].startswith(".ca")
+
+    # build the CSS for this illustration
+    #
+    # using a @media handheld, we specify float:left inside @media, even though it would
+    # already be set to that using normal CSS cascading. Epubmaker removes float:left
+    # from the first figleft definition (breaking the cascade) but, perhaps due to an
+    # oversight, it doesn't remove float:left inside the @media handheld.     
+    
+    if ia["align"] == "c":
+      self.css.addcss("[600] .figcenter { clear:both; max-width:100%; margin:2em auto; text-align:center; }")
       if caption_present:
-        if ocw > 0:  # user has set caption width
+          self.css.addcss("[601] div.figcenter p { text-align:center; text-indent:0; }")
+          
+    if ia["align"] == "l":
+      self.css.addcss("[600] .figleft { clear:left; float:left; max-width:100%; margin:0.5em 1em 1em 0; text-align: left;}")
+      if caption_present:
+          self.css.addcss("[601] div.figleft p { text-align:center; text-indent:0; }")
+      self.css.addcss("[602] @media handheld { .figleft { float:left; }}")
+                
+    if ia["align"] == "r":
+      self.css.addcss("[600] .figright { clear:right; float:right; max-width:100%; margin:0.5em 0 1em 1em; text-align: right;}")
+      if caption_present:
+          self.css.addcss("[601] div.figright p { text-align:center; text-indent:0; }") 
+      self.css.addcss("[602] @media handheld { .figright { float:right; }}")
+                
+    # if any image is in document
+    self.css.addcss("[608] img { max-width:100%; height:auto; }")
+    
+    # make CSS names from igc counter
+    idn = "id{:03d}".format(self.igc)
+    ign = "ig{:03d}".format(self.igc)
+    icn = "ic{:03d}".format(self.igc)
+    self.igc += 1     
+
+    # set the illustration width
+    self.css.addcss("[610] .{} {{ width:{}; }}".format(idn, ia["iw"])) # the HTML illustration width
+    
+    if ia['ew'] == "":
+      ia["ew"] = ia["iw"]
+    
+    # if epub width in pixels, convert it now
+    if "px" in ia["ew"]:
+      my_width = int(re.sub("px", "", ia["ew"]))
+      ia["ew"] = "{}%".format(min(100, int(100*my_width/800)))
+      
+    if ia['align'] == 'c':
+      my_width = int(re.sub("%", "", ia["ew"]))
+      my_lmar = (100 - my_width) // 2
+      my_rmar = 100 - my_width - my_lmar
+      self.css.addcss("[610] @media handheld {{ .{} {{ margin-left:{}%; width:{}; }}}}".format(idn, my_lmar, ia["ew"]))  
+    # else:  # floated l or right
+    #   self.css.addcss("[610] @media handheld {{ .{} {{ width:{}; }}}}".format(idn, ia["ew"]))    
+
+    # if user has set caption width (in percent) we use that for both HTML and epub.
+    # If user hasn’t specified it, we use the width of the image in a browser or
+    # 80% in epub using a @media handheld because we cannot rely on max-width on these devices
+    #
+    if caption_present:
+ 
+      ocw, oml, omr = (0,0,0)  # width, left, right margins as percent
+      if ia["cw"] != "":  # user has set caption width
+        ocw = int(re.sub("%", "", ia["cw"]))  # numeric part
+        if ia["cj"] == 'c' or ia["cj"] == '' or ia["cj"] == 'f':  # centered or justified
           oml = (100 - ocw) // 2
           omr = 100 - ocw - oml
-          self.css.addcss("[604] .{} {{ width:{}%; margin-left:{}%; margin-right:{}%; }} ".format(icn, ocw, oml, omr))  
-        else:
-          self.css.addcss("[604] .{} {{ width:{}px; margin: auto; max-width:100%; }} ".format(icn, iw))  
-          self.css.addcss("[605] @media handheld {{ .{} {{ width:80%; margin-left: 10%; margin-right: 10%; }}}}".format(icn))
-        if cj != "":
-          if cj == 'l':
-            self.css.addcss("[608] div.{} p {{ text-align:left; }} ".format(icn, iw))  
-          elif cj == 'r':
-            self.css.addcss("[608] div.{} p {{ text-align:right; }} ".format(icn, iw))  
-          elif cj == 'c':
-            self.css.addcss("[608] div.{} p {{ text-align:center; }} ".format(icn, iw))  
-          elif cj == 'f':
-            self.css.addcss("[608] div.{} p {{ text-align:justify; }} ".format(icn, iw))  
+        if ia["cj"] == 'l':  # left and right need to incorporate caption width
+          oml = (100 - ocw) // 2  # fixed
+          omr = 100 - ocw - oml
+        if ia["cj"] == 'r':
+          omr = (100 - ocw) // 2  # fixed
+          oml = 100 - ocw - omr          
+        self.css.addcss("[611] .{} {{ width:{}%; margin-left:{}%; margin-right:{}%; }} ".format(icn, ocw, oml, omr))  
+      else:
+        self.css.addcss("[611] .{} {{ width:100%; }} ".format(icn, ia["iw"]))  
+ 
+      if ia["cj"] != "":
+        if ia["cj"] == 'l':
+          self.css.addcss("[613] div.{} p {{ text-align:left; }} ".format(icn))  
+        elif ia["cj"] == 'r':
+          self.css.addcss("[613] div.{} p {{ text-align:right; }} ".format(icn))  
+        elif ia["cj"] == 'c':
+          self.css.addcss("[613] div.{} p {{ text-align:center; }} ".format(icn))  
+        elif ia["cj"] == 'f':
+          self.css.addcss("[613] div.{} p {{ text-align:justify; }} ".format(icn))  
 
-      self.css.addcss("[606] .{} {{ width:{}px; }} ".format(ign, iw)) 
+    self.css.addcss("[614] .{} {{ width:100%; }} ".format(ign, ia["iw"]))
 
-      # create replacement stanza for illustration
-      u = []
+    # create replacement stanza for illustration
+    u = []
 
-      if img_align == "c":
-        u.append("<div {}class='figcenter'>".format(iid))
-      if img_align == "l":
-        u.append("<div {}class='figleft'>".format(iid))
-      if img_align == "r":
-        u.append("<div {}class='figright'>".format(iid))
+    if ia["align"] == "c":
+      u.append("<div {}class='figcenter {}'>".format(ia["id"], idn))
+    if ia["align"] == "l":
+      u.append("<div {}class='figleft {}'>".format(ia["id"], idn))
+    if ia["align"] == "r":
+      u.append("<div {}class='figright {}'>".format(ia["id"], idn))
 
-      # 16-Apr-2014: placed link in div
-      if linkto_file != "": # link to larger image specified in markup
-        u.append("<a href='images/{}'><img src='images/{}' alt='{}' class='{}' /></a>".format(linkto_file,display_file, alt_text, ign))
-      else: # no link to larger image
-        u.append("<img src='images/{}' alt='{}' class='{}' />".format(display_file, alt_text, ign))
+    # 16-Apr-2014: placed link in div
+    if ia["link"] != "": # link to larger image specified in markup
+      u.append("<a href='images/{}'><img src='images/{}' alt='{}' class='{}' /></a>".format(ia["link"], ia["ifn"], ia["alt"], ign))
+    else: # no link to larger image
+      u.append("<img src='images/{}' alt='{}' class='{}' />".format(ia["ifn"], ia["alt"], ign))
 
-      # is the .il line followed by a caption line?
-      if caption_present:
-        u.append("<div class='{}'>".format(icn))
-        if self.wb[self.cl+1] == ".ca": # multiline
-          rep += 1
-          j = 2
-          s = self.wb[self.cl+j] + "<br />"
-          rep += 1
+    rep = 1 # source lines to replace
+    
+    # is the .il line followed by a caption line?
+    if caption_present:
+      u.append("<div class='{}'>".format(icn))
+      if self.wb[self.cl+1] == ".ca": # multiline
+        rep += 1
+        j = 2
+        s = self.wb[self.cl+j] + "<br />"
+        rep += 1
+        j += 1
+        while self.wb[self.cl+j] != ".ca-":
+          s += self.wb[self.cl+j] + "<br />"
           j += 1
-          while self.wb[self.cl+j] != ".ca-":
-            s += self.wb[self.cl+j] + "<br />"
-            j += 1
-            rep += 1
           rep += 1
-          caption = s[0:-6] # strip trailing break tag
-        else: # single line
-          caption = self.wb[self.cl+1][4:]
-          rep += 1
-        u.append("<p>{}</p>".format(caption))
-        u.append("</div>")
-      u.append("</div>") # the entire illustration div
-      # replace with completed HTML
-      self.wb[self.cl:self.cl+rep] = u
-      self.cl += len(u)
+        rep += 1
+        caption = s[0:-6] # strip trailing break tag
+      else: # single line
+        caption = self.wb[self.cl+1][4:]
+        rep += 1
+      u.append("<p>{}</p>".format(caption))
+      u.append("</div>")
+    u.append("</div>") # the entire illustration div
+    
+    # replace with completed HTML
+    self.wb[self.cl:self.cl+rep] = u
+    self.cl += len(u)
 
   # .in left margin indent
   def doIn(self):
@@ -3233,6 +3319,8 @@ class Pph(Book):
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # no-fill, block. block type specified. any type except centered
+  #
+  # in epub/mobi, the @media handheld ... (explain....)
   def doNfb(self, nft, mo):
     # any poetry triggers the same CSS
     if 'b' == nft:
