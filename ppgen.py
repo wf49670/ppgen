@@ -2999,16 +2999,16 @@ class Pph(Book):
       ia["cj"] = my_cj
 
       # user-requested id
-      id = ""
+      iid = ""
       if "id=" in s:
-        s, the_id = self.get_id("id",s)
-      ia["id"] = id
+        s, iid = self.get_id("id",s)
+      ia["id"] = iid
 
       # alt text for image
       alt = ""
       if "alt=" in s:
-        s, alt_text = self.get_id("alt",s)
-      ia["alt"] = id
+        s, alt = self.get_id("alt",s)
+      ia["alt"] = alt
                             
       # no "=" should remain in .il string
       if "=" in s:
@@ -3117,11 +3117,11 @@ class Pph(Book):
     u = []
 
     if ia["align"] == "c":
-      u.append("<div {}class='figcenter {}'>".format(ia["id"], idn))
+      u.append("<div id='{}' class='figcenter {}'>".format(ia["id"], idn))
     if ia["align"] == "l":
-      u.append("<div {}class='figleft {}'>".format(ia["id"], idn))
+      u.append("<div id='{}' class='figleft {}'>".format(ia["id"], idn))
     if ia["align"] == "r":
-      u.append("<div {}class='figright {}'>".format(ia["id"], idn))
+      u.append("<div id='{}' class='figright {}'>".format(ia["id"], idn))
 
     # 16-Apr-2014: placed link in div
     if ia["link"] != "": # link to larger image specified in markup
