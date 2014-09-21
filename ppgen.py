@@ -14,7 +14,7 @@ from math import sqrt
 import struct
 import imghdr
 
-VERSION="3.26A" # of 19-Sep-2014
+VERSION="3.26A" # with fix for .pn problem reported by Carolyn in forums
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2201,12 +2201,14 @@ class Pph(Book):
         pnum = m.group(1) # string
         del self.wb[i]
         found = False
-        while not found:
+        while not found and (i < len(self.wb)):    # loop until we find a valid insertion spot,
+                                                   # but don't run off end of buffer
           # it is possible to hit another pn match before finding a suitable home
           m = re.match(r"⑯(.+)⑰", self.wb[i])
           if m:
             pnum = m.group(1)
             del self.wb[i]
+            i -= 1             # counteract increment operation below if we deleted the line
             continue
           # check first. only allowed dot command for placing pn
           if re.match(r"\.h[123]", self.wb[i]):
@@ -2217,7 +2219,8 @@ class Pph(Book):
             self.wb[i] = "⑯{}⑰".format(pnum) + self.wb[i]
             found = True
           i += 1 # keep looking
-      i += 1
+      else:       # only increment if first match above failed
+        i += 1    # as if it worked we deleted the matching line
 
     # autonumbered footnotes are assigned numbers
     # footnotes in text
