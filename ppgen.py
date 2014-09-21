@@ -14,7 +14,7 @@ from math import sqrt
 import struct
 import imghdr
 
-VERSION="3.26A" # with fix for .pn problem reported by Carolyn in forums
+VERSION="3.26B" # clarified output formats available for text
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -4079,7 +4079,7 @@ def main():
   parser.add_argument('-i', '--infile', help='UTF-8 or Latin-1 input file')
   parser.add_argument('-l', '--log', help="display Latin-1 conversion log", action="store_true")
   parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p)')
-  parser.add_argument('-o', '--output_format', default="ht", help='output format "h":HTML "t":text')
+  parser.add_argument('-o', '--output_format', default="ht", help='output format (HTML:h, text:t, u or l)')
   parser.add_argument('-a', '--anonymous', action='store_true', help='do not identify version/timestamp in HTML')
   parser.add_argument("-v", "--version", help="display version and exit", action="store_true")
   args = parser.parse_args()
@@ -4112,9 +4112,9 @@ def main():
     ppt.run()
     
   # Latin-1 only
-  # if 'l' in args.output_format:
-  #   ppt = Ppt(args, "l")
-  #   ppt.run()    
+  if 'l' in args.output_format:
+   ppt = Ppt(args, "l")
+   ppt.run()
 
   if 'h' in args.output_format:
     print("creating HTML version")
