@@ -4106,7 +4106,7 @@ def main():
     ppt = Ppt(args, "l")
     ppt.run()
 
-  # utf-8 only
+  # UTF-8 only
   if 'u' in args.output_format:
     ppt = Ppt(args, "u")
     ppt.run()
