@@ -14,7 +14,7 @@ from math import sqrt
 import struct
 import imghdr
 
-VERSION="3.26D" # 2014.09.22.0309
+VERSION="3.26E" # 2014.09.23 12:04PM PST
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -51,8 +51,8 @@ NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 empty = re.compile("^$")
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    
-# displays the line that called us and the message    
+
+# displays the line that called us and the message
 def xp(msg):
   frame,filename,line_number,function_name,lines,index = inspect.stack()[1]
   print("{:5}: {}".format(line_number,msg))
@@ -84,10 +84,10 @@ class Book(object):
 
   nregs = {} # named registers
   macro = {} # user macro storage
-  
+
   mau = [] # UTF-8
-  mal = [] # user-defined Latin-1  
-  
+  mal = [] # user-defined Latin-1
+
   linelimitwarning = 75
 
   def __init__(self, args, renc):
@@ -111,14 +111,14 @@ class Book(object):
   # get the value of the requested parameter from attr string
   # remove parameter from string, return string and parameter
   def get_id(self, tgt, attr, np=2):
-    
+
     done = False
     m = re.search(r"{}='(.*?)'".format(tgt), attr)  # single quotes
     if m:
       the_id = m.group(1)
       attr = re.sub(m.group(0), "", attr)
       done = True
-      
+
     if not done:
       m = re.search(r"{}=\"(.*?)\"".format(tgt), attr)  # double quotes
       if m:
@@ -135,7 +135,7 @@ class Book(object):
 
     # if the user was looking for an "id-", then check it.
     if tgt == "id":
-      self.checkId(the_id)  
+      self.checkId(the_id)
 
     if done:
       if np == 1:
@@ -146,7 +146,7 @@ class Book(object):
         return (attr, the_id, m.group(0))
     else:
       # should never get here
-      self.fatal("could not process {} in {}".format(tgt, attr)) 
+      self.fatal("could not process {} in {}".format(tgt, attr))
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # load file from specified source file
@@ -197,14 +197,14 @@ class Book(object):
 
     for i in range(len(self.wb)):
       self.wb[i] = self.wb[i].rstrip()
-    
+
   # log print
   def lprint(self, msg):
     if self.log:
       print(msg)
 
   def rp(self, flag, msg):
-    print("=> {} {}".format(flag,msg))    
+    print("=> {} {}".format(flag,msg))
 
   # display error message and exit
   def fatal(self, message):
@@ -261,7 +261,7 @@ class Book(object):
     elif ".ni" == dotcmd: # no (paragraph) indenting
       self.doNi()
     elif ".ta" == dotcmd: # tables
-      self.doTable() 
+      self.doTable()
     elif ".di" == dotcmd: # dropcap images
       self.doDropimage()
     elif ".dc" == dotcmd: # dropcap alpha
@@ -298,7 +298,7 @@ class Book(object):
     def popk():
       t = self.nfstack.pop() # pops a tuple
       return t
-    
+
     # if source file is UTF-8 and requested encoding is Latin-1, down-convert
     if self.encoding == "utf_8" and self.renc == "l":
       for j,ch in enumerate(self.mau):
@@ -306,7 +306,7 @@ class Book(object):
           self.wb[i] = re.sub(ch, self.mal[j], self.wb[i])
       # user-defined character mapping complete, now do default mapping to Latin-1
       self.utoLat()
-          
+
     # .if conditionals (moved to preProcessCommon 28-Aug-2014)
     text = []
     keep = True
@@ -327,8 +327,8 @@ class Book(object):
 
       if keep:
         text.append(line)
-    self.wb = text    
-    
+    self.wb = text
+
     # suspense: mark for deletion Feb 2015
     say_bye = False
     for i,line in enumerate(self.wb):
@@ -344,14 +344,14 @@ class Book(object):
         say_bye = True
     if say_bye:
         self.fatal("misformatted closing tags")
-    
+
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # process character mappings
     # character mappings are from the UTF-8 representation to Latin-1
     i = 0
     del self.mau[:]
     del self.mal[:]
-    self.mau.append("—")   # maps a dash in UTF-8 to "--" in Latin-1 
+    self.mau.append("—")   # maps a dash in UTF-8 to "--" in Latin-1
     self.mal.append("--")
     while i < len(self.wb):
       m = re.match(r"\.ma ", self.wb[i])
@@ -438,7 +438,7 @@ class Book(object):
       if not self.wb[i].startswith(".dt"):
         self.wb[i] = self.wb[i].replace("&nbsp;", "ⓢ") # ampersand
         self.wb[i] = self.wb[i].replace("&", "Ⓩ") # ampersand
-      
+
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # define macro
     # .dm name
@@ -510,7 +510,7 @@ class Book(object):
         else:
           self.fatal("malformed .ce directive: {}".format(self.wb[i]))
       i += 1
-      
+
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # 05-Jun-2014 allow .sp inside a .nf block
     i = 0
@@ -595,8 +595,8 @@ class Book(object):
       m = re.search(pat, self.wb[i]) # single character superscript
       while m:
         suptext = m.group(1)
-        self.wb[i] = re.sub(pat, "◸{}◹".format(suptext), self.wb[i], 1) 
-        m = re.search(pat, self.wb[i])     
+        self.wb[i] = re.sub(pat, "◸{}◹".format(suptext), self.wb[i], 1)
+        m = re.search(pat, self.wb[i])
 
       pat = re.compile("\^\{(.*?)\}")
       m = re.search(pat, self.wb[i])
@@ -733,7 +733,7 @@ class Ppt(Book):
     exit(1)
 
   def meanstdv(self, x):
-    """ Calculate mean and standard deviation of data x[] """  
+    """ Calculate mean and standard deviation of data x[] """
     n, mean, std = len(x), 0, 0
     if n == 0:
       return (0, 0, 0)
@@ -746,7 +746,7 @@ class Ppt(Book):
   	  std = std + (len(a) - mean)**2
     std = sqrt(std / float(n-1))
     return n, mean, std
-  
+
   def line_len_diff(self, x):
     """ calculate max diff between longest and shortest line of data x[] """
     longest_line_len = 0
@@ -755,18 +755,18 @@ class Ppt(Book):
       longest_line_len = max(longest_line_len, len(line))
       shortest_line_len = min(shortest_line_len, len(line))
     return longest_line_len - shortest_line_len
-    
+
   def shortest_line_len(self, x):
     """ return length of shotest line in x[] """
     shortest_line_len = 1000
     for line in x:
       shortest_line_len = min(shortest_line_len, len(line))
-    return shortest_line_len    
+    return shortest_line_len
 
   # wrap string into paragraph in t[]
   def wrap_para(self, s,  indent, ll, ti):
     s = s.replace("—", "◠◠") # compensate long dash
-    
+
     # if ti < 0, strip off characters that will be in the hanging margin
     hold = ""
     if ti < 0:
@@ -789,9 +789,9 @@ class Ppt(Book):
         snip_at = s.index(" ", mywidth) # Plan B
         self.warn("wide line: {}".format(s))
       t.append(s[:snip_at])
-      s = s[snip_at+1:] 
-    t.append(s)   
-    
+      s = s[snip_at+1:]
+    t.append(s)
+
     for i, line in enumerate(t):
         t[i] = t[i].replace("◠◠", "—") # restore dash
         t[i] = t[i].replace("⑧", " ")  # leading spaces from .ti
@@ -800,7 +800,7 @@ class Ppt(Book):
       leadstr = " " * (indent + ti) + hold
       t[0] = leadstr + t[0][indent:]
     return t
-    
+
   def wrap(self, s,  indent=0, ll=72, ti=0):
     ta = [] # list of paragraph (lists)
     ts = [] # paragraph stats
@@ -811,7 +811,7 @@ class Ppt(Book):
       if sll >= 55:
         return t # just bail if already good enough
       ts.append(sll)
-    
+
     # if we are here all test paragraphs had some short lines
     # choose the best one we found
     longest_short = 0
@@ -821,12 +821,12 @@ class Ppt(Book):
         t = ta[i]
         longest_short = ts[i]
         besti = i
-        
-    # z = self.meanstdv(t[0:-1]) 
+
+    # z = self.meanstdv(t[0:-1])
     # lld = self.line_len_diff(t[0:-1])
     # zs = "b:{0:d}  t:{1:d}  std dev:{2:.1f}  max diff:{3:d}".format(besti, z[0],z[2],bestdiff)
-    # t.append(zs)     
-          
+    # t.append(zs)
+
     return t
 
   # -------------------------------------------------------------------------------------
@@ -909,17 +909,17 @@ class Ppt(Book):
     # inline markup processing (text)
     # sc small caps ; l large ; xl x-large ; s small ; xs s-small ; u underline
     # g gesperrt ; converted to text form: em, b, i
-    
+
     for i, line in enumerate(self.wb):
-    
+
       # standalone font-size changes dropped
       self.wb[i] = re.sub(r"<\/?l>", "", self.wb[i]) # large
       self.wb[i] = re.sub(r"<\/?xl>", "", self.wb[i]) # x-large
       self.wb[i] = re.sub(r"<\/?xxl>", "", self.wb[i]) # xx-large
       self.wb[i] = re.sub(r"<\/?s>", "", self.wb[i]) # small
-      self.wb[i] = re.sub(r"<\/?xs>", "", self.wb[i]) # x-small  
-      self.wb[i] = re.sub(r"<\/?xxs>", "", self.wb[i]) # xx-small  
- 
+      self.wb[i] = re.sub(r"<\/?xs>", "", self.wb[i]) # x-small
+      self.wb[i] = re.sub(r"<\/?xxs>", "", self.wb[i]) # xx-small
+
       # underline dropped
       self.wb[i] = re.sub(r"<\/?u>", "", self.wb[i]) # underline
 
@@ -939,25 +939,25 @@ class Ppt(Book):
       # alternate handling
       # small caps ignored
       self.wb[i] = re.sub(r"<\/?SC>", "", self.wb[i])
-          
+
       # lang dropped (<i> would be separate)
       self.wb[i] = re.sub(r"<\/?lang>", "", self.wb[i])
-        
+
       # gesperrt in text
       self.wb[i] = re.sub(r"<\/?g>", "_", self.wb[i])
-      
+
       # font-size requests dropped
       self.wb[i] = re.sub(r"<\/?fs[^>]*>", "", self.wb[i])
-      
+
       # color dropped
       self.wb[i] = re.sub(r"<c=[^>]+>", "", self.wb[i])
       self.wb[i] = re.sub(r"<\/c>", "", self.wb[i])
-    
-    # do small caps last since it could uppercase a tag. 
+
+    # do small caps last since it could uppercase a tag.
     for i, line in enumerate(self.wb):
       def to_uppercase(m):
         return m.group(1).upper()
-        
+
       while "<sc>" in self.wb[i]:
         if not "</sc>" in self.wb[i]: # multi-line
           t = []
@@ -966,13 +966,13 @@ class Ppt(Book):
             del(self.wb[i])
           t.append(self.wb[i]) # last line
           ts = "\n".join(t) # make all one line
-          re_sc = re.compile(r"<sc>(.+?)<\/sc>", re.DOTALL)  
+          re_sc = re.compile(r"<sc>(.+?)<\/sc>", re.DOTALL)
           ts = re.sub(re_sc, to_uppercase, ts)
           t = ts.splitlines() # back to a series of lines
           self.wb[i:i+1] = t
         else: # single line
-          re_sc = re.compile(r"<sc>(.*?)<\/sc>")  
-          self.wb[i] = re.sub(re_sc, to_uppercase, self.wb[i])      
+          re_sc = re.compile(r"<sc>(.*?)<\/sc>")
+          self.wb[i] = re.sub(re_sc, to_uppercase, self.wb[i])
 
   # -------------------------------------------------------------------------------------
   # post-process emit buffer (TEXT)
@@ -1014,7 +1014,7 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("④", "]")
       self.eb[i] = self.eb[i].replace("⑤", "<")
       self.eb[i] = self.eb[i].replace("⑥", ":")
-      self.eb[i] = self.eb[i].replace("⑨", "-")     
+      self.eb[i] = self.eb[i].replace("⑨", "-")
       # text space replacement
       self.eb[i] = re.sub("ⓢ|Ⓢ", " ", self.eb[i]) # non-breaking space
       self.eb[i] = re.sub("ⓣ|Ⓣ", " ", self.eb[i]) # zero space
@@ -1069,7 +1069,7 @@ class Ppt(Book):
           self.warn("additional long lines not reported")
         if longcount < 4:
           m = re.match(r".{0,60}\s", s)
-          self.warn("long line (>{}) beginning:\n  {}....".format(self.linelimitwarning, m.group(0)))          
+          self.warn("long line (>{}) beginning:\n  {}....".format(self.linelimitwarning, m.group(0)))
       f1.write( "{:s}\r\n".format(s) )
     f1.close()
 
@@ -1373,13 +1373,13 @@ class Ppt(Book):
       if self.regIN < 0:
         self.crash_w_context("left margin out of bounds", self.cl)
       handled = True
-      
+
     m = re.match(r"\.in (\d+)", self.wb[self.cl])
     if not handled and m:
       self.instack.append(self.regIN)
       self.regIN = int(m.group(1)) # absolute
       handled = True
-      
+
     if not handled and ".in" == self.wb[self.cl]:
       try:
         self.regIN = self.instack.pop()
@@ -1430,7 +1430,7 @@ class Ppt(Book):
       return
 
     # if here, has not been handled
-    self.fatal("malformed .ll command: \"{}\"".format(self.wb[self.cl]))    
+    self.fatal("malformed .ll command: \"{}\"".format(self.wb[self.cl]))
 
   # .ti temporary indent
   def doTi(self):
@@ -1459,7 +1459,7 @@ class Ppt(Book):
   def doNfc(self, mo):
     t = []
     i = self.cl + 1 # skip the .nf c line
-    while self.wb[i] != ".nf-":      
+    while self.wb[i] != ".nf-":
       xt = self.regLL - self.regIN # width of centered line
       xs = "{:^" + str(xt) + "}"
       t.append(" " * self.regIN + xs.format(self.wb[i].strip()))
@@ -1476,7 +1476,7 @@ class Ppt(Book):
         t[i] = " "+ t[i]
     t.insert(0, ".RS 1")
     t.append(".RS 1")
-    self.eb.extend(t)    
+    self.eb.extend(t)
 
   # calculate block width
   def calculateBW(self, lookfor):
@@ -1494,12 +1494,12 @@ class Ppt(Book):
   # no-fill, left (text)
   # honors leading spaces; allows .ce and .rj
   def doNfl(self, mo):
-    
+
     regINforced = False
     # if self.regIN is 0, force a leading space just for the block and issue a warning
     if self.regIN == 0:
       self.warn("no-fill, left block at left margin starting:\n  {}".format(self.wb[self.cl+1]))
-  
+
     self.eb.append(".RS 1")
     regBW = self.calculateBW(".nf-")
     i = self.cl + 1 # skip the .nf l line
@@ -1554,7 +1554,7 @@ class Ppt(Book):
     i = self.cl + 1 # skip the .nf b line
     xt = self.regLL - self.regIN
     lmar = (xt - regBW)//2
-    while self.wb[i] != ".nf-":      
+    while self.wb[i] != ".nf-":
 
       # special cases: .ce and .rj
       m = re.search(r"\.ce (\d+)", self.wb[i])
@@ -1582,7 +1582,7 @@ class Ppt(Book):
       t.append(" " * self.regIN + " " * lmar + self.wb[i].rstrip())
       i += 1
     self.cl = i + 1 # skip the closing .nf-
-    
+
     # see if the block has hit the left margin
     need_pad = False
     for line in t:
@@ -1602,7 +1602,7 @@ class Ppt(Book):
     regBW = self.calculateBW(".nf-")
     fixed_indent = self.regIN + (self.regLL - regBW)
     i = self.cl + 1 # skip the .nf r line
-    while self.wb[i] != ".nf-":      
+    while self.wb[i] != ".nf-":
 
       # special cases: .ce and .rj
       m = re.search(r"\.ce (\d+)", self.wb[i])
@@ -1634,7 +1634,7 @@ class Ppt(Book):
 
   # .nf no-fill blocks, all types (text)
   # called first, then dispatched
-  def doNf(self): 
+  def doNf(self):
     # not expecting a request to close. get here on open
     # m = re.match(r"\.nf .-", self.wb[self.cl])
     m = re.match(r"\.nf-", self.wb[self.cl])
@@ -1680,10 +1680,10 @@ class Ppt(Book):
     self.eb.append("-----")
     self.eb.append(".RS 1")
     self.cl += 1
-    
+
   # Table code, text
   def doTable(self):
-    
+
     # get maximum width of specified cell by scanning all rows in table
     # must account for markup
     def getMaxWidth(c,ncols):
@@ -1693,7 +1693,7 @@ class Ppt(Book):
         # blank and centerd lines are not considered
         if self.wb[j] == "" or not "|" in self.wb[j]:
           j += 1
-          continue        
+          continue
         u = self.wb[j].split("|")
         if len(u) != ncols:
             self.fatal("table has wrong number of columns:\n{}".format(self.wb[j]))
@@ -1701,16 +1701,16 @@ class Ppt(Book):
         maxw = max(maxw, len(t)) # ignore lead/trail whitespace
         j += 1
       return maxw
-    
+
     haligns = list() # 'l', 'r', or 'c'  no default; must specify
     valigns = list() # 't', 'b', or 'm' default 't'
     widths = list() # column widths
     totalwidth = 0
-    
+
     # look for continuation characters; restore to one line
     k1 = self.cl
     s = self.wb[k1]
-    while k1 < len(self.wb) and self.wb[k1] != ".ta-":        
+    while k1 < len(self.wb) and self.wb[k1] != ".ta-":
       while "\\" in self.wb[k1]:
         self.wb[k1] = re.sub(r"\\", "", self.wb[k1])
         self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
@@ -1722,23 +1722,23 @@ class Ppt(Book):
     # remove table summary if present.
     if "s=" in self.wb[self.cl]:
       self.wb[self.cl] = self.get_id("s", self.wb[self.cl], 1)
-      
+
     # pull out optional user-specified Epub//Mobi width %
     tw_epub = ""
     if "ew=" in self.wb[self.cl]:
-      self.wb[self.cl], tw_epub = self.get_id("ew", self.wb[self.cl])       
-      
+      self.wb[self.cl], tw_epub = self.get_id("ew", self.wb[self.cl])
+
     # pull out optional user-specified HTML width %
     tw_html = ""
     if "w=" in self.wb[self.cl]:
-      self.wb[self.cl], tw_html = self.get_id("w", self.wb[self.cl])   
-                
+      self.wb[self.cl], tw_html = self.get_id("w", self.wb[self.cl])
+
     # table forms:
     # .ta r:5 l:20 l:5  => use specified width and wrap if necessary
     # .ta rll  => calculate width of columns, no wrap
     # .ta r:5 l:20 lb:5  => use specified width and wrap if necessary,
     #    floating third column to bottom
-    
+
     # if auto-width, replace the .ta line with widths specified
     # if any widths are specified, all must be specified
     # .ta lr => .ta l:6 r:22
@@ -1755,34 +1755,34 @@ class Ppt(Book):
           cwidth = getMaxWidth(i,ncols) # width
           s += "{}t:{} ".format(t0[i],cwidth)
         self.wb[self.cl] = s.strip()  # replace with widths specified
-    
+
     # if vertical alignment not specified, default to "top" now
-    # .ta l:6 r:22 => .ta lt:6 rt:22    
+    # .ta l:6 r:22 => .ta lt:6 rt:22
     while re.search(r"[^lcr][lcr]:", self.wb[self.cl]):
       self.wb[self.cl] = re.sub(r"([lcr]):", r'\1t:', self.wb[self.cl])
-    
-  
+
+
     t = self.wb[self.cl].split() # ['.ta', 'lt:6', 'rt:22']
     ncols = len(t) - 1  # skip the .ta piece
     j = 1
     while j <= ncols:
       u = t[j].split(':')
-      
+
       if not u[0][0] in ['l','c','r']:
-        self.fatal("table horizontal alignment must be 'l', 'c', or 'r' in {}".format(self.wb[self.cl]))        
+        self.fatal("table horizontal alignment must be 'l', 'c', or 'r' in {}".format(self.wb[self.cl]))
       if u[0][0] == 'l':
         haligns.append('<')
       if u[0][0] == 'c':
         haligns.append('^')
       if u[0][0] == 'r':
         haligns.append('>')
-        
+
       valigns.append(u[0][1])  # ['t', 't']
       widths.append(int(u[1]))  # ['6', '22']
       totalwidth += int(u[1]) + 1 # added space between columns
       j += 1
     totalwidth -= 1
-    
+
     # margin to center table in 72 character text field
     if totalwidth >= 72:
       tindent = 0
@@ -1790,47 +1790,47 @@ class Ppt(Book):
       tindent = (72 - totalwidth) // 2
 
     self.eb.append(".RS 1")  # request blank line above table
-        
+
     self.cl += 1 # move into the table rows
     self.twrap = textwrap.TextWrapper()
-    
+
     # if any cell wraps, put a vertical gap between rows
-    rowspace = False  
+    rowspace = False
     k1 = self.cl
-    while self.wb[k1] != ".ta-":    
+    while self.wb[k1] != ".ta-":
 
       # lines that we don't check: centered or blank
       if empty.match(self.wb[k1]) or not "|" in self.wb[k1]:
         k1 += 1
         continue
-        
+
       t = self.wb[k1].split("|")
       for i in range(0,ncols):
         k2 = textwrap.wrap(t[i].strip(), widths[i])
         if len(k2) > 1:
           rowspace = True
       k1 += 1
-  
+
     # process each row of table
     while self.wb[self.cl] != ".ta-":
-              
+
       # blank line
       # an empty line in source generates a one char vertical gap
       if empty.match(self.wb[self.cl]):
         self.eb.append("")
         self.cl += 1
         continue
-        
+
       # centered line
       # a line in source that has no vertical pipe
       if not "|" in self.wb[self.cl]:
         self.eb.append("{:^72}".format(self.wb[self.cl]))
         self.cl += 1
-        continue        
+        continue
 
       # split the text into columns
       t = self.wb[self.cl].split("|")
-      
+
       maxheight = 0
       w = [None] * ncols  # a list of lists for this row
       heights = [None] * ncols  # lines in each cell
@@ -1840,7 +1840,7 @@ class Ppt(Book):
           w[i][j] =line.strip()  # marginal whitespace
         heights[i] = len(w[i])
         maxheight = max(maxheight, heights[i])
-      
+
       # make all columns same height
       for i in range(0,ncols):
         if len(w[i]) < maxheight: # need to add blank lines in this cell
@@ -1854,8 +1854,8 @@ class Ppt(Book):
             total_add = maxheight - len(w[i])
             top = total_add // 2
             bottom = total_add - top
-            w[i] = [""] * top + w[i] + [" "] * bottom            
-        
+            w[i] = [""] * top + w[i] + [" "] * bottom
+
       # emit the row
       for g in range(0,maxheight):
         if tindent == 0:
@@ -1866,16 +1866,16 @@ class Ppt(Book):
           fmt = "{" + ":{}{}".format(haligns[col],widths[col]) + "}"
           s += fmt.format(w[col][g])
           if col != ncols - 1:
-            s += " "  # inter-column space so "rl" isn't contingent      
+            s += " "  # inter-column space so "rl" isn't contingent
         self.eb.append(s)
       if not self.wb[self.cl + 1 ].startswith(".ta-") and rowspace:
         self.eb.append("")
-      
+
       self.cl += 1  # go to next row in table
-      
+
     self.eb.append(".RS 1")  # request blank line below table
     self.cl += 1  # move past .ta-
-    
+
   def doDropimage(self):
     del self.wb[self.cl] # ignore the directive in text
 
@@ -1988,7 +1988,7 @@ class Pph(Book):
     Book.__init__(self, args, renc)
     self.dstfile = re.sub("-src", "", self.srcfile.split('.')[0]) + ".html"
     self.css = self.userCSS()
-  
+
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # internal class to manage CSS as it is added at runtime
   class userCSS(object):
@@ -2008,7 +2008,7 @@ class Pph(Book):
       for s in keys:
         t.append("      " + s[6:])
       return t
-    
+
   # -------------------------------------------------------------------------------------
   # Roman numeral processsing
 
@@ -2115,13 +2115,13 @@ class Pph(Book):
   def checkId(self, s):
     if not re.match(r"[A-Za-z][A-Za-z0-9\-_\:\.]*", s):
       self.fatal("illegal identifier: {}".format(s))
-  
+
   # -------------------------------------------------------------------------------------
   # preprocess working buffer (HTML)
   def preprocess(self):
 
     self.preProcessCommon()
-    
+
     # HTML will always choose the UTF-8 Greek line
     i = 0
     while i < len(self.wb):
@@ -2204,14 +2204,19 @@ class Pph(Book):
         while not found and (i < len(self.wb)):    # loop until we find a valid insertion spot,
                                                    # but don't run off end of buffer
           # it is possible to hit another pn match before finding a suitable home
-          m = re.match(r"⑯(.+)⑰", self.wb[i])
+          m = re.match(r"⑯(.+)⑰", self.wb[i])  # must be on line by itself
           if m:
-            pnum = m.group(1)
-            del self.wb[i]
+            pnum = m.group(1)  # the page number
+            del self.wb[i]     # original line gone
             i -= 1             # counteract increment operation below if we deleted the line
-            continue
-          # check first. only allowed dot command for placing pn
+            continue           # now go and place it
+          # placing the page number
+          #  if we see a heading, place it there
+          #  if not, look for any line of plain text and insert it
           if re.match(r"\.h[123]", self.wb[i]):
+            self.wb[i] += " pn={}".format(pnum)
+            found = True
+          if self.wb[i].startswith(".il"):
             self.wb[i] += " pn={}".format(pnum)
             found = True
           # plain text
@@ -2286,7 +2291,7 @@ class Pph(Book):
           self.warn("duplicate footnote reference: [{}]".format(fnname))
           self.wb[i] = re.sub(r"\[\d+\]", \
           "⑪a href='⑦f{0}' style='text-decoration:none'⑫⑪sup⑫⑬{0}⑭⑪/sup⑫⑪/a⑫".format(fnname), \
-          self.wb[i], 1)        
+          self.wb[i], 1)
         else:
           # it's the first reference
           fnlist.append(fnname)
@@ -2298,8 +2303,8 @@ class Pph(Book):
 
     # target references
     i = 0
-    while i < len(self.wb): 
-      if "<target id" in self.wb[i]:   
+    while i < len(self.wb):
+      if "<target id" in self.wb[i]:
         m = re.search("<target id='(.*?)'>", self.wb[i])
         while m:
           self.wb[i] = re.sub("<target id='(.*?)'>", "<a id='{0}' name='{0}' />".format(m.group(1)), self.wb[i], 1)
@@ -2311,9 +2316,9 @@ class Pph(Book):
         m = re.search("<target id=(.*?)>", self.wb[i])
         while m:
           self.wb[i] = re.sub("<target id=(.*?)>", "<a id='{0}' name='{0}' />".format(m.group(1)), self.wb[i], 1)
-          m = re.search("<target id=(.*?)>", self.wb[i])          
+          m = re.search("<target id=(.*?)>", self.wb[i])
       i += 1
-    
+
     # inline tags across lines in .nf blocks must be applied to each line
     # applies only to HTML b/c no-fills are rendered as <div>
     i = 0
@@ -2325,7 +2330,7 @@ class Pph(Book):
           if self.wb[i].startswith(".nf "):
             self.crash_w_context("nested no-fill block:", i)
           # find all tags on this line; ignore <a and </a tags completely for this purpose
-          t = re.findall("<\/?[^a][^>]*>", self.wb[i]) 
+          t = re.findall("<\/?[^a][^>]*>", self.wb[i])
           sstart = "" # what to prepend to the line
           for s in tagstack: # build the start string
             sstart += s
@@ -2354,7 +2359,7 @@ class Pph(Book):
           self.wb[i] = self.wb[i] + send
           i += 1
       i += 1
-    
+
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # <lang> tags processed in HTML.
     # <lang="fr">merci</lang>
@@ -2370,10 +2375,10 @@ class Pph(Book):
         self.fatal("incorrect lang markup: {}".format(self.wb[i]))  # TODO: protect if inside .li
       self.wb[i] = re.sub("LANG", "lang", self.wb[i])
       self.wb[i] = re.sub(r"<\/lang>","</span>",self.wb[i])
-    
+
     # -------------------------------------------------------------------------
     # inline markup (HTML)
-  
+
     for i, line in enumerate(self.wb):
 
       # promote the "ignore in text" tags
@@ -2384,8 +2389,8 @@ class Pph(Book):
       self.wb[i] = re.sub(r"<\/SC", "</sc", self.wb[i])
       self.wb[i] = re.sub(r"<B", "<b", self.wb[i])
       self.wb[i] = re.sub(r"<\/B", "</b", self.wb[i])
-      
-    for i, line in enumerate(self.wb):  
+
+    for i, line in enumerate(self.wb):
 
       # if everything inside <sc>...</sc> markup is uppercase, then
       # use font-size:smaller, else use font-variant:small-caps
@@ -2412,7 +2417,7 @@ class Pph(Book):
           self.css.addcss("[200] .sc { font-variant:small-caps; }")
         if use_class == "fss":
           self.wb[i] = re.sub("<sc>", "<span class='fss'>", self.wb[i])
-          self.css.addcss("[200] .fss { font-size:75%; }")          
+          self.css.addcss("[200] .fss { font-size:75%; }")
 
       # common closing, may be on separate line
       self.wb[i] = re.sub("<\/sc>", "</span>", self.wb[i])
@@ -2428,12 +2433,12 @@ class Pph(Book):
         self.css.addcss("[202] .xlarge { font-size:x-large; }")
       self.wb[i] = re.sub("<xl>", "<span class='xlarge'>", self.wb[i])
       self.wb[i] = re.sub("<\/xl>", "</span>", self.wb[i])
-      
+
       m = re.search("<xxl>", self.wb[i])
       if m:
         self.css.addcss("[202] .xxlarge { font-size:xx-large; }")
       self.wb[i] = re.sub("<xxl>", "<span class='xxlarge'>", self.wb[i])
-      self.wb[i] = re.sub("<\/xxl>", "</span>", self.wb[i])      
+      self.wb[i] = re.sub("<\/xxl>", "</span>", self.wb[i])
 
       m = re.search("<s>", self.wb[i])
       if m:
@@ -2446,12 +2451,12 @@ class Pph(Book):
         self.css.addcss("[204] .xsmall { font-size:x-small; }")
       self.wb[i] = re.sub("<xs>", "<span class='xsmall'>", self.wb[i])
       self.wb[i] = re.sub("<\/xs>", "</span>", self.wb[i])
-      
+
       m = re.search("<xxs>", self.wb[i])
       if m:
         self.css.addcss("[205] .xxsmall { font-size:xx-small; }")
       self.wb[i] = re.sub("<xxs>", "<span class='xxsmall'>", self.wb[i])
-      self.wb[i] = re.sub("<\/xxs>", "</span>", self.wb[i])      
+      self.wb[i] = re.sub("<\/xxs>", "</span>", self.wb[i])
 
       m = re.search("<u>", self.wb[i])
       if m:
@@ -2475,13 +2480,13 @@ class Pph(Book):
         self.wb[i] = re.sub(r"<g>", "<em class='gesperrt'>", self.wb[i])
         self.css.addcss("[378] em.gesperrt { font-style: normal; letter-spacing: 0.2em; margin-right: -0.2em; }")
         self.css.addcss("[379] @media handheld { em.gesperrt { font-style: italic; letter-spacing: 0; margin-right: 0;}}")
-      self.wb[i] = re.sub("<\/g>", "</em>", self.wb[i],1)  
+      self.wb[i] = re.sub("<\/g>", "</em>", self.wb[i],1)
 
       m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
       while m:
         self.wb[i] = re.sub(m.group(0), "<span style='font-size:{}'>".format(m.group(1)), self.wb[i], 1)
         m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
-      self.wb[i] = re.sub("<\/fs>", "</span>", self.wb[i])  
+      self.wb[i] = re.sub("<\/fs>", "</span>", self.wb[i])
 
   # -------------------------------------------------------------------------------------
   # post-process working buffer
@@ -2521,7 +2526,7 @@ class Pph(Book):
         self.warn("&mdash; with hyphen: {}".format(self.wb[i]))
       # ok now to unprotect those we didn't want to go to &mdash; entity
       self.wb[i] = re.sub(r"⑨", '-', self.wb[i])
-                           
+
       self.wb[i] = re.sub(r"\[oe\]", r'&oelig;', self.wb[i])
       self.wb[i] = re.sub(r"\[ae\]", r'&aelig;', self.wb[i])
       self.wb[i] = re.sub(r"\[OE\]", r'&OElig;', self.wb[i])
@@ -2658,7 +2663,7 @@ class Pph(Book):
   # @media handheld to make the horizontal rule invisible
   def doPb(self):
     self.css.addcss("[465] div.pbb { page-break-before:always; }")
-    self.css.addcss("[466] hr.pb { border:none;border-bottom:1px solid; margin:1em auto; }")        
+    self.css.addcss("[466] hr.pb { border:none;border-bottom:1px solid; margin:1em auto; }")
     self.css.addcss("[467] @media handheld { hr.pb { display:none; }}")
     self.wb[self.cl:self.cl+1] = ["<div class='pbb'></div>", "<hr class='pb' />"]
     self.cl += 2
@@ -2906,12 +2911,12 @@ class Pph(Book):
   # .il illustrations
   # .il id=i01 fn=illus-fpc.jpg w=332 alt=illus-fpcf.jpg
   # .ca Dick was taken by surprise.
-  
+
   def doIllo(self):
-            
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # check that file exists
-    #              
+    #
     def checkIllo(fname): # assure that fn exists in images folder
       if " " in fname:
         self.warn("cannot have spaces in illustration filenames.")
@@ -2920,8 +2925,8 @@ class Pph(Book):
       fullname = os.path.join(os.path.dirname(self.srcfile),"images",fname)
       if not os.path.isfile(fullname):
         self.warn("file {} not in images folder".format(fullname))
-      
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # given the .il line, parse all arguments
     # returns an "ia" dictionary:
     #    "ifn"    fn="image-001.jpg"
@@ -2938,37 +2943,37 @@ class Pph(Book):
     def parse_illo(s):
       s0 = s[:]  # original .il line
       ia = {}
-      
+
       # primary image filename
       ifn = ""
       if "fn=" in s:
         s, ifn = self.get_id("fn", s)
       else:
-        self.fatal("no display file specified in {}".format(s0))      
+        self.fatal("no display file specified in {}".format(s0))
       ia["ifn"] = ifn
-      
+
       # link to alternate (larger) image
       link = ""
       if "link=" in s:
         s, link = self.get_id("link", s)
-        checkIllo(link)       
+        checkIllo(link)
       ia["link"] = link
-      
+
       # optional caption width
-      cw = "" 
+      cw = ""
       if "cw=" in s:
         s, cw = self.get_id("cw",s)
         if "%" not in cw:
           self.fatal("caption width must be specified in percent")
       ia["cw"] = cw
-      
+
       # align attributes. l, c, r, left, center, right
       img_align = "c" # default
       if "align=" in s:
         s, s1 = self.get_id("align", s)
         img_align = s1[0]  # use first letter "right" -> "r"
       ia["align"] = img_align
-                
+
       # user-requested image width
       # can be pixels (px) or percent (%) at this point
       iw = ""
@@ -2977,14 +2982,14 @@ class Pph(Book):
         # if not "%" in iw:
         #   self.fatal("width, if specified, must be in percent")
       ia["iw"] = iw
-      
+
       # user-requested epub width in %
       ew = ""
       if "ew=" in s:
         s, ew = self.get_id("ew", s)
         if not "%" in ew:
           self.fatal("epub width, if specified, must be in percent")
-      ia["ew"] = ew 
+      ia["ew"] = ew
 
       # user-requested epub height in %
       eh = ""
@@ -2992,8 +2997,8 @@ class Pph(Book):
         s, eh = self.get_id("eh", s)
         if not "%" in eh:
           self.fatal("epub height, if specified, must be in percent")
-      ia["eh"] = eh      
-                      
+      ia["eh"] = eh
+
       # caption justification; (l)eft, (c)enter, (r)ight, (f)ull
       my_cj = ""
       if "cj=" in s:
@@ -3013,18 +3018,24 @@ class Pph(Book):
       if "alt=" in s:
         s, alt = self.get_id("alt",s)
       ia["alt"] = alt
-                            
+
+      # page number
+      pageno = ""
+      if "pn=" in s:
+        s, pageno = self.get_id("pn",s)
+      ia["pageno"] = pageno
+
       # no "=" should remain in .il string
       if "=" in s:
         s = re.sub("\.il", "", s).strip()
         self.warn("unprocessed value in illustration: {}".format(s))
       return(ia)
 
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-    # entry point to process illustration (HTML)      
-        
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # entry point to process illustration (HTML)
+
     ia = parse_illo(self.wb[self.cl]) # parse .il line
-    
+
     caption_present = False
     try:
       caption_present = self.wb[self.cl+1].startswith(".ca")
@@ -3036,59 +3047,59 @@ class Pph(Book):
     # using a @media handheld, we specify float:left inside @media, even though it would
     # already be set to that using normal CSS cascading. Epubmaker removes float:left
     # from the first figleft definition (breaking the cascade) but, perhaps due to an
-    # oversight, it doesn't remove float:left inside the @media handheld.     
-    
+    # oversight, it doesn't remove float:left inside the @media handheld.
+
     if ia["align"] == "c":
       self.css.addcss("[600] .figcenter { clear:both; max-width:100%; margin:2em auto; text-align:center; }")
       if caption_present:
           self.css.addcss("[601] div.figcenter p { text-align:center; text-indent:0; }")
-          
+
     if ia["align"] == "l":
       self.css.addcss("[600] .figleft { clear:left; float:left; max-width:100%; margin:0.5em 1em 1em 0; text-align: left;}")
       if caption_present:
           self.css.addcss("[601] div.figleft p { text-align:center; text-indent:0; }")
       self.css.addcss("[602] @media handheld { .figleft { float:left; }}")
-                
+
     if ia["align"] == "r":
       self.css.addcss("[600] .figright { clear:right; float:right; max-width:100%; margin:0.5em 0 1em 1em; text-align: right;}")
       if caption_present:
-          self.css.addcss("[601] div.figright p { text-align:center; text-indent:0; }") 
+          self.css.addcss("[601] div.figright p { text-align:center; text-indent:0; }")
       self.css.addcss("[602] @media handheld { .figright { float:right; }}")
-                
+
     # if any image is in document
     self.css.addcss("[608] img { max-width:100%; height:auto; }")
-    
+
     # make CSS names from igc counter
     idn = "id{:03d}".format(self.igc)
     ign = "ig{:03d}".format(self.igc)
     icn = "ic{:03d}".format(self.igc)
-    self.igc += 1     
+    self.igc += 1
 
     # set the illustration width
     self.css.addcss("[610] .{} {{ width:{}; }}".format(idn, ia["iw"])) # the HTML illustration width
-    
+
     if ia['ew'] == "":
       ia["ew"] = ia["iw"]
-    
+
     # if epub width in pixels, convert it now
     if "px" in ia["ew"]:
       my_width = int(re.sub("px", "", ia["ew"]))
       ia["ew"] = "{}%".format(min(100, int(100*my_width/800)))
-      
+
     if ia['align'] == 'c':
       my_width = int(re.sub("%", "", ia["ew"]))
       my_lmar = (100 - my_width) // 2
       my_rmar = 100 - my_width - my_lmar
-      self.css.addcss("[610] @media handheld {{ .{} {{ margin-left:{}%; width:{}; }}}}".format(idn, my_lmar, ia["ew"]))  
+      self.css.addcss("[610] @media handheld {{ .{} {{ margin-left:{}%; width:{}; }}}}".format(idn, my_lmar, ia["ew"]))
     # else:  # floated l or right
-    #   self.css.addcss("[610] @media handheld {{ .{} {{ width:{}; }}}}".format(idn, ia["ew"]))    
+    #   self.css.addcss("[610] @media handheld {{ .{} {{ width:{}; }}}}".format(idn, ia["ew"]))
 
     # if user has set caption width (in percent) we use that for both HTML and epub.
     # If user hasn’t specified it, we use the width of the image in a browser or
     # 80% in epub using a @media handheld because we cannot rely on max-width on these devices
     #
     if caption_present:
- 
+
       ocw, oml, omr = (0,0,0)  # width, left, right margins as percent
       if ia["cw"] != "":  # user has set caption width
         ocw = int(re.sub("%", "", ia["cw"]))  # numeric part
@@ -3100,20 +3111,20 @@ class Pph(Book):
           omr = 100 - ocw - oml
         if ia["cj"] == 'r':
           omr = (100 - ocw) // 2  # fixed
-          oml = 100 - ocw - omr          
-        self.css.addcss("[611] .{} {{ width:{}%; margin-left:{}%; margin-right:{}%; }} ".format(icn, ocw, oml, omr))  
+          oml = 100 - ocw - omr
+        self.css.addcss("[611] .{} {{ width:{}%; margin-left:{}%; margin-right:{}%; }} ".format(icn, ocw, oml, omr))
       else:
-        self.css.addcss("[611] .{} {{ width:100%; }} ".format(icn, ia["iw"]))  
- 
+        self.css.addcss("[611] .{} {{ width:100%; }} ".format(icn, ia["iw"]))
+
       if ia["cj"] != "":
         if ia["cj"] == 'l':
-          self.css.addcss("[613] div.{} p {{ text-align:left; }} ".format(icn))  
+          self.css.addcss("[613] div.{} p {{ text-align:left; }} ".format(icn))
         elif ia["cj"] == 'r':
-          self.css.addcss("[613] div.{} p {{ text-align:right; }} ".format(icn))  
+          self.css.addcss("[613] div.{} p {{ text-align:right; }} ".format(icn))
         elif ia["cj"] == 'c':
-          self.css.addcss("[613] div.{} p {{ text-align:center; }} ".format(icn))  
+          self.css.addcss("[613] div.{} p {{ text-align:center; }} ".format(icn))
         elif ia["cj"] == 'f':
-          self.css.addcss("[613] div.{} p {{ text-align:justify; }} ".format(icn))  
+          self.css.addcss("[613] div.{} p {{ text-align:justify; }} ".format(icn))
 
     self.css.addcss("[614] .{} {{ width:100%; }} ".format(ign, ia["iw"]))
 
@@ -3127,6 +3138,10 @@ class Pph(Book):
     if ia["align"] == "r":
       u.append("<div {} class='figright {}'>".format(ia["id"], idn))
 
+    if ia["pageno"] != "":
+      u.append("<span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ia["pageno"]))
+      ia["pageno"] = ""
+
     # 16-Apr-2014: placed link in div
     if ia["link"] != "": # link to larger image specified in markup
       u.append("<a href='images/{}'><img src='images/{}' alt='{}' class='{}' /></a>".format(ia["link"], ia["ifn"], ia["alt"], ign))
@@ -3134,7 +3149,7 @@ class Pph(Book):
       u.append("<img src='images/{}' alt='{}' class='{}' />".format(ia["ifn"], ia["alt"], ign))
 
     rep = 1 # source lines to replace
-    
+
     # is the .il line followed by a caption line?
     if caption_present:
       u.append("<div class='{}'>".format(icn))
@@ -3156,7 +3171,7 @@ class Pph(Book):
       u.append("<p>{}</p>".format(caption))
       u.append("</div>")
     u.append("</div>") # the entire illustration div
-    
+
     # replace with completed HTML
     self.wb[self.cl:self.cl+rep] = u
     self.cl += len(u)
@@ -3205,7 +3220,7 @@ class Pph(Book):
       self.llstack.append(self.regLL)
       self.regLL += int(m.group(1)) # relative
       if self.regLL <= 0:
-        self.crash_w_context("attempt to set line length less than zero", self.cl)    
+        self.crash_w_context("attempt to set line length less than zero", self.cl)
       del self.wb[self.cl]
       return
 
@@ -3264,7 +3279,7 @@ class Pph(Book):
         known_register = True
       if registerName == "pnc": # page number color
         self.nregs["pnc"] = m.group(2)
-        known_register = True        
+        known_register = True
       if not known_register:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
     del self.wb[self.cl]
@@ -3299,7 +3314,7 @@ class Pph(Book):
     i += 1
     printable_lines_in_block = 0
     pending_mt = 0
-    while self.wb[i] != ".nf-":      
+    while self.wb[i] != ".nf-":
       if "" == self.wb[i]:
         pending_mt += 1
         i += 1
@@ -3310,7 +3325,7 @@ class Pph(Book):
         pending_mt = 0
       else:
         t.append("    <div>" + self.wb[i].strip() + "</div>")
-        printable_lines_in_block += 1        
+        printable_lines_in_block += 1
       i += 1
     # at block end.
     if printable_lines_in_block == 0:
@@ -3318,7 +3333,7 @@ class Pph(Book):
     # there may be a pending mt at the block end.
     if pending_mt > 0:
       t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(pending_mt), t[-1])
-      pending_mt = 0    
+      pending_mt = 0
     t.append("  </div>")
     t.append("</div>")
     t.append("")
@@ -3341,7 +3356,7 @@ class Pph(Book):
     if 'r' == nft:
       self.css.addcss("[219] .lg-container-r { text-align: right; }")
       self.css.addcss("[220] @media handheld { .lg-container-r { clear: both; }}")
-      
+
     self.css.addcss("[221] .linegroup { display: inline-block; text-align: left; }")  # alignment inside block
     self.css.addcss("[222] @media handheld { .linegroup { display: block; margin-left: 1.5em; }}")
     if mo:
@@ -3419,10 +3434,10 @@ class Pph(Book):
           ss += m.group(0)
           tmp = re.sub(r"^<[^>]+>", "", tmp)
           m = re.match(r"^<[^>]+>", tmp)
-        leadsp = len(tmp) - len(tmp.lstrip()) 
+        leadsp = len(tmp) - len(tmp.lstrip())
         if cpvs > 0:
           spvs = " style='margin-top:{}em' ".format(cpvs)
-        else:      
+        else:
           spvs = ""
         if leadsp > 0:
           # create an indent class
@@ -3433,10 +3448,10 @@ class Pph(Book):
           printable_lines_in_block += 1
         else:
           t.append("      <div class='line' {0}>{1}</div>".format(spvs, ss+tmp))
-          printable_lines_in_block += 1          
+          printable_lines_in_block += 1
         cpvs = 0  # reset pending vertical space
       i += 1
-      
+
     # at block end.
     if printable_lines_in_block == 0:
         self.fatal("empty .nf block")
@@ -3444,7 +3459,7 @@ class Pph(Book):
     # there may be a pending mt at the block end.
     if cpvs > 0:
       t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(cpvs), t[-1])
-      cpvs = 0          
+      cpvs = 0
 
     t.append("    </div>")
     t.append("  </div>")
@@ -3481,18 +3496,18 @@ class Pph(Book):
 
     self.css.addcss("[199] sup { vertical-align: top; font-size: 0.6em; }")
 
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     if self.pindent: # indented paragraphs
-    
+
       m = re.match(r"\.fn-", self.wb[self.cl])
       if m: # footnote ends
         self.wb[self.cl] = "</div>"
         self.cl += 1
         return
-    
+
       m = re.match(r"\.fn (\d+)", self.wb[self.cl]) # expect numeric footnote
       if m: # footnote start
-        self.css.addcss("[430] div.footnote {}")    
+        self.css.addcss("[430] div.footnote {}")
         self.css.addcss("[431] div.footnote>:first-child { margin-top:1em; }")
         self.css.addcss("[432] div.footnote p { text-indent:1em;margin-top:0.0em;margin-bottom:0; }")
         fnname = m.group(1)
@@ -3504,7 +3519,7 @@ class Pph(Book):
       else: # non-numeric footnote
         self.fatal("non-numeric footnote: {}".format(self.wb[self.cl]))
 
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -       
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     if not self.pindent: # block paragraphs
         m = re.match(r"\.fn-", self.wb[self.cl])
         if m: # footnote ends
@@ -3513,10 +3528,10 @@ class Pph(Book):
           return
 
         m = re.match(r"\.fn (\d+)", self.wb[self.cl]) # expect numeric footnote
-        if m: # footnote start       
+        if m: # footnote start
           self.css.addcss("[430] div.footnote {margin-left: 2.5em; }")
           self.css.addcss("[431] div.footnote>:first-child { margin-top:1em; }")
-          self.css.addcss("[432] div.footnote .label { display: inline-block; width: 0em; text-indent: -2.5em; text-align: right;}")            
+          self.css.addcss("[432] div.footnote .label { display: inline-block; width: 0em; text-indent: -2.5em; text-align: right;}")
           fnname = m.group(1)
           self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
           s = "<span class='label'><a href='#r{0}'>{0}</a>.&nbsp;&nbsp;</span>".format(fnname)
@@ -3524,7 +3539,7 @@ class Pph(Book):
           self.wb[self.cl] = s + self.wb[self.cl]
           return
         else: # non-numeric footnote
-         self.fatal("non-numeric footnote: {}".format(self.wb[self.cl]))    
+         self.fatal("non-numeric footnote: {}".format(self.wb[self.cl]))
 
   # tables .ta r:5 l:20 r:5 or .ta rlr
   #
@@ -3562,13 +3577,13 @@ class Pph(Book):
 
     # look for continuation characters; restore to one line
     k1 = self.cl
-    while self.wb[k1] != ".ta-":        
+    while self.wb[k1] != ".ta-":
       while "\\" in self.wb[k1]:
         self.wb[k1] = re.sub(r"\\", "", self.wb[k1])
         self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
         del self.wb[k1+1]
       k1 += 1
-      
+
     # pull out summary if present.
     tsum = ""
     if "s=" in self.wb[self.cl]:
@@ -3580,20 +3595,20 @@ class Pph(Book):
       self.wb[self.cl], tw_epub = self.get_id("ew", self.wb[self.cl])
       if "%" not in tw_epub:
         self.fatal("please specify table epub width as percent, i.e. \"{0}%\" \n on line: {1}".format(tw_epub, il_line))
-    
+
     # pull out optional user-specified HTML width %
     tw_html = ""
     if "w=" in self.wb[self.cl]:
-      self.wb[self.cl], tw_html = self.get_id("w", self.wb[self.cl]) 
+      self.wb[self.cl], tw_html = self.get_id("w", self.wb[self.cl])
       if "%" not in tw_html:
-        self.fatal("please specify table HTML width as percent, i.e. \"{0}%\" \n on line: {1}".format(tw_html, il_line))     
-    
+        self.fatal("please specify table HTML width as percent, i.e. \"{0}%\" \n on line: {1}".format(tw_html, il_line))
+
     # tables forms:
     # .ta r:5 l:20 l:5  => use specified width and wrap if necessary
     # .ta rll  => calculate width of columns, no wrap
     # .ta r:5 l:20 lb:5  => use specified width and wrap if necessary,
     #    floating third column to bottom
-    
+
     # if auto-width, replace the .ta line with widths specified
     # if any widths are specified, all must be specified
     # .ta lr => .ta l:6 r:22
@@ -3610,15 +3625,15 @@ class Pph(Book):
           cwidth = getMaxWidth(i,ncols) # width
           s += "{}t:{} ".format(t0[i],cwidth)
         self.wb[self.cl] = s.strip()  # replace with widths specified
-    
+
     # if vertical alignment not specified, default to "top" now
-    # .ta l:6 r:22 => .ta lt:6 rt:22    
+    # .ta l:6 r:22 => .ta lt:6 rt:22
     while re.search(r"[^lcr][lcr]:", self.wb[self.cl]):
       self.wb[self.cl] = re.sub(r"([lcr]):", r'\1t:', self.wb[self.cl])
-          
+
     t = self.wb[self.cl].split() # ['.ta', 'lt:6', 'rt:22']
     ncols = len(t) - 1  # skip the .ta piece
-    
+
     # alignment
     j = 1
     while j <= ncols:
@@ -3645,7 +3660,7 @@ class Pph(Book):
       widths.append(int(u[1]))
       totalwidth += int(u[1]) # no added space in HTML
       j += 1
-    
+
     pwidths = [None] * ncols
 
     # make sure we have a table
@@ -3672,15 +3687,15 @@ class Pph(Book):
 
     # unwrap any user-wrapped text in table
     k1 = self.cl + 1
-    while self.wb[k1] != ".ta-":    
+    while self.wb[k1] != ".ta-":
       while "\\" in self.wb[k1]:
         self.wb[k1] = re.sub(r"\\", "", self.wb[k1])
         self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
         del self.wb[k1+1]
-      k1 += 1    
+      k1 += 1
 
     t = []
-    
+
     s = "margin: auto;"  # start building class for table
 
     if self.pvs > 0:  # pending vertical space
@@ -3698,20 +3713,20 @@ class Pph(Book):
       right_indent_pct = 100 - our_width - left_indent_pct
       s += " margin-left: {}%; margin-right:{}%; width:{}%; ".format( left_indent_pct, right_indent_pct, our_width )
     self.css.addcss("[670] .table{0} {{ {1} }}".format(self.tcnt, s))
-    
+
     if tw_epub != "":
       epw = int(re.sub("%", "", tw_epub)) # as integer
       left_indent_pct = (100 - epw) // 2
-      right_indent_pct = 100 - epw - left_indent_pct      
+      right_indent_pct = 100 - epw - left_indent_pct
       self.css.addcss("[671] @media handheld {{ .table{} {{ margin-left: {}%; margin-right:{}%; width:{}%; }} }}".format(self.tcnt, left_indent_pct, right_indent_pct, epw))
-    
+
     t.append("<table class='table{}' summary='{}'>".format(self.tcnt, tsum))
-    
+
     # set relative widths of columns
     t.append("<colgroup>")
     for (i,w) in enumerate(widths):
      t.append("<col width='{}%'/>".format(pwidths[i]))
-    t.append("</colgroup>")       
+    t.append("</colgroup>")
 
     startloc = self.cl
     self.cl += 1 # move into the table rows
@@ -3744,9 +3759,9 @@ class Pph(Book):
       for k,data in enumerate(v):
         valgn = ""
         padding = ""
-                  
+
         if k < len(v) - 1: # each column not the last gets padding to the right
-           padding +='padding-right:1em;'      
+           padding +='padding-right:1em;'
         # convert leading spaces to padding
         t1 = v[k]
         t2 = re.sub(r"^ⓢ+","", v[k])
@@ -3763,7 +3778,7 @@ class Pph(Book):
     self.tcnt += 1
     self.wb[startloc:self.cl+1] = t
     self.cl = startloc + len(t)
-    
+
   # Drop Image
   # .di i_b_009.jpg 100 170 1.3
   def doDropimage(self):
@@ -3844,7 +3859,7 @@ class Pph(Book):
       self.wb[i] = re.sub("⑦", "#", self.wb[i]) # used in links
       if re.search("<h1", self.wb[i]): # expect to find one h1 in the file
         h1cnt += 1
-        
+
     i = 0
     while not re.search(r"<style type=\"text/css\">", self.wb[i]):
       i += 1
@@ -3859,7 +3874,7 @@ class Pph(Book):
       i += 1
     if h1cnt != 1:
       self.warn("exactly one <h1> element is required.")
-    
+
     # puts free-standing pagenumbers into a div
     blvl = 0
     for i in range(len(self.wb)):
@@ -4111,7 +4126,7 @@ def main():
   if 'u' in args.output_format:
     ppt = Ppt(args, "u")
     ppt.run()
-    
+
   # Latin-1 only
   if 'l' in args.output_format:
    ppt = Ppt(args, "l")
