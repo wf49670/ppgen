@@ -3066,6 +3066,13 @@ class Pph(Book):
           self.css.addcss("[601] div.figright p { text-align:center; text-indent:0; }")
       self.css.addcss("[602] @media handheld { .figright { float:right; }}")
 
+    if ia["align"] == "i":
+      self.css.addcss("[600] .figinline { display:inline-block; vertical-align:middle; max-width:100%; margin:1em; text-align: center;}")
+      if caption_present:
+          self.css.addcss("[601] div.figinline p { text-align:center; text-indent:0; }") 
+# Tested inline-block on ADE, Kindle Preview, iBooks - seems to work fine
+#      self.css.addcss("[602] @media handheld { .figinline { display:block; }}")
+
     # if any image is in document
     self.css.addcss("[608] img { max-width:100%; height:auto; }")
 
@@ -3137,6 +3144,8 @@ class Pph(Book):
       u.append("<div {} class='figleft {}'>".format(ia["id"], idn))
     if ia["align"] == "r":
       u.append("<div {} class='figright {}'>".format(ia["id"], idn))
+    if ia["align"] == "i":
+      u.append("<div {} class='figinline {}'>".format(ia["id"], idn))
 
     if ia["pageno"] != "":
       u.append("<span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ia["pageno"]))
