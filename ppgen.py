@@ -1340,7 +1340,9 @@ class Ppt(Book):
           self.eb += t
           self.cl += 1
           while not (self.wb[self.cl]).startswith(".ca"):
-            self.eb.append(self.wb[self.cl])
+            s = self.wb[self.cl]
+            t = self.wrap(s, 0, self.regLL, 0)
+            self.eb += t
             self.cl += 1
           self.eb[-1] += "]"
           self.cl += 1 # the closing .ca-
