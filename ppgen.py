@@ -234,6 +234,8 @@ class Book(object):
       self.doSpace()
     elif ".fs" == dotcmd:
       self.doFontSize()
+    elif ".ic" == dotcmd: # inline container
+      self.doIc()
     elif ".il" == dotcmd:
       self.doIllo()
     elif ".in" == dotcmd:
@@ -1320,6 +1322,12 @@ class Ppt(Book):
   # change font size for following paragraphs
   # no effect in text
   def doFontSize(self):
+    del self.wb[self.cl]
+
+  # .ic
+  # Container for inline-block elements
+  # no effect in text
+  def doIc(self):
     del self.wb[self.cl]
 
   # .il illustrations (text)
@@ -2907,6 +2915,19 @@ class Pph(Book):
     if ".fs" in self.wb[self.cl]:
       self.warn("font-size directive error: {}".format(self.wb[self.cl]))
     del self.wb[self.cl]
+
+  # .ic
+  # Container for inline-block elements
+  def doIc(self):
+    if ".ic" == self.wb[self.cl]: # opening tag
+      self.css.addcss("[620] div.inlinecontainer { clear: both; margin: 0em auto; text-align: center; max-width: 100%; }")
+      self.wb[self.cl] = "<div class='inlinecontainer'>"
+      self.cl += 1
+    elif ".ic-" == self.wb[self.cl]: # closing tag
+      self.wb[self.cl] = "</div>"
+      self.cl += 1
+    else:
+      self.fatal("inline container directive error: {}".format(self.wb[self.cl]))
 
   # .il illustrations
   # .il id=i01 fn=illus-fpc.jpg w=332 alt=illus-fpcf.jpg
