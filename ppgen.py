@@ -2727,7 +2727,10 @@ class Pph(Book):
     pnum = ""
     id = ""
     rend = "" # default no rend
-    hcss = "text-align:center;font-weight:normal;font-size:1.4em;"
+    hcss = ""
+
+    self.css.addcss("[100] h1 { text-align:center;font-weight:normal;font-size:1.4em; }")  
+
     m = re.match(r"\.h1 (.*)", self.wb[self.cl])
     if m: # modifier
       rend = m.group(1)
@@ -2779,7 +2782,10 @@ class Pph(Book):
   def doH2(self):
     pnum = ""
     id = ""
-    hcss = "text-align:center;font-weight:normal;font-size:1.2em;"
+    hcss = ""
+    
+    self.css.addcss("[100] h2 { text-align:center;font-weight:normal;font-size:1.2em; }")  
+    
     m = re.match(r"\.h2 (.*)", self.wb[self.cl])
     rend = "" # default no rend
     if m: # modifier
@@ -2837,7 +2843,10 @@ class Pph(Book):
   def doH3(self):
     pnum = ""
     id = ""
-    hcss = "text-align:center;font-weight:normal;font-size:1.2em;"
+    hcss = ""
+ 
+    self.css.addcss("[100] h3 { text-align:center;font-weight:normal;font-size:1.2em; }")  
+
     m = re.match(r"\.h3 (.*)", self.wb[self.cl])
     if m: # modifier
       rend = m.group(1)
