@@ -14,7 +14,7 @@ from math import sqrt
 import struct
 import imghdr
 
-VERSION="3.26E" # 2014.09.23 12:04PM PST
+VERSION="3.3"
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3093,8 +3093,8 @@ class Pph(Book):
       my_lmar = (100 - my_width) // 2
       my_rmar = 100 - my_width - my_lmar
       self.css.addcss("[610] @media handheld {{ .{} {{ margin-left:{}%; width:{}; }}}}".format(idn, my_lmar, ia["ew"]))
-    # else:  # floated l or right
-    #   self.css.addcss("[610] @media handheld {{ .{} {{ width:{}; }}}}".format(idn, ia["ew"]))
+    else:  # floated l or right
+     self.css.addcss("[610] @media handheld {{ .{} {{ width:{}; }}}}".format(idn, ia["ew"]))
 
     # if user has set caption width (in percent) we use that for both HTML and epub.
     # If user hasn’t specified it, we use the width of the image in a browser or
