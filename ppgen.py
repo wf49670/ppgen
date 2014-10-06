@@ -234,6 +234,8 @@ class Book(object):
       self.doSpace()
     elif ".fs" == dotcmd:
       self.doFontSize()
+    elif ".ic" == dotcmd: # inline container
+      self.doIc()
     elif ".il" == dotcmd:
       self.doIllo()
     elif ".in" == dotcmd:
@@ -1320,6 +1322,12 @@ class Ppt(Book):
   # change font size for following paragraphs
   # no effect in text
   def doFontSize(self):
+    del self.wb[self.cl]
+
+  # .ic
+  # Container for inline-block elements
+  # no effect in text
+  def doIc(self):
     del self.wb[self.cl]
 
   # .il illustrations (text)
@@ -2910,6 +2918,19 @@ class Pph(Book):
       self.warn("font-size directive error: {}".format(self.wb[self.cl]))
     del self.wb[self.cl]
 
+  # .ic
+  # Container for inline-block elements
+  def doIc(self):
+    if ".ic" == self.wb[self.cl]: # opening tag
+      self.css.addcss("[620] div.inlinecontainer { clear: both; margin: 0em auto; text-align: center; max-width: 100%; }")
+      self.wb[self.cl] = "<div class='inlinecontainer'>"
+      self.cl += 1
+    elif ".ic-" == self.wb[self.cl]: # closing tag
+      self.wb[self.cl] = "</div>"
+      self.cl += 1
+    else:
+      self.fatal("inline container directive error: {}".format(self.wb[self.cl]))
+
   # .il illustrations
   # .il id=i01 fn=illus-fpc.jpg w=332 alt=illus-fpcf.jpg
   # .ca Dick was taken by surprise.
@@ -3068,6 +3089,13 @@ class Pph(Book):
           self.css.addcss("[601] div.figright p { text-align:center; text-indent:0; }")
       self.css.addcss("[602] @media handheld { .figright { float:right; }}")
 
+    if ia["align"] == "i":
+      self.css.addcss("[600] .figinline { display:inline-block; vertical-align:middle; max-width:100%; margin:1em; text-align: center;}")
+      if caption_present:
+          self.css.addcss("[601] div.figinline p { text-align:center; text-indent:0; }") 
+# Tested inline-block on ADE, Kindle Preview, iBooks - seems to work fine
+#      self.css.addcss("[602] @media handheld { .figinline { display:block; }}")
+
     # if any image is in document
     self.css.addcss("[608] img { max-width:100%; height:auto; }")
 
@@ -3139,6 +3167,8 @@ class Pph(Book):
       u.append("<div {} class='figleft {}'>".format(ia["id"], idn))
     if ia["align"] == "r":
       u.append("<div {} class='figright {}'>".format(ia["id"], idn))
+    if ia["align"] == "i":
+      u.append("<div {} class='figinline {}'>".format(ia["id"], idn))
 
     if ia["pageno"] != "":
       u.append("<span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ia["pageno"]))
