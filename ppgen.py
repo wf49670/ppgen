@@ -1223,7 +1223,7 @@ class Ppt(Book):
       self.lprint("  {:5}{:5} {}".format(d[ch], t[ch], unicodedata.name(ch)))
 
     while not self.wb[-1]:
-      self.eb.pop()
+      self.wb.pop()
 
     if len(described) > 0:
       self.lprint("\nUTF8 characters described:")
