@@ -104,6 +104,7 @@ class Book(object):
     self.nregs["psi"] = "0" # default above/below paragraph spacing for indented text
     self.nregs["psb"] = "1.0em" # default above/below paragraph spacing for block text
     self.nregs["pnc"] = "silver" # use to define page number color in HTML
+    self.nregs["lang"] = "en" # base language for the book (used in HTML header)
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string
 
@@ -306,6 +307,9 @@ class Book(object):
         known_register = True
       if registerName == "pnc": # page number color
         self.nregs["pnc"] = m.group(2)
+        known_register = True
+      if registerName == "lang": # base language
+        self.nregs["lang"] = m.group(2)
         known_register = True
       if not known_register:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
@@ -2620,7 +2624,7 @@ class Pph(Book):
     t = []
     t.append("<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\"")
     t.append("    \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">")
-    t.append("<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\">")
+    t.append("<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"" + self.nregs["lang"] + "\" lang=\"" + self.nregs["lang"] + "\">") # include base language in header
     t.append("  <head>")
 
     if self.encoding == "utf_8":
@@ -3289,6 +3293,9 @@ class Pph(Book):
         known_register = True
       if registerName == "pnc": # page number color
         self.nregs["pnc"] = m.group(2)
+        known_register = True
+      if registerName == "lang": # base language
+        self.nregs["lang"] = m.group(2)
         known_register = True
       if not known_register:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
