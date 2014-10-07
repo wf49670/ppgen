@@ -14,7 +14,7 @@ from math import sqrt
 import struct
 import imghdr
 
-VERSION="3.31"
+VERSION="3.32"
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -314,7 +314,7 @@ class Book(object):
       if not known_register:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
     else:  # line started with .nr but couldn't be parsed
-      self.crash_w_context("malformed .nr command: {}".format(self.wb[self.cl]))
+      self.crash_w_context("malformed .nr command: {}".format(self.wb[self.cl]), self.cl)
     self.cl += 1
 
   def preProcessCommon(self):
@@ -3276,33 +3276,6 @@ class Pph(Book):
       else:
         self.regTI += int(m.group(1))
       del self.wb[self.cl]
-
-  # .nr named register
-  # we are here if the line starts with .nr
-  def doNr(self):
-    m = re.match(r"\.nr (.+) (.+)", self.wb[self.cl])
-    if m:
-      registerName = m.group(1)
-      registerValue = m.group(2)
-      known_register = False
-      if registerName == "psi": # paragraph spacing, indented text
-        self.nregs["psi"] = m.group(2)
-        known_register = True
-      if registerName == "psb": # paragraph spacing, block text
-        self.nregs["psb"] = m.group(2)
-        known_register = True
-      if registerName == "pnc": # page number color
-        self.nregs["pnc"] = m.group(2)
-        known_register = True
-      if registerName == "lang": # base language
-        self.nregs["lang"] = m.group(2)
-        known_register = True
-      if not known_register:
-        self.crash_w_context("undefined register: {}".format(registerName), self.cl)
-    else:  # line started with .nr but couldn't be parsed
-      self.fatal("malformed .nr command: {}".format(self.wb[self.cl]))
-
-    del self.wb[self.cl]
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # no-fill, centered (HTML)
