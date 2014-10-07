@@ -310,7 +310,7 @@ class Book(object):
       if not known_register:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
     else:  # line started with .nr but couldn't be parsed
-      self.crash_w_context("malformed .nr command: {}".format(self.wb[self.cl]))    
+      self.crash_w_context("malformed .nr command: {}".format(self.wb[self.cl]))
     self.cl += 1
 
   def preProcessCommon(self):
@@ -3274,7 +3274,7 @@ class Pph(Book):
       del self.wb[self.cl]
 
   # .nr named register
-  # we are here if the line starts with .nr  
+  # we are here if the line starts with .nr
   def doNr(self):
     m = re.match(r"\.nr (.+) (.+)", self.wb[self.cl])
     if m:
@@ -3294,7 +3294,7 @@ class Pph(Book):
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
     else:  # line started with .nr but couldn't be parsed
       self.fatal("malformed .nr command: {}".format(self.wb[self.cl]))
-      
+
     del self.wb[self.cl]
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
