@@ -1442,6 +1442,7 @@ class Ppt(Book):
     self.cl += 1
 
   # .nr named register (note HTML has its own doNr method)
+  # we are here if the line starts with .nr
   def doNr(self):
     m = re.match(r"\.nr (.+) (.+)", self.wb[self.cl])
     if m:
@@ -1455,6 +1456,8 @@ class Ppt(Book):
         self.nregs["pnc"] = m.group(2)
       else:
         self.warn("undefined register: {}".format(registerName))
+    else:  # line started with .nr but couldn't be parsed
+      self.fatal("malformed .nr command: {}".format(self.wb[self.cl])
     self.cl += 1
 
   # no-fill, centered (test)
