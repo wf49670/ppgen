@@ -2377,17 +2377,24 @@ class Pph(Book):
     # <lang> tags processed in HTML.
     # <lang="fr">merci</lang>
     # <span lang="fr xml:lang="fr">merci</span>
-    for i in range(len(self.wb)):
-      # m = re.search(r"<lang=[\"']?([^>]+)[\"']?>",self.wb[i])
-      m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
-      while m:
-        langspec = m.group(1)
-        self.wb[i] = re.sub(m.group(0), "ᒪ'{}'".format(langspec), self.wb[i], 1)
-        # self.wb[i] = re.sub(m.group(0), "<span LANG=\"{0}\" xml:LANG=\"{0}\">".format(langspec), self.wb[i], 1)
+    i = 0
+    while i < len(self.wb):
+      if self.wb[i] == ".li":         # ignore literal blocks
+        while i < len(self.wb) and self.wb[i] != ".li-":
+          i += 1
+        i += 1  # skip over .li- command
+      else:
+        # m = re.search(r"<lang=[\"']?([^>]+)[\"']?>",self.wb[i])
         m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
-      if "lang=" in self.wb[i]:
-        self.fatal("incorrect lang markup: {}".format(self.wb[i]))  # TODO: protect if inside .li
-      self.wb[i] = re.sub(r"<\/lang>", "ᒧ",self.wb[i])
+        while m:
+          langspec = m.group(1)
+          self.wb[i] = re.sub(m.group(0), "ᒪ'{}'".format(langspec), self.wb[i], 1)
+          # self.wb[i] = re.sub(m.group(0), "<span LANG=\"{0}\" xml:LANG=\"{0}\">".format(langspec), self.wb[i], 1)
+          m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
+        if "lang=" in self.wb[i]:
+          self.fatal("incorrect lang markup: {}".format(self.wb[i]))
+        self.wb[i] = re.sub(r"<\/lang>", "ᒧ",self.wb[i])
+        i += 1
 
       
     # -------------------------------------------------------------------------
