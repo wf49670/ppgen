@@ -14,7 +14,7 @@ from math import sqrt
 import struct
 import imghdr
 
-VERSION="3.32" # resequence develop and master
+VERSION="3.32A" # fixed language bug reported by Brian
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2382,13 +2382,14 @@ class Pph(Book):
       m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
       while m:
         langspec = m.group(1)
-        self.wb[i] = re.sub(m.group(0), "<span LANG=\"{0}\" xml:LANG=\"{0}\">".format(langspec), self.wb[i], 1)
+        self.wb[i] = re.sub(m.group(0), "ᒪ'{}'".format(langspec), self.wb[i], 1)
+        # self.wb[i] = re.sub(m.group(0), "<span LANG=\"{0}\" xml:LANG=\"{0}\">".format(langspec), self.wb[i], 1)
         m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
       if "lang=" in self.wb[i]:
         self.fatal("incorrect lang markup: {}".format(self.wb[i]))  # TODO: protect if inside .li
-      self.wb[i] = re.sub("LANG", "lang", self.wb[i])
-      self.wb[i] = re.sub(r"<\/lang>","</span>",self.wb[i])
+      self.wb[i] = re.sub(r"<\/lang>", "ᒧ",self.wb[i])
 
+      
     # -------------------------------------------------------------------------
     # inline markup (HTML)
 
@@ -2581,6 +2582,14 @@ class Pph(Book):
 
     for i, line in enumerate(self.wb):
       self.wb[i] = re.sub("⑥", ":", self.wb[i])
+    
+    for i, line in enumerate(self.wb):
+      # lang specifications
+      m = re.search(r"ᒪ'(.+?)'", self.wb[i])
+      while m:
+        self.wb[i] = re.sub(m.group(0), "<span LANG=\"{0}\" xml:LANG=\"{0}\">".format(m.group(1)), self.wb[i], 1)
+        m = re.search(r"ᒪ'(.+?)'", self.wb[i])
+      self.wb[i] = re.sub("ᒧ", "</span>", self.wb[i])      
 
   # -------------------------------------------------------------------------------------
   # save buffer to specified dstfile (HTML output)
