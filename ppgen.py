@@ -14,7 +14,7 @@ from math import sqrt
 import struct
 import imghdr
 
-VERSION="3.32A" # fixed language bug reported by Brian
+VERSION="3.32B" # fixed .nr handling error
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -295,7 +295,9 @@ class Book(object):
   # we are here if the line starts with .nr
   def doNr(self):
     m = re.match(r"\.nr (.+) (.+)", self.wb[self.cl])
-    if m:
+    if not m:
+      self.crash_w_context("malformed .nr command: {}".format(self.wb[self.cl]), self.cl)
+    else:
       registerName = m.group(1)
       registerValue = m.group(2)
       known_register = False
@@ -313,9 +315,7 @@ class Book(object):
         known_register = True
       if not known_register:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
-    else:  # line started with .nr but couldn't be parsed
-      self.crash_w_context("malformed .nr command: {}".format(self.wb[self.cl]), self.cl)
-    self.cl += 1
+      del(self.wb[self.cl])
 
   def preProcessCommon(self):
 
