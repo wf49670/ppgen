@@ -14,7 +14,7 @@ from math import sqrt
 import struct
 import imghdr
 
-VERSION="3.32" # resequence develop and master
+VERSION="3.33"
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -295,7 +295,9 @@ class Book(object):
   # we are here if the line starts with .nr
   def doNr(self):
     m = re.match(r"\.nr (.+) (.+)", self.wb[self.cl])
-    if m:
+    if not m:
+      self.crash_w_context("malformed .nr command: {}".format(self.wb[self.cl]), self.cl)
+    else:
       registerName = m.group(1)
       registerValue = m.group(2)
       known_register = False
@@ -313,9 +315,7 @@ class Book(object):
         known_register = True
       if not known_register:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
-    else:  # line started with .nr but couldn't be parsed
-      self.crash_w_context("malformed .nr command: {}".format(self.wb[self.cl]), self.cl)
-    self.cl += 1
+      del(self.wb[self.cl])
 
   def preProcessCommon(self):
 
@@ -2382,13 +2382,14 @@ class Pph(Book):
       m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
       while m:
         langspec = m.group(1)
-        self.wb[i] = re.sub(m.group(0), "<span LANG=\"{0}\" xml:LANG=\"{0}\">".format(langspec), self.wb[i], 1)
+        self.wb[i] = re.sub(m.group(0), "ᒪ'{}'".format(langspec), self.wb[i], 1)
+        # self.wb[i] = re.sub(m.group(0), "<span LANG=\"{0}\" xml:LANG=\"{0}\">".format(langspec), self.wb[i], 1)
         m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
       if "lang=" in self.wb[i]:
         self.fatal("incorrect lang markup: {}".format(self.wb[i]))  # TODO: protect if inside .li
-      self.wb[i] = re.sub("LANG", "lang", self.wb[i])
-      self.wb[i] = re.sub(r"<\/lang>","</span>",self.wb[i])
+      self.wb[i] = re.sub(r"<\/lang>", "ᒧ",self.wb[i])
 
+      
     # -------------------------------------------------------------------------
     # inline markup (HTML)
 
@@ -2581,6 +2582,14 @@ class Pph(Book):
 
     for i, line in enumerate(self.wb):
       self.wb[i] = re.sub("⑥", ":", self.wb[i])
+    
+    for i, line in enumerate(self.wb):
+      # lang specifications
+      m = re.search(r"ᒪ'(.+?)'", self.wb[i])
+      while m:
+        self.wb[i] = re.sub(m.group(0), "<span LANG=\"{0}\" xml:LANG=\"{0}\">".format(m.group(1)), self.wb[i], 1)
+        m = re.search(r"ᒪ'(.+?)'", self.wb[i])
+      self.wb[i] = re.sub("ᒧ", "</span>", self.wb[i])      
 
   # -------------------------------------------------------------------------------------
   # save buffer to specified dstfile (HTML output)
@@ -2727,7 +2736,10 @@ class Pph(Book):
     pnum = ""
     id = ""
     rend = "" # default no rend
-    hcss = "text-align:center;font-weight:normal;font-size:1.4em;"
+    hcss = ""
+
+    self.css.addcss("[100] h1 { text-align:center;font-weight:normal;font-size:1.4em; }")  
+
     m = re.match(r"\.h1 (.*)", self.wb[self.cl])
     if m: # modifier
       rend = m.group(1)
@@ -2779,7 +2791,10 @@ class Pph(Book):
   def doH2(self):
     pnum = ""
     id = ""
-    hcss = "text-align:center;font-weight:normal;font-size:1.2em;"
+    hcss = ""
+    
+    self.css.addcss("[100] h2 { text-align:center;font-weight:normal;font-size:1.2em; }")  
+    
     m = re.match(r"\.h2 (.*)", self.wb[self.cl])
     rend = "" # default no rend
     if m: # modifier
@@ -2837,7 +2852,10 @@ class Pph(Book):
   def doH3(self):
     pnum = ""
     id = ""
-    hcss = "text-align:center;font-weight:normal;font-size:1.2em;"
+    hcss = ""
+ 
+    self.css.addcss("[100] h3 { text-align:center;font-weight:normal;font-size:1.2em; }")  
+
     m = re.match(r"\.h3 (.*)", self.wb[self.cl])
     if m: # modifier
       rend = m.group(1)
