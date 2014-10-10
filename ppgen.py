@@ -14,7 +14,7 @@ from math import sqrt
 import struct
 import imghdr
 
-VERSION="3.33A" # pending vertical space applied to tb and hr
+VERSION="3.33B" # optimized pending vertical space applied to tb and hr
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2724,7 +2724,9 @@ class Pph(Book):
     if self.pvs > 0:
       hcss = " margin-top:{}em; ".format(self.pvs)
       self.pvs = 0      
-    self.wb[self.cl] = "<hr style='border:none;border-bottom:1px solid; margin-top:0.8em;margin-bottom:0.8em;margin-left:35%; margin-right:35%; width:30%; {}' />".format(hcss) # for IE
+      self.wb[self.cl] = "<hr style='border:none;border-bottom:1px solid; margin-bottom:0.8em; margin-left:35%; margin-right:35%; width:30%; {}' />".format(hcss) # for IE
+    else:
+      self.wb[self.cl] = "<hr style='border:none;border-bottom:1px solid; margin-top:0.8em;margin-bottom:0.8em;margin-left:35%; margin-right:35%; width:30%;' />" # for IE
     self.cl += 1
 
   # .de CSS definition
