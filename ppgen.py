@@ -2389,7 +2389,7 @@ class Pph(Book):
         while m:
           langspec = m.group(1)
           self.wb[i] = re.sub(m.group(0), "ᒪ'{}'".format(langspec), self.wb[i], 1)
-          # self.wb[i] = re.sub(m.group(0), "<span LANG=\"{0}\" xml:LANG=\"{0}\">".format(langspec), self.wb[i], 1)
+          # self.wb[i] = re.sub(m.group(0), "<span lang=\"{0}\" xml:lang=\"{0}\">".format(langspec), self.wb[i], 1)
           m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
         if "lang=" in self.wb[i]:
           self.fatal("incorrect lang markup: {}".format(self.wb[i]))
@@ -2594,7 +2594,7 @@ class Pph(Book):
       # lang specifications
       m = re.search(r"ᒪ'(.+?)'", self.wb[i])
       while m:
-        self.wb[i] = re.sub(m.group(0), "<span LANG=\"{0}\" xml:LANG=\"{0}\">".format(m.group(1)), self.wb[i], 1)
+        self.wb[i] = re.sub(m.group(0), "<span lang=\"{0}\" xml:lang=\"{0}\">".format(m.group(1)), self.wb[i], 1)
         m = re.search(r"ᒪ'(.+?)'", self.wb[i])
       self.wb[i] = re.sub("ᒧ", "</span>", self.wb[i])      
 
