@@ -14,7 +14,7 @@ from math import sqrt
 import struct
 import imghdr
 
-VERSION="3.33"
+VERSION="3.33A" # pending vertical space applied to tb and hr
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2699,22 +2699,32 @@ class Pph(Book):
 
   # .hr horizontal rule
   def doHr(self):
+    # if there is a pending vertical space, include it in style
+    hcss = ""
+    if self.pvs > 0:
+      hcss = " margin-top:{}em; ".format(self.pvs)
+      self.pvs = 0
     hrpct = 100
     m = re.match(r"\.hr (\d+)%", self.wb[self.cl])
     if m:
       hrpct = int(m.group(1))
     if hrpct == 100:
-      self.wb[self.cl] = "<hr style='border:none;border-bottom:1px solid;margin:1em auto;' />"
+      self.wb[self.cl] = "<hr style='border:none;border-bottom:1px solid;margin:1em auto; {}' />".format(hcss)
     else:
       lmarp = (100 - hrpct)//2
       rmarp = 100 - hrpct - lmarp
-      self.wb[self.cl] = "<hr style='border:none;border-bottom:1px solid;margin-top:1em;margin-bottom:1em; margin-left:{}%; width:{}%; margin-right:{}%' />".format(lmarp,hrpct,rmarp)
+      self.wb[self.cl] = "<hr style='border:none;border-bottom:1px solid;margin-top:1em;margin-bottom:1em; margin-left:{}%; width:{}%; margin-right:{}%; {}' />".format(lmarp,hrpct,rmarp, hcss)
     self.cl += 1
 
   # .tb thought break
   # thought breaks fixed at 35% thin line.
   def doTbreak(self):
-    self.wb[self.cl] = "<hr style='border:none;border-bottom:1px solid; margin-top:0.8em;margin-bottom:0.8em;margin-left:35%; margin-right:35%; width:30%' />" # for IE
+    # if there is a pending vertical space, include it in style
+    hcss = ""
+    if self.pvs > 0:
+      hcss = " margin-top:{}em; ".format(self.pvs)
+      self.pvs = 0      
+    self.wb[self.cl] = "<hr style='border:none;border-bottom:1px solid; margin-top:0.8em;margin-bottom:0.8em;margin-left:35%; margin-right:35%; width:30%; {}' />".format(hcss) # for IE
     self.cl += 1
 
   # .de CSS definition
