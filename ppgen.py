@@ -2215,7 +2215,10 @@ class Pph(Book):
         del self.wb[i]
         found = False
         while not found and (i < len(self.wb)):    # loop until we find a valid insertion spot,
-                                                   # but don't run off end of buffer
+
+          # if we hit the start of a .li, warn the user
+          if self.wb[i].startswith(".li"):
+            self.warn(".li encountered while placing page number")
           # it is possible to hit another pn match before finding a suitable home
           m = re.match(r"⑯(.+)⑰", self.wb[i])  # must be on line by itself
           if m:
