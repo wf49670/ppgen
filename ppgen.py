@@ -2214,7 +2214,7 @@ class Pph(Book):
         pnum = m.group(1) # string
         del self.wb[i]
         found = False
-        while not found and (i < len(self.wb)):    # loop until we find a valid insertion spot,
+        while not found and (i < len(self.wb)):    # loop until we find a valid insertion spot
 
           # if we hit the start of a .li, warn the user
           if self.wb[i].startswith(".li"):
