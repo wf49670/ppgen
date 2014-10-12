@@ -3070,6 +3070,7 @@ class Pph(Book):
       alt = ""
       if "alt=" in s:
         s, alt = self.get_id("alt",s)
+        alt = re.sub("'","&#39;",alt) # escape any '
       ia["alt"] = alt
 
       # page number
