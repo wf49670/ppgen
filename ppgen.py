@@ -383,13 +383,40 @@ class Book(object):
     self.mau.append("—")   # maps a dash in UTF-8 to "--" in Latin-1
     self.mal.append("--")
     while i < len(self.wb):
-      m = re.match(r"\.ma ", self.wb[i])
-      if m:
-        clex = shlex.split(self.wb[i])
-        self.mau.append(clex[1])
-        self.mal.append(clex[2])
-        del self.wb[i]
-        i -= 1
+      if self.wb[i].startswith(".ma"):
+
+        m = re.match(r"\.ma ([\"'])(.*?)\1 ([\"'])(.*?)\3", self.wb[i])  # both in quotes
+        if m:
+          self.mau.append(m.group(2))
+          self.mal.append(m.group(4))
+          del self.wb[i]
+          i -= 1
+          continue
+
+        m = re.match(r"\.ma ([\"'])(.*?)\1 (.*?)$", self.wb[i])  # only first in quotes
+        if m:
+          self.mau.append(m.group(2))
+          self.mal.append(m.group(3))
+          del self.wb[i]
+          i -= 1
+          continue
+          
+        m = re.match(r"\.ma (.*?) ([\"'])(.*?)\2", self.wb[i])  # only second in quotes
+        if m:
+          self.mau.append(m.group(1))
+          self.mal.append(m.group(3))
+          del self.wb[i]
+          i -= 1
+          continue
+
+        m = re.match(r"\.ma (.*?) (.*?)$", self.wb[i])  # neither in quotes
+        if m:
+          self.mau.append(m.group(1))
+          self.mal.append(m.group(2))
+          del self.wb[i]
+          i -= 1
+          continue
+
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
