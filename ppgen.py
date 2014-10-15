@@ -14,7 +14,7 @@ from math import sqrt
 import struct
 import imghdr
 
-VERSION="3.35"
+VERSION="3.36"
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -78,7 +78,7 @@ class Book(object):
   pindent = False
   pnshow = False # set to True if page numbering found in source file
   pnlink = False # create links but do not show page number
-  csslc = 900 # CSS line counter
+  csslc = 3000 # CSS line counter for user defined classes
   dtitle = "" # display title for HTML
   cimage = "cover.jpg" # default cover image
 
@@ -277,6 +277,8 @@ class Book(object):
       self.doNf()
     elif ".nr" == dotcmd: # named register
       self.doNr()
+    elif ".dv" == dotcmd: # user-specifice <div> for HTML
+      self.doDiv()
     else:
       self.fatal("unhandled dot command: {}".format(self.wb[self.cl]))
 
@@ -381,13 +383,40 @@ class Book(object):
     self.mau.append("—")   # maps a dash in UTF-8 to "--" in Latin-1
     self.mal.append("--")
     while i < len(self.wb):
-      m = re.match(r"\.ma ", self.wb[i])
-      if m:
-        clex = shlex.split(self.wb[i])
-        self.mau.append(clex[1])
-        self.mal.append(clex[2])
-        del self.wb[i]
-        i -= 1
+      if self.wb[i].startswith(".ma"):
+
+        m = re.match(r"\.ma ([\"'])(.*?)\1 ([\"'])(.*?)\3", self.wb[i])  # both in quotes
+        if m:
+          self.mau.append(m.group(2))
+          self.mal.append(m.group(4))
+          del self.wb[i]
+          i -= 1
+          continue
+
+        m = re.match(r"\.ma ([\"'])(.*?)\1 (.*?)$", self.wb[i])  # only first in quotes
+        if m:
+          self.mau.append(m.group(2))
+          self.mal.append(m.group(3))
+          del self.wb[i]
+          i -= 1
+          continue
+          
+        m = re.match(r"\.ma (.*?) ([\"'])(.*?)\2", self.wb[i])  # only second in quotes
+        if m:
+          self.mau.append(m.group(1))
+          self.mal.append(m.group(3))
+          del self.wb[i]
+          i -= 1
+          continue
+
+        m = re.match(r"\.ma (.*?) (.*?)$", self.wb[i])  # neither in quotes
+        if m:
+          self.mau.append(m.group(1))
+          self.mal.append(m.group(2))
+          del self.wb[i]
+          i -= 1
+          continue
+
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1282,6 +1311,14 @@ class Ppt(Book):
     self.eb.append(".RS 1")
     self.cl += 1
 
+  # doDiv (text)
+  def doDiv(self):
+    del(self.wb[self.cl])
+    j = self.cl
+    while j < len(self.wb) and self.wb[j] != ".dv-":
+      j += 1
+    del(self.wb[j])    
+
   # .hr horizontal rule
   def doHr(self):
     hrpct = 100
@@ -1968,8 +2005,8 @@ class Ppt(Book):
       # will hit either a dot directive or wrappable text
       if re.match(r"\.", self.wb[self.cl]):
         self.doDot()
-      else:
-        self.doPara()
+        continue
+      self.doPara()
 
   def run(self): # Text
     self.loadFile(self.srcfile)
@@ -2101,7 +2138,7 @@ class Pph(Book):
         lcopy = re.sub("style='(.*?)'", "", lcopy, 1) # multiples possible on same line
         m = re.search("style='(.*?)'", lcopy)
     for i, line in enumerate(classarray):
-      self.css.addcss("[{}] .c{:03d} {{ {} }}".format(800+i, i, line))
+      self.css.addcss("[{}] .c{:03d} {{ {} }}".format(2000+i, i, line))
     # replace styles with generated classes
     for i, line in enumerate(self.wb):
       m = re.search("style='(.*?)'", self.wb[i])
@@ -2444,53 +2481,53 @@ class Pph(Book):
             use_class = "fss"
         if use_class == "sc":
           self.wb[i] = re.sub("<sc>", "<span class='sc'>", self.wb[i])
-          self.css.addcss("[200] .sc { font-variant:small-caps; }")
+          self.css.addcss("[1200] .sc { font-variant:small-caps; }")
         if use_class == "fss":
           self.wb[i] = re.sub("<sc>", "<span class='fss'>", self.wb[i])
-          self.css.addcss("[200] .fss { font-size:75%; }")
+          self.css.addcss("[1200] .fss { font-size:75%; }")
 
       # common closing, may be on separate line
       self.wb[i] = re.sub("<\/sc>", "</span>", self.wb[i])
 
       m = re.search("<l>", self.wb[i])
       if m:
-        self.css.addcss("[201] .large { font-size:large; }")
+        self.css.addcss("[1201] .large { font-size:large; }")
       self.wb[i] = re.sub("<l>", "<span class='large'>", self.wb[i])
       self.wb[i] = re.sub("<\/l>", "</span>", self.wb[i])
 
       m = re.search("<xl>", self.wb[i])
       if m:
-        self.css.addcss("[202] .xlarge { font-size:x-large; }")
+        self.css.addcss("[1202] .xlarge { font-size:x-large; }")
       self.wb[i] = re.sub("<xl>", "<span class='xlarge'>", self.wb[i])
       self.wb[i] = re.sub("<\/xl>", "</span>", self.wb[i])
 
       m = re.search("<xxl>", self.wb[i])
       if m:
-        self.css.addcss("[202] .xxlarge { font-size:xx-large; }")
+        self.css.addcss("[1202] .xxlarge { font-size:xx-large; }")
       self.wb[i] = re.sub("<xxl>", "<span class='xxlarge'>", self.wb[i])
       self.wb[i] = re.sub("<\/xxl>", "</span>", self.wb[i])
 
       m = re.search("<s>", self.wb[i])
       if m:
-        self.css.addcss("[203] .small { font-size:small; }")
+        self.css.addcss("[1203] .small { font-size:small; }")
       self.wb[i] = re.sub("<s>", "<span class='small'>", self.wb[i])
       self.wb[i] = re.sub("<\/s>", "</span>", self.wb[i])
 
       m = re.search("<xs>", self.wb[i])
       if m:
-        self.css.addcss("[204] .xsmall { font-size:x-small; }")
+        self.css.addcss("[1204] .xsmall { font-size:x-small; }")
       self.wb[i] = re.sub("<xs>", "<span class='xsmall'>", self.wb[i])
       self.wb[i] = re.sub("<\/xs>", "</span>", self.wb[i])
 
       m = re.search("<xxs>", self.wb[i])
       if m:
-        self.css.addcss("[205] .xxsmall { font-size:xx-small; }")
+        self.css.addcss("[1205] .xxsmall { font-size:xx-small; }")
       self.wb[i] = re.sub("<xxs>", "<span class='xxsmall'>", self.wb[i])
       self.wb[i] = re.sub("<\/xxs>", "</span>", self.wb[i])
 
       m = re.search("<u>", self.wb[i])
       if m:
-        self.css.addcss("[205] .under { text-decoration:underline; }")
+        self.css.addcss("[1205] .under { text-decoration:underline; }")
       self.wb[i] = re.sub("<u>", "<span class='under'>", self.wb[i])
       self.wb[i] = re.sub("<\/u>", "</span>", self.wb[i])
 
@@ -2498,7 +2535,7 @@ class Pph(Book):
       while m:
         thecolor = m.group(1)
         safename = re.sub("#","", thecolor)
-        self.css.addcss("[209] .color_{0} {{ color:{1}; }}".format(safename,thecolor))
+        self.css.addcss("[1209] .color_{0} {{ color:{1}; }}".format(safename,thecolor))
         self.wb[i] = re.sub("<c.*?>", "<span class='color_{0}'>".format(safename), self.wb[i], 1)
         m = re.search(r"<c=[\"']?(.*?)[\"']?>", self.wb[i])
       self.wb[i] = re.sub("<\/c>", "</span>", self.wb[i],1)
@@ -2508,8 +2545,8 @@ class Pph(Book):
       m = re.search(r"<g>", self.wb[i])
       if m:
         self.wb[i] = re.sub(r"<g>", "<em class='gesperrt'>", self.wb[i])
-        self.css.addcss("[378] em.gesperrt { font-style: normal; letter-spacing: 0.2em; margin-right: -0.2em; }")
-        self.css.addcss("[379] @media handheld { em.gesperrt { font-style: italic; letter-spacing: 0; margin-right: 0;}}")
+        self.css.addcss("[1378] em.gesperrt { font-style: normal; letter-spacing: 0.2em; margin-right: -0.2em; }")
+        self.css.addcss("[1379] @media handheld { em.gesperrt { font-style: italic; letter-spacing: 0; margin-right: 0;}}")
       self.wb[i] = re.sub("<\/g>", "</em>", self.wb[i],1)
 
       m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
@@ -2634,16 +2671,16 @@ class Pph(Book):
     # common CSS
 
     if self.pnshow:
-      self.css.addcss("[100] body { margin-left:8%;margin-right:10%; }")
-      self.css.addcss("[105] .pageno { right:1%;font-size:x-small;background-color:inherit;color:" + self.nregs["pnc"] + ";")
-      self.css.addcss("[106]         text-indent:0em;text-align:right;position:absolute;")
-      self.css.addcss("[107]         border:1px solid " + self.nregs["pnc"] + ";padding:1px 3px;font-style:normal;")
-      self.css.addcss("[108]         font-variant:normal;font-weight:normal;text-decoration:none; }")
-      self.css.addcss("[109] .pageno:after { color: " + self.nregs["pnc"] + "; content: attr(title); }")  # new 3.24M
+      self.css.addcss("[1100] body { margin-left:8%;margin-right:10%; }")
+      self.css.addcss("[1105] .pageno { right:1%;font-size:x-small;background-color:inherit;color:" + self.nregs["pnc"] + ";")
+      self.css.addcss("[1106]         text-indent:0em;text-align:right;position:absolute;")
+      self.css.addcss("[1107]         border:1px solid " + self.nregs["pnc"] + ";padding:1px 3px;font-style:normal;")
+      self.css.addcss("[1108]         font-variant:normal;font-weight:normal;text-decoration:none; }")
+      self.css.addcss("[1109] .pageno:after { color: " + self.nregs["pnc"] + "; content: attr(title); }")  # new 3.24M
     else:
-      self.css.addcss("[100] body { margin-left:8%;margin-right:8%; }")
+      self.css.addcss("[1100] body { margin-left:8%;margin-right:8%; }")
 
-    self.css.addcss("[170] p { text-indent:0;margin-top:0.5em;margin-bottom:0.5em;text-align:justify; }") # para style
+    self.css.addcss("[1170] p { text-indent:0;margin-top:0.5em;margin-bottom:0.5em;text-align:justify; }") # para style
 
     # HTML header
     t = []
@@ -2700,11 +2737,33 @@ class Pph(Book):
   # in epub/mobi, a physical page break is used so use a
   # @media handheld to make the horizontal rule invisible
   def doPb(self):
-    self.css.addcss("[465] div.pbb { page-break-before:always; }")
-    self.css.addcss("[466] hr.pb { border:none;border-bottom:1px solid; margin:1em auto; }")
-    self.css.addcss("[467] @media handheld { hr.pb { display:none; }}")
+    self.css.addcss("[1465] div.pbb { page-break-before:always; }")
+    self.css.addcss("[1466] hr.pb { border:none;border-bottom:1px solid; margin:1em auto; }")
+    self.css.addcss("[1467] @media handheld { hr.pb { display:none; }}")
     self.wb[self.cl:self.cl+1] = ["<div class='pbb'></div>", "<hr class='pb' />"]
     self.cl += 2
+
+  # extract any "class=" argument from string s
+  def getClass(self, s):
+    if "class='" in s:
+      m = re.search(r"class='(.*?)'", s)
+      if m:
+        self.wb[self.cl] = re.sub(m.group(0), "", self.wb[self.cl])
+        return m.group(1)
+    if "class=\"" in s:
+      m = re.search(r"class=\"(.*?)\"", s)
+      if m:
+        self.wb[self.cl] = re.sub(m.group(0), "", self.wb[self.cl])
+        return m.group(1)
+    return ""
+    
+  # doDiv (HTML)
+  def doDiv(self):
+    self.wb[self.cl:self.cl+1] = ["<div class='{}'>".format(self.getClass(self.wb[self.cl])), ""]
+    j = self.cl
+    while j < len(self.wb) and self.wb[j] != ".dv-":
+      j += 1
+    self.wb[j:j+1] = ["", "</div>"]
 
   # .hr horizontal rule
   def doHr(self):
@@ -2744,7 +2803,8 @@ class Pph(Book):
     if not self.wb[self.cl].endswith("\\"):
       # single line
       self.wb[self.cl] = re.sub(r"\.de ", "", self.wb[self.cl])
-      self.css.addcss("[999] {}".format(self.wb[self.cl])) # put user CSS at end, always.
+      self.css.addcss("[{}] {}".format(self.csslc, self.wb[self.cl])) # put user CSS at end, always.
+      self.csslc += 1
       del self.wb[self.cl]
     else:
       # multiple line
@@ -2766,7 +2826,7 @@ class Pph(Book):
     rend = "" # default no rend
     hcss = ""
 
-    self.css.addcss("[100] h1 { text-align:center;font-weight:normal;font-size:1.4em; }")  
+    self.css.addcss("[1100] h1 { text-align:center;font-weight:normal;font-size:1.4em; }")  
 
     m = re.match(r"\.h1 (.*)", self.wb[self.cl])
     if m: # modifier
@@ -2821,7 +2881,7 @@ class Pph(Book):
     id = ""
     hcss = ""
     
-    self.css.addcss("[100] h2 { text-align:center;font-weight:normal;font-size:1.2em; }")  
+    self.css.addcss("[1100] h2 { text-align:center;font-weight:normal;font-size:1.2em; }")  
     
     m = re.match(r"\.h2 (.*)", self.wb[self.cl])
     rend = "" # default no rend
@@ -2860,7 +2920,7 @@ class Pph(Book):
       t.append("<div>")
     else:
       t.append("<div class='chapter'>") # will force file break
-      self.css.addcss("[576] .chapter { clear:both; }")
+      self.css.addcss("[1576] .chapter { clear:both; }")
     if pnum != "":
       if self.pnshow:
         # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
@@ -2882,7 +2942,7 @@ class Pph(Book):
     id = ""
     hcss = ""
  
-    self.css.addcss("[100] h3 { text-align:center;font-weight:normal;font-size:1.2em; }")  
+    self.css.addcss("[1100] h3 { text-align:center;font-weight:normal;font-size:1.2em; }")  
 
     m = re.match(r"\.h3 (.*)", self.wb[self.cl])
     if m: # modifier
@@ -3110,24 +3170,24 @@ class Pph(Book):
     # oversight, it doesn't remove float:left inside the @media handheld.
 
     if ia["align"] == "c":
-      self.css.addcss("[600] .figcenter { clear:both; max-width:100%; margin:2em auto; text-align:center; }")
+      self.css.addcss("[1600] .figcenter { clear:both; max-width:100%; margin:2em auto; text-align:center; }")
       if caption_present:
-          self.css.addcss("[601] div.figcenter p { text-align:center; text-indent:0; }")
+          self.css.addcss("[1601] div.figcenter p { text-align:center; text-indent:0; }")
 
     if ia["align"] == "l":
-      self.css.addcss("[600] .figleft { clear:left; float:left; max-width:100%; margin:0.5em 1em 1em 0; text-align: left;}")
+      self.css.addcss("[1600] .figleft { clear:left; float:left; max-width:100%; margin:0.5em 1em 1em 0; text-align: left;}")
       if caption_present:
-          self.css.addcss("[601] div.figleft p { text-align:center; text-indent:0; }")
-      self.css.addcss("[602] @media handheld { .figleft { float:left; }}")
+          self.css.addcss("[1601] div.figleft p { text-align:center; text-indent:0; }")
+      self.css.addcss("[1602] @media handheld { .figleft { float:left; }}")
 
     if ia["align"] == "r":
-      self.css.addcss("[600] .figright { clear:right; float:right; max-width:100%; margin:0.5em 0 1em 1em; text-align: right;}")
+      self.css.addcss("[1600] .figright { clear:right; float:right; max-width:100%; margin:0.5em 0 1em 1em; text-align: right;}")
       if caption_present:
-          self.css.addcss("[601] div.figright p { text-align:center; text-indent:0; }")
-      self.css.addcss("[602] @media handheld { .figright { float:right; }}")
+          self.css.addcss("[1601] div.figright p { text-align:center; text-indent:0; }")
+      self.css.addcss("[1602] @media handheld { .figright { float:right; }}")
 
     # if any image is in document
-    self.css.addcss("[608] img { max-width:100%; height:auto; }")
+    self.css.addcss("[1608] img { max-width:100%; height:auto; }")
 
     # make CSS names from igc counter
     idn = "id{:03d}".format(self.igc)
@@ -3136,7 +3196,7 @@ class Pph(Book):
     self.igc += 1
 
     # set the illustration width
-    self.css.addcss("[610] .{} {{ width:{}; }}".format(idn, ia["iw"])) # the HTML illustration width
+    self.css.addcss("[1610] .{} {{ width:{}; }}".format(idn, ia["iw"])) # the HTML illustration width
 
     if ia['ew'] == "":
       ia["ew"] = ia["iw"]
@@ -3150,9 +3210,9 @@ class Pph(Book):
       my_width = int(re.sub("%", "", ia["ew"]))
       my_lmar = (100 - my_width) // 2
       my_rmar = 100 - my_width - my_lmar
-      self.css.addcss("[610] @media handheld {{ .{} {{ margin-left:{}%; width:{}; }}}}".format(idn, my_lmar, ia["ew"]))
+      self.css.addcss("[1610] @media handheld {{ .{} {{ margin-left:{}%; width:{}; }}}}".format(idn, my_lmar, ia["ew"]))
     else:  # floated l or right
-     self.css.addcss("[610] @media handheld {{ .{} {{ width:{}; }}}}".format(idn, ia["ew"]))
+     self.css.addcss("[1610] @media handheld {{ .{} {{ width:{}; }}}}".format(idn, ia["ew"]))
 
     # if user has set caption width (in percent) we use that for both HTML and epub.
     # If user hasn’t specified it, we use the width of the image in a browser or
@@ -3172,21 +3232,21 @@ class Pph(Book):
         if ia["cj"] == 'r':
           omr = (100 - ocw) // 2  # fixed
           oml = 100 - ocw - omr
-        self.css.addcss("[611] .{} {{ width:{}%; margin-left:{}%; margin-right:{}%; }} ".format(icn, ocw, oml, omr))
+        self.css.addcss("[1611] .{} {{ width:{}%; margin-left:{}%; margin-right:{}%; }} ".format(icn, ocw, oml, omr))
       else:
-        self.css.addcss("[611] .{} {{ width:100%; }} ".format(icn, ia["iw"]))
+        self.css.addcss("[1611] .{} {{ width:100%; }} ".format(icn, ia["iw"]))
 
       if ia["cj"] != "":
         if ia["cj"] == 'l':
-          self.css.addcss("[613] div.{} p {{ text-align:left; }} ".format(icn))
+          self.css.addcss("[1613] div.{} p {{ text-align:left; }} ".format(icn))
         elif ia["cj"] == 'r':
-          self.css.addcss("[613] div.{} p {{ text-align:right; }} ".format(icn))
+          self.css.addcss("[1613] div.{} p {{ text-align:right; }} ".format(icn))
         elif ia["cj"] == 'c':
-          self.css.addcss("[613] div.{} p {{ text-align:center; }} ".format(icn))
+          self.css.addcss("[1613] div.{} p {{ text-align:center; }} ".format(icn))
         elif ia["cj"] == 'f':
-          self.css.addcss("[613] div.{} p {{ text-align:justify; }} ".format(icn))
+          self.css.addcss("[1613] div.{} p {{ text-align:justify; }} ".format(icn))
 
-    self.css.addcss("[614] .{} {{ width:100%; }} ".format(ign, ia["iw"]))
+    self.css.addcss("[1614] .{} {{ width:100%; }} ".format(ign, ia["iw"]))
 
     # create replacement stanza for illustration
     u = []
@@ -3346,11 +3406,11 @@ class Pph(Book):
       t.append("<div class='nf-center' style='{}'>".format(s))
 
     if self.pindent:
-      self.css.addcss("[876] .nf-center-c0 { text-align:left;margin:0.5em 0; }")  # 17-Jul-2014
+      self.css.addcss("[1876] .nf-center-c0 { text-align:left;margin:0.5em 0; }")  # 17-Jul-2014
     else:
-      self.css.addcss("[876] .nf-center-c1 { text-align:left;margin:1em 0; }")
+      self.css.addcss("[1876] .nf-center-c1 { text-align:left;margin:1em 0; }")
 
-    self.css.addcss("[873] .nf-center { text-align:center; }")
+    self.css.addcss("[1873] .nf-center { text-align:center; }")
     i += 1
     printable_lines_in_block = 0
     pending_mt = 0
@@ -3388,22 +3448,22 @@ class Pph(Book):
   def doNfb(self, nft, mo):
     # any poetry triggers the same CSS
     if 'b' == nft:
-      self.css.addcss("[215] .lg-container-b { text-align: center; }")  # alignment of entire block
-      self.css.addcss("[216] @media handheld { .lg-container-b { clear: both; }}")
+      self.css.addcss("[1215] .lg-container-b { text-align: center; }")  # alignment of entire block
+      self.css.addcss("[1216] @media handheld { .lg-container-b { clear: both; }}")
     if 'l' == nft:
-      self.css.addcss("[217] .lg-container-l { text-align: left; }")
-      self.css.addcss("[218] @media handheld { .lg-container-l { clear: both; }}")
+      self.css.addcss("[1217] .lg-container-l { text-align: left; }")
+      self.css.addcss("[1218] @media handheld { .lg-container-l { clear: both; }}")
     if 'r' == nft:
-      self.css.addcss("[219] .lg-container-r { text-align: right; }")
-      self.css.addcss("[220] @media handheld { .lg-container-r { clear: both; }}")
+      self.css.addcss("[1219] .lg-container-r { text-align: right; }")
+      self.css.addcss("[1220] @media handheld { .lg-container-r { clear: both; }}")
 
-    self.css.addcss("[221] .linegroup { display: inline-block; text-align: left; }")  # alignment inside block
-    self.css.addcss("[222] @media handheld { .linegroup { display: block; margin-left: 1.5em; }}")
+    self.css.addcss("[1221] .linegroup { display: inline-block; text-align: left; }")  # alignment inside block
+    self.css.addcss("[1222] @media handheld { .linegroup { display: block; margin-left: 1.5em; }}")
     if mo:
-      self.css.addcss("[223] .linegroup .group0 { margin: 0 auto; }")
+      self.css.addcss("[1223] .linegroup .group0 { margin: 0 auto; }")
     else:
-      self.css.addcss("[223] .linegroup .group { margin: 1em auto; }")
-    self.css.addcss("[224] .linegroup .line { text-indent: -3em; padding-left: 3em; }")
+      self.css.addcss("[1223] .linegroup .group { margin: 1em auto; }")
+    self.css.addcss("[1224] .linegroup .line { text-indent: -3em; padding-left: 3em; }")
 
     ssty = ""
     s = self.fetchStyle() # supplemental style
@@ -3483,7 +3543,7 @@ class Pph(Book):
           # create an indent class
           iclass = "in{}".format(leadsp)
           iamt = str(-3 + leadsp/2) # calculate based on -3 base
-          self.css.addcss("[227] .linegroup .{} {{ text-indent: {}em; }}".format(iclass, iamt))
+          self.css.addcss("[1227] .linegroup .{} {{ text-indent: {}em; }}".format(iclass, iamt))
           t.append("      <div class='line {0}' {1}>{2}</div>".format(iclass, spvs, ss+tmp.lstrip()))
           printable_lines_in_block += 1
         else:
@@ -3534,7 +3594,7 @@ class Pph(Book):
   # handle completely different for paragraph indent or block style
   def doFnote(self):
 
-    self.css.addcss("[199] sup { vertical-align: top; font-size: 0.6em; }")
+    self.css.addcss("[1199] sup { vertical-align: top; font-size: 0.6em; }")
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     if self.pindent: # indented paragraphs
@@ -3547,9 +3607,9 @@ class Pph(Book):
 
       m = re.match(r"\.fn (\d+)", self.wb[self.cl]) # expect numeric footnote
       if m: # footnote start
-        self.css.addcss("[430] div.footnote {}")
-        self.css.addcss("[431] div.footnote>:first-child { margin-top:1em; }")
-        self.css.addcss("[432] div.footnote p { text-indent:1em;margin-top:0.0em;margin-bottom:0; }")
+        self.css.addcss("[1430] div.footnote {}")
+        self.css.addcss("[1431] div.footnote>:first-child { margin-top:1em; }")
+        self.css.addcss("[1432] div.footnote p { text-indent:1em;margin-top:0.0em;margin-bottom:0; }")
         fnname = m.group(1)
         self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
         self.cl += 1
@@ -3569,9 +3629,9 @@ class Pph(Book):
 
         m = re.match(r"\.fn (\d+)", self.wb[self.cl]) # expect numeric footnote
         if m: # footnote start
-          self.css.addcss("[430] div.footnote {margin-left: 2.5em; }")
-          self.css.addcss("[431] div.footnote>:first-child { margin-top:1em; }")
-          self.css.addcss("[432] div.footnote .label { display: inline-block; width: 0em; text-indent: -2.5em; text-align: right;}")
+          self.css.addcss("[1430] div.footnote {margin-left: 2.5em; }")
+          self.css.addcss("[1431] div.footnote>:first-child { margin-top:1em; }")
+          self.css.addcss("[1432] div.footnote .label { display: inline-block; width: 0em; text-indent: -2.5em; text-align: right;}")
           fnname = m.group(1)
           self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
           s = "<span class='label'><a href='#r{0}'>{0}</a>.&nbsp;&nbsp;</span>".format(fnname)
@@ -3752,13 +3812,13 @@ class Pph(Book):
       left_indent_pct = (100 - our_width) // 2
       right_indent_pct = 100 - our_width - left_indent_pct
       s += " margin-left: {}%; margin-right:{}%; width:{}%; ".format( left_indent_pct, right_indent_pct, our_width )
-    self.css.addcss("[670] .table{0} {{ {1} }}".format(self.tcnt, s))
+    self.css.addcss("[1670] .table{0} {{ {1} }}".format(self.tcnt, s))
 
     if tw_epub != "":
       epw = int(re.sub("%", "", tw_epub)) # as integer
       left_indent_pct = (100 - epw) // 2
       right_indent_pct = 100 - epw - left_indent_pct
-      self.css.addcss("[671] @media handheld {{ .table{} {{ margin-left: {}%; margin-right:{}%; width:{}%; }} }}".format(self.tcnt, left_indent_pct, right_indent_pct, epw))
+      self.css.addcss("[1671] @media handheld {{ .table{} {{ margin-left: {}%; margin-right:{}%; width:{}%; }} }}".format(self.tcnt, left_indent_pct, right_indent_pct, epw))
 
     t.append("<table class='table{}' summary='{}'>".format(self.tcnt, tsum))
 
@@ -3830,7 +3890,7 @@ class Pph(Book):
       d_height = m.group(3)
       d_adj = m.group(4)
 
-      self.css.addcss("[920] img.drop-capi { float:left;margin:0 0.5em 0 0;position:relative;z-index:1; }")
+      self.css.addcss("[1920] img.drop-capi { float:left;margin:0 0.5em 0 0;position:relative;z-index:1; }")
       s_adj = re.sub(r"\.","_", str(d_adj))
       if self.pindent:
         s0 = re.sub("em", "", self.nregs["psi"]) # drop the "em"
@@ -3842,13 +3902,13 @@ class Pph(Book):
         s2 = (s1//2)/100 # forces one decimal place
       mtop = s2
       mbot = mtop
-      self.css.addcss("[921] p.drop-capi{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(s_adj,mtop,mbot))
-      self.css.addcss("[922] p.drop-capi{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(s_adj,d_adj))
+      self.css.addcss("[1921] p.drop-capi{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(s_adj,mtop,mbot))
+      self.css.addcss("[1922] p.drop-capi{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(s_adj,d_adj))
 
-      self.css.addcss("[923] @media handheld {")
-      self.css.addcss("[924]   img.drop-capi { display:none; visibility:hidden; }")
-      self.css.addcss("[925]   p.drop-capi{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(s_adj))
-      self.css.addcss("[926] }")
+      self.css.addcss("[1923] @media handheld {")
+      self.css.addcss("[1924]   img.drop-capi { display:none; visibility:hidden; }")
+      self.css.addcss("[1925]   p.drop-capi{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(s_adj))
+      self.css.addcss("[1926] }")
 
       t = []
       t.append("<div>")
@@ -3868,12 +3928,12 @@ class Pph(Book):
       dcadjs = re.sub(r"\.", "_", dcadjs) # name formatting
     else:
       self.fatal("incorrect format for .dc arg1 arg2 command")
-    self.css.addcss("[930] p.drop-capa{0} {{ text-indent:-{1}em; }}".format(dcadjs,dcadj))
-    self.css.addcss("[931] p.drop-capa{0}:first-letter {{ float:left;margin:0.1em 0.1em 0em 0em;font-size:250%;line-height:{1}em;text-indent:0 }}".format(dcadjs,dclh))
-    self.css.addcss("[933] @media handheld {")
-    self.css.addcss("[935]   p.drop-capa{} {{ text-indent:0 }}".format(dcadjs))
-    self.css.addcss("[936]   p.drop-capa{}:first-letter {{ float:none;margin:0;font-size:100%; }}".format(dcadjs))
-    self.css.addcss("[937] }")
+    self.css.addcss("[1930] p.drop-capa{0} {{ text-indent:-{1}em; }}".format(dcadjs,dcadj))
+    self.css.addcss("[1931] p.drop-capa{0}:first-letter {{ float:left;margin:0.1em 0.1em 0em 0em;font-size:250%;line-height:{1}em;text-indent:0 }}".format(dcadjs,dclh))
+    self.css.addcss("[1933] @media handheld {")
+    self.css.addcss("[1935]   p.drop-capa{} {{ text-indent:0 }}".format(dcadjs))
+    self.css.addcss("[1936]   p.drop-capa{}:first-letter {{ float:none;margin:0;font-size:100%; }}".format(dcadjs))
+    self.css.addcss("[1937] }")
     self.pdc = "drop-capa{}".format(dcadjs)
     del self.wb[self.cl]
 
@@ -4088,6 +4148,9 @@ class Pph(Book):
       for w in rb:
         print(w)
 
+  def doUdiv(self):
+    print(self.wb[self.cl])
+
   def process(self):
     self.cl = 0
     while self.cl < len(self.wb):
@@ -4096,11 +4159,17 @@ class Pph(Book):
       if not self.wb[self.cl]: # skip blank lines
         self.cl += 1
         continue
-      # will hit either a dot directive or wrappable text
+      # will hit either a dot directive, a user-defined <div>, or wrappable text
       if re.match(r"\.", self.wb[self.cl]):
         self.doDot()
-      else:
-        self.doPara()
+        continue
+      if self.wb[self.cl].startswith("<div class="):
+        self.cl += 1
+        continue
+      if self.wb[self.cl] == "</div>":
+        self.cl += 1
+        continue
+      self.doPara() # it's a paragraph to wrap
 
   def makeHTML(self):
     self.doHeader()
