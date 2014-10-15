@@ -479,13 +479,19 @@ class Book(object):
     while i < len(self.wb):
       if self.wb[i].startswith(".dm"):
         tlex = shlex.split(self.wb[i])
-        macroid = tlex[1] # string
+        if len(tlex) > 1:
+          macroid = tlex[1] # string
+        else:
+          self.fatal("incorrect .dm command: macro name missing.")
         del self.wb[i]
         t = []
-        while self.wb[i] != ".dm-":
+        while i < len(self.wb) and not self.wb[i].startswith(".dm"):  # accumulate statements into the macro until we hit another .dm or a .dm-
           t.append(self.wb[i])
           del self.wb[i]
-        del self.wb[i] # the closing .dm-
+        if i < len(self.wb) and self.wb[i] == ".dm-":       # if we hit a .dm- then delete it and finalize the macro
+          del self.wb[i] # the closing .dm-
+        else:                                               # quit if we hit end-of-file or a .dm before finding the .dm- 
+          self.fatal("missing .dm- for macro: " + macroid)
         # macro is stored in t[]
         self.macro[macroid] = t
         i -= 1
