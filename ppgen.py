@@ -509,7 +509,7 @@ class Book(object):
         if len(tlex) > 1:
           macroid = tlex[1] # string
         else:
-          self.fatal("incorrect .dm command: macro name missing.")
+          self.crash_w_context("incorrect .dm command: macro name missing.", i)
         del self.wb[i]
         t = []
         while i < len(self.wb) and not self.wb[i].startswith(".dm"):  # accumulate statements into the macro until we hit another .dm or a .dm-
@@ -952,7 +952,19 @@ class Ppt(Book):
     # autonumbered footnotes are assigned numbers
     # footnotes in text
     fncr = 1
-    for i in range(len(self.wb)):
+    i = 0
+    while i < len(self.wb):
+
+      # skip literal sections
+      if ".li" == self.wb[i]:
+        while i < len(self.wb) and not ".li-" == self.wb[i]:
+          i += 1
+        if i == len(self.wb):
+          self.crash_w_context("unclosed .li", i)
+        i += 1
+        continue
+
+
       m = re.search("\[#\]", self.wb[i])
       while m:
         self.wb[i] = re.sub("\[#\]", "[{}]".format(fncr), self.wb[i], 1)
@@ -962,6 +974,15 @@ class Ppt(Book):
     fncr = 1
     i = 0
     while i < len(self.wb):
+
+    # skip literal sections
+      if ".li" == self.wb[i]:
+        while not ".li-" == self.wb[i]:
+          i += 1
+        i += 1
+        continue
+
+
       if ".fn #" == self.wb[i]:
         self.wb[i:i+1] = [".sp 1",".fn {}".format(fncr)]
         fncr += 1
@@ -1298,10 +1319,13 @@ class Ppt(Book):
   # .li literal block (pass-through)
   def doLit(self):
     self.cl += 1 # skip the .li
-    while self.wb[self.cl] != ".li-":
+    while (self.cl < len(self.wb)) and self.wb[self.cl] != ".li-":
       self.eb.append(self.wb[self.cl])
       self.cl += 1
-    self.cl += 1 # skip the .li-
+    if self.cl < len(self.wb):
+      self.cl += 1 # skip the .li-
+    else:
+      self.crash_w_context("unclosed .li", self.cl)
 
   # .pb page break
   def doPb(self):
@@ -1970,9 +1994,12 @@ class Ppt(Book):
   # .de CSS definition
   # ignore the directive in text
   def doDef(self):
-    while self.wb[self.cl].endswith("\\"):
+    while (self.cl < len(self.wb) - 1) and self.wb[self.cl].endswith("\\"):
       del self.wb[self.cl] # multiple line
-    del self.wb[self.cl] # last or single line
+    if not self.wb[self.cl].endswith("\\"):
+      del self.wb[self.cl] # last or single line
+    else:
+      self.fatal("source file ends with continued .de command: {}".format(self.wb[self.cl]))
 
   def doPara(self):
     t = []
@@ -2318,6 +2345,15 @@ class Pph(Book):
     fncr = 1
     i = 0
     while i < len(self.wb):
+
+      # skip literal sections
+      if ".li" == self.wb[i]:
+        while not ".li-" == self.wb[i]:
+          i += 1
+        i += 1
+        continue
+
+
       m = re.match(r"\.fn (\d+)", self.wb[i]) # explicit
       if m:
         fncr = int(m.group(1)) + 1
@@ -2631,7 +2667,6 @@ class Pph(Book):
         m = re.search(r"#(.*?):(.*?)#", self.wb[i])
 
       self.wb[i] = re.sub("⫉", '#', self.wb[i])
-      i += 1
 
     for i, line in enumerate(self.wb):
       self.wb[i] = re.sub("⑥", ":", self.wb[i])
@@ -2727,10 +2762,13 @@ class Pph(Book):
   # .li literal (pass-through)
   def doLit(self):
     del self.wb[self.cl]  # .li
-    while self.wb[self.cl] != ".li-":
+    while (self.cl < len(self.wb)) and self.wb[self.cl] != ".li-":
       # leave in place
       self.cl += 1
-    del self.wb[self.cl]  # .li-
+    if self.cl < len(self.wb):
+      del self.wb[self.cl]  # .li-
+    else:
+      self.crash_w_context("unclosed .li", self.cl)
 
   # .pb page break
   # display a page break in HTML on a browser.
@@ -2809,15 +2847,19 @@ class Pph(Book):
     else:
       # multiple line
       self.wb[self.cl] = re.sub(r"\.de ", "", self.wb[self.cl])
-      while self.wb[self.cl].endswith("\\"):
+      while (self.cl < len(self.wb) - 1) and self.wb[self.cl].endswith("\\"):
         s = re.sub(r"\\", "", self.wb[self.cl])
         self.css.addcss("[{}] {}".format(self.csslc, s))
         self.csslc += 1
         del self.wb[self.cl]
       # final line
-      self.css.addcss("[{}] {}".format(self.csslc, self.wb[self.cl]))
-      self.csslc += 1
-      del self.wb[self.cl]
+      if not self.wb[self.cl].endswith("\\"):
+        self.css.addcss("[{}] {}".format(self.csslc, self.wb[self.cl]))
+        self.csslc += 1
+        del self.wb[self.cl]
+      else:
+        self.fatal("source file ends with continued .de command: {}".format(self.wb[self.cl]))
+
 
   # h1
   def doH1(self):
