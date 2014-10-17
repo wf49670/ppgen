@@ -14,7 +14,7 @@ from math import sqrt
 import struct
 import imghdr
 
-VERSION="3.36"
+VERSION="3.36" # with patch for .nf c + .na
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1535,7 +1535,7 @@ class Ppt(Book):
       self.regTI += int(m.group(1))
     self.cl += 1
 
-  # no-fill, centered (test)
+  # no-fill, centered (text)
   def doNfc(self, mo):
     t = []
     i = self.cl + 1 # skip the .nf c line
@@ -3431,7 +3431,7 @@ class Pph(Book):
   # takes no internal justification commands
   # note: mo is currently ignored for centered blocks.
   def doNfc(self, mo):
-    s = self.fetchStyle()
+    s = self.fetchStyle(nfc=True)
     startloc = self.cl
     i = self.cl
     t = []
@@ -4030,7 +4030,7 @@ class Pph(Book):
 
   # called to retrieve a style string representing current display parameters
   #
-  def fetchStyle(self):
+  def fetchStyle(self, nfc=False):
     s = ""
     if self.regIN != 0:
       inpct = (self.regIN * 100)/72
@@ -4050,7 +4050,7 @@ class Pph(Book):
       self.pvs = 0
     if self.fsz != "100%" and self.fsz != "1.0em":
       s += "font-size:{};".format(self.fsz)
-    if self.regAD == 0:
+    if not nfc and self.regAD == 0:
       s += "text-align:left;"
     return s
 
