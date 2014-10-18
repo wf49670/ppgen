@@ -1359,11 +1359,14 @@ class Ppt(Book):
 
   # doDiv (text)
   def doDiv(self):
-    del(self.wb[self.cl])
     j = self.cl
-    while j < len(self.wb) and self.wb[j] != ".dv-":
+    while j < len(self.wb) and self.wb[j] != ".dv-":   # skip over .dv block
       j += 1
-    del(self.wb[j])    
+    if j < len(self.wb):
+      self.wb[j] = ""                                  # force paragraph break after .dv block if closed properly
+    else:
+      self.crash_w_context("unclosed .dv directive.",self.cl)
+    del(self.wb[self.cl])                              # delete the .dv directive. 
 
   # .hr horizontal rule
   def doHr(self):
@@ -1556,7 +1559,7 @@ class Ppt(Book):
   # .ti temporary indent
   def doTi(self):
     m = re.match(r"\.ti (.+)", self.wb[self.cl])
-    if m:
+    if m:         # will always be true, as we converted ".ti" with no argument to ".ti 2" earlier
       self.regTI += int(m.group(1))
     self.cl += 1
 
@@ -2826,7 +2829,10 @@ class Pph(Book):
     j = self.cl
     while j < len(self.wb) and self.wb[j] != ".dv-":
       j += 1
-    self.wb[j:j+1] = ["", "</div>"]
+    if j < len(self.wb):
+      self.wb[j:j+1] = ["", "</div>"]
+    else:
+      self.crash_w_context("unclosed .dv directive.",self.cl)
 
   # .hr horizontal rule
   def doHr(self):
@@ -3445,7 +3451,7 @@ class Pph(Book):
   # .ti temporary indent
   def doTi(self):
     m = re.match(r"\.ti (.+)", self.wb[self.cl])
-    if m:
+    if m:     # will always be true, as we converted ".ti" with no argument to ".ti 2" earlier
       # special case: forcing a .ti of 0
       if int(m.group(1)) == 0:
         self.regTI = -1000
