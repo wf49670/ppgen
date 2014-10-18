@@ -105,6 +105,8 @@ class Book(object):
     self.nregs["psb"] = "1.0em" # default above/below paragraph spacing for block text
     self.nregs["pnc"] = "silver" # use to define page number color in HTML
     self.nregs["lang"] = "en" # base language for the book (used in HTML header)
+    self.nregs["Footnote"] = "Footnote" # English word for Footnote for text files
+    self.nregs["Illustration"] = "Illustration" # English word for Illustration for text files
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string
 
@@ -293,6 +295,20 @@ class Book(object):
         print("   {}".format(self.wb[j]))
     self.fatal("exiting")
 
+
+  # extract content of an optionally quoted string
+  # used in .nr
+
+  def deQuote(self, s, i):
+    m = re.match(r"([\"'])(.*?)\1", s)  # If properly quoted
+    if m:
+      return m.group(1)
+    elif s.startswith("\"") or s.startswith("'") or s.endswith("\"") or s.endswith("'"):
+      self.crash_w_context("incorrect value: {}".format(s), i)    
+    else:
+      return s
+
+
   # .nr named register
   # we are here if the line starts with .nr
   def doNr(self):
@@ -314,6 +330,12 @@ class Book(object):
         known_register = True
       if registerName == "lang": # base language
         self.nregs["lang"] = m.group(2)
+        known_register = True
+      if registerName == "Footnote": # foreign language translation for "Footnote"
+        self.nregs["Footnote"] = self.deQuote(m.group(2), self.cl)
+        known_register = True
+      if registerName == "Illustration": # foreign language translation for "Illustration"
+        self.nregs["Illustration"] = self.deQuote(m.group(2), self.cl)
         known_register = True
       if not known_register:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
@@ -957,19 +979,19 @@ class Ppt(Book):
 
       # skip literal sections
       if ".li" == self.wb[i]:
-        while i < len(self.wb) and not ".li-" == self.wb[i]:
+        while (i < len(self.wb)) and not ".li-" == self.wb[i]:
           i += 1
         if i == len(self.wb):
           self.crash_w_context("unclosed .li", i)
         i += 1
         continue
 
-
       m = re.search("\[#\]", self.wb[i])
       while m:
         self.wb[i] = re.sub("\[#\]", "[{}]".format(fncr), self.wb[i], 1)
         fncr += 1
         m = re.search("\[#\]", self.wb[i])
+      i += 1
     # must do separately
     fncr = 1
     i = 0
@@ -1429,28 +1451,31 @@ class Ppt(Book):
         if ".ca" == self.wb[self.cl]:
           # multiple line caption
           self.cl += 1 # the starting .ca
-          s = "[Illustration: {}".format(self.wb[self.cl])
+          s = "[{}: {}".format(self.nregs["Illustration"],self.wb[self.cl])
           t = self.wrap(s, 0, self.regLL, 0)
           self.eb += t
           self.cl += 1
-          while not (self.wb[self.cl]).startswith(".ca"):
+          i = self.cl        # remember where we started
+          while (self.cl < len(self.wb)) and not (self.wb[self.cl]).startswith(".ca"):
             s = self.wb[self.cl]
             t = self.wrap(s, 0, self.regLL, 0)
             self.eb += t
             self.cl += 1
+          if self.cl == len(self.wb):
+            self.crash_w_context("Unclosed .ca directive.", i)
           self.eb[-1] += "]"
           self.cl += 1 # the closing .ca-
         else:
           # single line
           caption = self.wb[self.cl][4:]
-          s = "[Illustration: {}]".format(caption)
+          s = "[{}: {}]".format(self.nregs["Illustration"],caption)
           t = self.wrap(s, 0, self.regLL, 0)
           self.eb += t
           self.cl += 1 # caption line
 
       else:
         # no caption, just illustration
-        t = ["[Illustration]"]
+        t = ["[{}]".format(self.nregs["Illustration"])]
         self.eb += t
 
   # .in left margin indent
@@ -1748,7 +1773,7 @@ class Ppt(Book):
     m = re.match(r"\.fn (\d+)", self.wb[self.cl]) # expect numeric
     if m: # footnote start
       fnname = m.group(1)
-      self.eb.append("Footnote {}: ".format(fnname))
+      self.eb.append("{} {}: ".format(self.nregs["Footnote"], fnname))
       self.wb[self.cl] = ".in +2"
       return
     else: # non-numeric footnote
@@ -3321,10 +3346,12 @@ class Pph(Book):
         s = self.wb[self.cl+j] + "<br />"
         rep += 1
         j += 1
-        while self.wb[self.cl+j] != ".ca-":
+        while ((self.cl + j) < len(self.wb)) and self.wb[self.cl+j] != ".ca-":
           s += self.wb[self.cl+j] + "<br />"
           j += 1
           rep += 1
+        if (self.cl + j) == len(self.wb):
+          self.crash_w_context("Unclosed .ca directive.", self.cl)
         rep += 1
         caption = s[0:-6] # strip trailing break tag
       else: # single line
