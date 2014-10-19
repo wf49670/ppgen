@@ -300,9 +300,9 @@ class Book(object):
   # used in .nr
 
   def deQuote(self, s, i):
-    m = re.match(r"([\"'])(.*?)\1", s)  # If properly quoted
+    m = re.match(r"([\"'])(.*)\1", s)  # If properly quoted
     if m:
-      return m.group(1)
+      return m.group(2)
     elif s.startswith("\"") or s.startswith("'") or s.endswith("\"") or s.endswith("'"):
       self.crash_w_context("incorrect value: {}".format(s), i)    
     else:
@@ -312,7 +312,7 @@ class Book(object):
   # .nr named register
   # we are here if the line starts with .nr
   def doNr(self):
-    m = re.match(r"\.nr (.+) (.+)", self.wb[self.cl])
+    m = re.match(r"\.nr (.+?) (.+)", self.wb[self.cl])
     if not m:
       self.crash_w_context("malformed .nr command: {}".format(self.wb[self.cl]), self.cl)
     else:
