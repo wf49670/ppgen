@@ -1194,6 +1194,8 @@ class Ppt(Book):
     for i in range(len(self.srw)):
       if ('t' in self.srw[i]) or (self.renc in self.srw[i]):       # if this one applies to the text form we're generating
         k = 0
+        l = 0
+        ll = 0
         for j in range(len(self.eb)):
           try:
             m = re.search(self.srs[i], self.eb[j])               # search for current search string
@@ -1208,7 +1210,8 @@ class Ppt(Book):
             if 'd' in self.debug:
               print("{} found in: {}".format(self.srs[i], self.eb[j]))
             try:
-              self.eb[j] = re.sub(self.srs[i], self.srr[i], self.eb[j])      # replace all occurrences in the line
+              self.eb[j], l = re.subn(self.srs[i], self.srr[i], self.eb[j])      # replace all occurrences in the line
+              ll += l
             except:
               if 'd' in self.debug:
                 traceback.print_exc()
@@ -1218,7 +1221,7 @@ class Ppt(Book):
             if 'd' in self.debug:
               print("Replaced: {}".format(self.eb[j]))
 
-        print("Search string {}:{} matched in {} lines.".format(i, self.srs[i], k))
+        print("Search string {}:{} matched in {} lines, replaced {} times.".format(i, self.srs[i], k, ll))
 
   # -------------------------------------------------------------------------------------
   # save emit buffer in UTF-8 encoding to specified dstfile (text output, UTF-8)
@@ -2774,6 +2777,8 @@ class Pph(Book):
     for i in range(len(self.srw)):
       if ('h' in self.srw[i]):       # if this one applies to HTML
         k = 0
+        l = 0
+        ll = 0
         for j in range(len(self.wb)):
           try:
             m = re.search(self.srs[i], self.wb[j])               # search for current search string
@@ -2788,7 +2793,8 @@ class Pph(Book):
             if 'd' in self.debug:
               print("{} found in: {}".format(self.srs[i], self.wb[j]))
             try:
-              self.wb[j] = re.sub(self.srs[i], self.srr[i], self.wb[j])      # replace all occurrences in the line
+              self.wb[j], l = re.subn(self.srs[i], self.srr[i], self.wb[j])      # replace all occurrences in the line
+              ll += l
             except:
               if 'd' in self.debug:
                 traceback.print_exc()
@@ -2798,7 +2804,7 @@ class Pph(Book):
             if 'd' in self.debug:
               print("Replaced: {}".format(self.wb[j]))
 
-        print("Search string {}:{} matched in {} lines.".format(i, self.srs[i], k))
+        print("Search string {}:{} matched in {} lines, replaced {} times.".format(i, self.srs[i], k, ll))
 
   # -------------------------------------------------------------------------------------
   # save buffer to specified dstfile (HTML output)
