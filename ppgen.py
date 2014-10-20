@@ -13,6 +13,7 @@ import random, inspect
 from math import sqrt
 import struct
 import imghdr
+import traceback
 
 VERSION="3.36" # with patch for .nf c + .na
 
@@ -412,7 +413,6 @@ class Book(object):
           self.mau.append(m.group(2))
           self.mal.append(m.group(4))
           del self.wb[i]
-          i -= 1
           continue
 
         m = re.match(r"\.ma ([\"'])(.*?)\1 (.*?)$", self.wb[i])  # only first in quotes
@@ -420,7 +420,6 @@ class Book(object):
           self.mau.append(m.group(2))
           self.mal.append(m.group(3))
           del self.wb[i]
-          i -= 1
           continue
           
         m = re.match(r"\.ma (.*?) ([\"'])(.*?)\2", self.wb[i])  # only second in quotes
@@ -428,7 +427,6 @@ class Book(object):
           self.mau.append(m.group(1))
           self.mal.append(m.group(3))
           del self.wb[i]
-          i -= 1
           continue
 
         m = re.match(r"\.ma (.*?) (.*?)$", self.wb[i])  # neither in quotes
@@ -436,10 +434,40 @@ class Book(object):
           self.mau.append(m.group(1))
           self.mal.append(m.group(2))
           del self.wb[i]
-          i -= 1
           continue
 
       i += 1
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # process search/replace strings
+    # .sr <which> /search/replace/
+    # which is a string containing some combination of ulth (UTF-8, Latin-1, Text, HTML)
+    # search is  reg-ex search string
+    # replace is a reg-ex replace string
+    # / is any character not contained within either search or replace
+    #
+    # Values gathered during preprocessCommon and saved for use during post-processing
+    i = 0
+    self.srw = []    # "which" array
+    self.srs = []    # "search" array
+    self.srr = []    # "replace" array
+    while i < len(self.wb):
+      if self.wb[i].startswith(".sr"):
+
+        m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
+        if m:
+          self.srw.append(m.group(1))
+          self.srs.append(m.group(3))
+          self.srr.append(m.group(4))
+          if m.group(5) != "":           # if anything here then the user's expression was wrong, somehow
+            self.crash_w_context("Problem with .sr arguments: 1={} 2={} 3={} 4={} Unexpected 5={}".format(m.group(1),m.group(2), m.group(3), m.group(4), m.group(5)), i)
+          del self.wb[i]
+          continue
+        else:
+          self.crash_w_context("Problem parsing .sr arguments.", i)
+
+      i += 1
+
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # long caption lines may end with a single backslash (25-Jun-2014)
@@ -1159,11 +1187,44 @@ class Ppt(Book):
     for i, line in enumerate(self.eb):
       self.eb[i] = self.eb[i].replace("◮", "=")
 
+
+    # process saved search/replace strings, if any
+    # but only if our output format matches something in the saved "which" value
+
+    for i in range(len(self.srw)):
+      if ('t' in self.srw[i]) or (self.renc in self.srw[i]):       # if this one applies to the text form we're generating
+        k = 0
+        for j in range(len(self.eb)):
+          try:
+            m = re.search(self.srs[i], self.eb[j])               # search for current search string
+          except:
+            if 'd' in self.debug:
+              traceback.print_exc()
+              self.fatal("Above error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.eb[j]))
+            else:
+              self.fatal("Error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.eb[j]))
+          if m:                                             # if found
+            k += 1
+            if 'd' in self.debug:
+              print("{} found in: {}".format(self.srs[i], self.eb[j]))
+            try:
+              self.eb[j] = re.sub(self.srs[i], self.srr[i], self.eb[j])      # replace all occurrences in the line
+            except:
+              if 'd' in self.debug:
+                traceback.print_exc()
+                self.fatal("Above error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.eb[j]))
+              else:
+                self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.eb[j]))
+            if 'd' in self.debug:
+              print("Replaced: {}".format(self.eb[j]))
+
+        print("Search string {}:{} matched in {} lines.".format(i, self.srs[i], k))
+
   # -------------------------------------------------------------------------------------
   # save emit buffer in UTF-8 encoding to specified dstfile (text output, UTF-8)
   def saveFileU(self, fn):
     longcount = 0
-    while not self.eb[-1]:
+    while (len(self.eb) > 0) and not self.eb[-1]:
       self.eb.pop()
     f1 = codecs.open(fn, "w", "utf-8")
     for index,t in enumerate(self.eb):
@@ -2705,7 +2766,39 @@ class Pph(Book):
       while m:
         self.wb[i] = re.sub(m.group(0), "<span lang=\"{0}\" xml:lang=\"{0}\">".format(m.group(1)), self.wb[i], 1)
         m = re.search(r"ᒪ'(.+?)'", self.wb[i])
-      self.wb[i] = re.sub("ᒧ", "</span>", self.wb[i])      
+      self.wb[i] = re.sub("ᒧ", "</span>", self.wb[i])
+
+    # process saved search/replace strings, if any
+    # but only if our output format matches something in the saved "which" value
+
+    for i in range(len(self.srw)):
+      if ('h' in self.srw[i]):       # if this one applies to HTML
+        k = 0
+        for j in range(len(self.wb)):
+          try:
+            m = re.search(self.srs[i], self.wb[j])               # search for current search string
+          except:
+            if 'd' in self.debug:
+              traceback.print_exc()
+              self.fatal("Above error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.wb[j]))
+            else:
+              self.fatal("Error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.wb[j]))
+          if m:                                             # if found
+            k += 1
+            if 'd' in self.debug:
+              print("{} found in: {}".format(self.srs[i], self.wb[j]))
+            try:
+              self.wb[j] = re.sub(self.srs[i], self.srr[i], self.wb[j])      # replace all occurrences in the line
+            except:
+              if 'd' in self.debug:
+                traceback.print_exc()
+                self.fatal("Above error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.wb[j]))
+              else:
+                self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.wb[j]))
+            if 'd' in self.debug:
+              print("Replaced: {}".format(self.wb[j]))
+
+        print("Search string {}:{} matched in {} lines.".format(i, self.srs[i], k))
 
   # -------------------------------------------------------------------------------------
   # save buffer to specified dstfile (HTML output)
