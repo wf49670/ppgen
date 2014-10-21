@@ -412,7 +412,6 @@ class Book(object):
           self.mau.append(m.group(2))
           self.mal.append(m.group(4))
           del self.wb[i]
-          i -= 1
           continue
 
         m = re.match(r"\.ma ([\"'])(.*?)\1 (.*?)$", self.wb[i])  # only first in quotes
@@ -420,7 +419,6 @@ class Book(object):
           self.mau.append(m.group(2))
           self.mal.append(m.group(3))
           del self.wb[i]
-          i -= 1
           continue
           
         m = re.match(r"\.ma (.*?) ([\"'])(.*?)\2", self.wb[i])  # only second in quotes
@@ -428,7 +426,6 @@ class Book(object):
           self.mau.append(m.group(1))
           self.mal.append(m.group(3))
           del self.wb[i]
-          i -= 1
           continue
 
         m = re.match(r"\.ma (.*?) (.*?)$", self.wb[i])  # neither in quotes
@@ -436,7 +433,6 @@ class Book(object):
           self.mau.append(m.group(1))
           self.mal.append(m.group(2))
           del self.wb[i]
-          i -= 1
           continue
 
       i += 1
