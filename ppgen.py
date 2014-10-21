@@ -13,6 +13,7 @@ import random, inspect
 from math import sqrt
 import struct
 import imghdr
+import traceback
 
 VERSION="3.37"
 
@@ -548,7 +549,19 @@ class Book(object):
     i = 0
     while i < len(self.wb):
       if self.wb[i].startswith(".pm"):
-        tlex = shlex.split(self.wb[i])  # ".pm" "tnote" "a" "<li>"
+        while (i < len(self.wb) - 1) and self.wb[i].endswith("\\"):   # allow continuation via ending \ for .pm
+          self.wb[i] = re.sub(r"\\$", "", self.wb[i]) + self.wb[i+1]
+          del self.wb[i+1]
+        if self.wb[i].endswith("\\"):
+          self.fatal("file ends with continued .pm")
+        try:
+          tlex = shlex.split(self.wb[i])  # ".pm" "tnote" "a" "<li>"
+        except:
+          if 'd' in self.debug:
+            traceback.print_exc()
+            self.fatal("Above error occurred while processing line: {}".format(self.wb[i]))
+          else:
+            self.fatal("Error occurred parsing .pm arguments for: {}".format(self.wb[i]))
         macroid = tlex[1]  # "tnote"
         # t = self.macro[macroid].copy() # after 3.3 only
         # t = self.macro[macroid][:] # another way
