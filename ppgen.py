@@ -16,6 +16,7 @@ import imghdr
 import traceback
 
 VERSION="3.37"
+# 21-Oct-2014: pending vertical space for .fn and .pb
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2812,10 +2813,16 @@ class Pph(Book):
   # in epub/mobi, a physical page break is used so use a
   # @media handheld to make the horizontal rule invisible
   def doPb(self):
+    # if there is a pending vertical space, include it in style
+    hcss = "margin-top:1em; "  # default
+    if self.pvs > 0:
+      hcss = " margin-top:{}em; ".format(self.pvs)
+      self.pvs = 0
+      
     self.css.addcss("[1465] div.pbb { page-break-before:always; }")
-    self.css.addcss("[1466] hr.pb { border:none;border-bottom:1px solid; margin:1em auto; }")
+    self.css.addcss("[1466] hr.pb { border:none;border-bottom:1px solid; margin-bottom:1em; }")
     self.css.addcss("[1467] @media handheld { hr.pb { display:none; }}")
-    self.wb[self.cl:self.cl+1] = ["<div class='pbb'></div>", "<hr class='pb' />"]
+    self.wb[self.cl:self.cl+1] = ["<div class='pbb'></div>", "<hr class='pb' style='{}'/>".format(hcss)]
     self.cl += 2
 
   # extract any "class=" argument from string s
@@ -3717,7 +3724,17 @@ class Pph(Book):
           self.css.addcss("[1431] div.footnote>:first-child { margin-top:1em; }")
           self.css.addcss("[1432] div.footnote .label { display: inline-block; width: 0em; text-indent: -2.5em; text-align: right;}")
           fnname = m.group(1)
-          self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
+          
+          # if there is a pending vertical space, include it in style
+          hcss = ""
+          if self.pvs > 0:
+            hcss = " margin-top:{}em; ".format(self.pvs)
+            self.pvs = 0
+            
+          if hcss != "":
+            self.wb[self.cl] = "<div class='footnote' id='f{}' style='{}'>".format(fnname, hcss)
+          else:
+            self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
           s = "<span class='label'><a href='#r{0}'>{0}</a>.&nbsp;&nbsp;</span>".format(fnname)
           self.cl += 1
           self.wb[self.cl] = s + self.wb[self.cl]
