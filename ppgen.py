@@ -15,8 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.37"
-# 21-Oct-2014: pending vertical space for .fn and .pb
+VERSION="3.38"
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
