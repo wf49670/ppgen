@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.38"
+VERSION="3.39"  # 23-Oct-2014 1630 MST
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
