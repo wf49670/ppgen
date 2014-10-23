@@ -338,6 +338,7 @@ class Book(object):
         known_register = True
       if registerName == "Illustration": # foreign language translation for "Illustration"
         self.nregs["Illustration"] = self.deQuote(m.group(2), self.cl)
+        known_register = True
       if registerName == "dcs": # drop cap font size
         self.nregs["dcs"] = m.group(2)
         known_register = True
