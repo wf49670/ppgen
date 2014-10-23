@@ -108,6 +108,7 @@ class Book(object):
     self.nregs["lang"] = "en" # base language for the book (used in HTML header)
     self.nregs["Footnote"] = "Footnote" # English word for Footnote for text files
     self.nregs["Illustration"] = "Illustration" # English word for Illustration for text files
+    self.nregs["dcs"] = "250%" # drop cap font size
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string
 
@@ -337,6 +338,8 @@ class Book(object):
         known_register = True
       if registerName == "Illustration": # foreign language translation for "Illustration"
         self.nregs["Illustration"] = self.deQuote(m.group(2), self.cl)
+      if registerName == "dcs": # drop cap font size
+        self.nregs["dcs"] = m.group(2)
         known_register = True
       if not known_register:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
@@ -4026,10 +4029,12 @@ class Pph(Book):
       dclh = m.group(2)
       dcadjs = "{}_{}".format(dcadj, dclh)
       dcadjs = re.sub(r"\.", "_", dcadjs) # name formatting
+      mt = (250.0 / float(re.sub("%","",self.nregs["dcs"]))) * 0.1
+      mr = (250.0 / float(re.sub("%","",self.nregs["dcs"]))) * 0.1
     else:
       self.fatal("incorrect format for .dc arg1 arg2 command")
-    self.css.addcss("[1930] p.drop-capa{0} {{ text-indent:-{1}em; }}".format(dcadjs,dcadj))
-    self.css.addcss("[1931] p.drop-capa{0}:first-letter {{ float:left;margin:0.1em 0.1em 0em 0em;font-size:250%;line-height:{1}em;text-indent:0 }}".format(dcadjs,dclh))
+    self.css.addcss("[1930] p.drop-capa{} {{ text-indent:-{}em; }}".format(dcadjs,dcadj))
+    self.css.addcss("[1931] p.drop-capa{}:first-letter {{ float:left;margin:{:0.3f}em {:0.3f}em 0em 0em;font-size:{};line-height:{}em;text-indent:0 }}".format(dcadjs,mt,mr,self.nregs["dcs"],dclh))
     self.css.addcss("[1933] @media handheld {")
     self.css.addcss("[1935]   p.drop-capa{} {{ text-indent:0 }}".format(dcadjs))
     self.css.addcss("[1936]   p.drop-capa{}:first-letter {{ float:none;margin:0;font-size:100%; }}".format(dcadjs))
