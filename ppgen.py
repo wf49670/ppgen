@@ -3193,6 +3193,8 @@ class Pph(Book):
         # if not "%" in iw:
         #   self.fatal("width, if specified, must be in percent")
       ia["iw"] = iw
+      if (not iw.endswith("%")) and (not iw.endswith("px")):
+        self.warn("image width (w=) does not end in px or %. The image will not display properly:\n    {}".format(s0))
 
       # user-requested epub width in %
       ew = ""
