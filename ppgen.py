@@ -3627,11 +3627,11 @@ class Pph(Book):
         # there may be some tags *before* the leading space
         tmp = self.wb[i][:]
         ss = ""
-        m = re.match(r"^<[^>]+>", tmp)
+        m = re.match(r"^<[^>]+>|⑯\w+⑰", tmp)
         while m:
           ss += m.group(0)
-          tmp = re.sub(r"^<[^>]+>", "", tmp)
-          m = re.match(r"^<[^>]+>", tmp)
+          tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp)
+          m = re.match(r"^<[^>]+>|⑯\w+⑰", tmp)
         leadsp = len(tmp) - len(tmp.lstrip())
         if cpvs > 0:
           spvs = " style='margin-top:{}em' ".format(cpvs)
