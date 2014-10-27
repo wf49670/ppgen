@@ -2230,7 +2230,21 @@ class Pph(Book):
         ck3c = m.group(1)
         self.wb[i] = re.sub(ck0, "class='{0} {1}' {2} ".format(ck1c, ck3c, ck2), self.wb[i])
         self.wb[i] = re.sub("\s\s*", " ", self.wb[i]) # courtesy whitespace cleanup
-
+    # fix FF problem with interaction between pageno and drop-caps
+    i = 0
+    while i < len(self.wb):
+      m = re.search("(.*?)(<p class='drop-capa.*>)(<span class='pageno'.*?>.*?</span>)(.*)$", self.wb[i])  # look for drop-cap HTML before pageno HTML
+      if m:
+        t = []
+        if m.group(1):
+          t.append(m.group(1))
+        t.append(m.group(3))      # move the pageno span to before the drop-cap paragraph (it will end up in its own div)
+        t.append(m.group(2))
+        if m.group(4):
+          t.append(m.group(4))
+        self.wb[i:i+1] = t
+        i += len(t)
+      i += 1
   # -------------------------------------------------------------------------------------
   # courtesy id check
   #
