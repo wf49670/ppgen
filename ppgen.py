@@ -823,7 +823,7 @@ class Ppt(Book):
 
   # bailout after saving working buffer in bailout.txt
   def bailout(self, buffer):
-    f1 = open("bailout.txt", "w", encoding='utf-8')
+    f1 = codecs.open("bailout.txt", "w", encoding='utf-8')
     for index,t in enumerate(buffer):
       f1.write( "{:s}\r\n".format(t.rstrip()) )
     f1.close()
@@ -1122,7 +1122,6 @@ class Ppt(Book):
           self.eb.insert(i,"")
           count -= 1
       i += 1
-
     # restore tokens
     for i, line in enumerate(self.eb):
       self.eb[i] = re.sub("ⓓ|Ⓓ", ".", self.eb[i])  # ellipsis dots
