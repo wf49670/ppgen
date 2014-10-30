@@ -63,6 +63,7 @@ def xp(msg):
 class Book(object):
   wb = [] # working buffer
   eb = [] # emit buffer
+  bb = [] # GG .bin file buffer
   regLL = 72 # line length
   regIN = 0 # indent
   regTI = 0 # temporary indent
@@ -685,6 +686,20 @@ class Book(object):
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # .bn (GG-compatible .bin file maintenance)
+    i = 0
+    self.bnPresent = False
+    while i < len(self.wb):
+      if self.wb[i].startswith(".bn"):
+        m = re.search("([a-zA-Z0-9]+)\.png",self.wb[i])
+        if m:
+          self.bnPresent = True
+          self.wb[i] = "⑱{}⑱".format(m.group(1))
+        else:
+          self.crash_w_context("malformed .bn command",i)
+      i += 1
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # superscripts, subscripts
     for i in range(len(self.wb)):
 
@@ -802,6 +817,7 @@ class Book(object):
 class Ppt(Book):
   eb = [] # emit buffer for generated text
   wb = [] # working buffer
+  bb = [] # GG .bin buffer
 
   long_table_line_count = 0
 
@@ -823,41 +839,32 @@ class Ppt(Book):
 
   # bailout after saving working buffer in bailout.txt
   def bailout(self, buffer):
-    f1 = open("bailout.txt", "w", encoding='utf-8')
+    f1 = codecs.open("bailout.txt", "w", encoding='utf-8')
     for index,t in enumerate(buffer):
       f1.write( "{:s}\r\n".format(t.rstrip()) )
     f1.close()
     exit(1)
-
-  def meanstdv(self, x):
-    """ Calculate mean and standard deviation of data x[] """
-    n, mean, std = len(x), 0, 0
-    if n == 0:
-      return (0, 0, 0)
-    if n == 1:
-      return (1, len(x[0]), 0)
-    for a in x:
-  	  mean = mean + len(a)
-    mean = mean / float(n)
-    for a in x:
-  	  std = std + (len(a) - mean)**2
-    std = sqrt(std / float(n-1))
-    return n, mean, std
 
   def line_len_diff(self, x):
     """ calculate max diff between longest and shortest line of data x[] """
     longest_line_len = 0
     shortest_line_len = 1000
     for line in x:
-      longest_line_len = max(longest_line_len, len(line))
-      shortest_line_len = min(shortest_line_len, len(line))
+      tline = line
+      if self.bnPresent:  # remove .bn info if any before doing calculation
+        tline = re.sub("⑱.*?⑱","",tline)
+      longest_line_len = max(longest_line_len, len(tline))
+      shortest_line_len = min(shortest_line_len, len(tline))
     return longest_line_len - shortest_line_len
 
   def shortest_line_len(self, x):
     """ return length of shotest line in x[] """
     shortest_line_len = 1000
     for line in x:
-      shortest_line_len = min(shortest_line_len, len(line))
+      tline = line
+      if self.bnPresent: # remove .bn info if any before doing calculation
+        tline = re.sub("⑱.*?⑱","",tline)
+      shortest_line_len = min(shortest_line_len, len(tline))
     return shortest_line_len
 
   # wrap string into paragraph in t[]
@@ -868,8 +875,24 @@ class Ppt(Book):
     hold = ""
     if ti < 0:
       howmany = -1 * ti
-      hold = s[0:howmany]
-      s = s[howmany:]
+      if not self.bnPresent:
+        hold = s[0:howmany]
+        s = s[howmany:]
+      else:
+        bnloc = s.find("⑱",end=howmany)  # look for .bn info
+        if bnloc == -1:       # if no .bn info
+          hold = s[0:howmany]
+          s = s[howmany:]
+        else:  # must account for .bn info
+          m = re.match("(.*?)(⑱.*?⑱)(.*)",s)
+          if m:
+            howmany1 = len(m.group(1))
+            howmany2 = howmany - howmany1
+            hold = s[0:howmany1] + m.group(2) + m.group3[0:howmany2]
+            howmany3 = len(hold)
+            s = s[howmany3:]
+          else:
+            self.fatal("error processing .bn info: {}".format(s))
 
     # if ti > 0, add leading nbsp
     if ti > 0:
@@ -879,11 +902,17 @@ class Ppt(Book):
     mywidth = ll - indent
     t =[]
     while len(s) > mywidth:
+      twidth = mywidth
+      if self.bnPresent:
+        m = re.match("(.*?)(⑱.*?⑱)(.*)",s)
+        if m:
+          if len(m.group(1)) <= mywidth:  # if .bn info within first mywidth characters
+            twidth = mywidth + len(m.group(2)) # allow wider split to account for .bn info
       try:
-        snip_at = s.rindex(" ", 0, mywidth)
+        snip_at = s.rindex(" ", 0, twidth)
       except:
         # could not find a place to wrap
-        snip_at = s.index(" ", mywidth) # Plan B
+        snip_at = s.index(" ", twidth) # Plan B
         self.warn("wide line: {}".format(s))
       t.append(s[:snip_at])
       s = s[snip_at+1:]
@@ -1097,6 +1126,9 @@ class Ppt(Book):
 
   def postprocess(self):
 
+    if self.bnPresent:  # if a GG-style .bin file is needed
+      self.bb.append("%pagenumbers = (") # insert the .bin header into the bb array
+
     # combine space requests
     i = 0
     while i < len(self.eb) - 1:
@@ -1122,7 +1154,7 @@ class Ppt(Book):
           self.eb.insert(i,"")
           count -= 1
       i += 1
-
+    self.bailout(self.eb) ###
     # restore tokens
     for i, line in enumerate(self.eb):
       self.eb[i] = re.sub("ⓓ|Ⓓ", ".", self.eb[i])  # ellipsis dots
@@ -1153,6 +1185,16 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("◺", "_{")
       self.eb[i] = self.eb[i].replace("◿", "}")
 
+      if self.bnPresent:  # if any .bn were found
+        m = re.search("(.*)⑱(.*?)⑱.*",self.eb[i])  # find any .bn information in this line
+        while m:
+          t = "'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG wants a 1-based count)
+          t = re.sub("\[","{",t,1)
+          t = re.sub("]","}",t,1)
+          self.bb.append(t)
+          self.eb[i] = re.sub("⑱.*?⑱", "", self.eb[i], 1)  # remove the .bn information
+          m = re.search("(.*)⑱(.*?)⑱.*",self.eb[i])  # look for another one on the same line
+
       if self.renc == 'u':
         if "[oe]" in self.eb[i]:
           self.warn("unconverted [oe] ligature written to UTF-8 file.")
@@ -1172,6 +1214,12 @@ class Ppt(Book):
     for i, line in enumerate(self.eb):
       self.eb[i] = self.eb[i].replace("◮", "=")
 
+    # finish building GG .bin file if needed
+    if self.bnPresent:
+      self.bb.append(");")
+      self.bb.append("$pngspath = '{}';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      self.bb.append("1;")
+
   # -------------------------------------------------------------------------------------
   # save emit buffer in UTF-8 encoding to specified dstfile (text output, UTF-8)
   def saveFileU(self, fn):
@@ -1190,6 +1238,14 @@ class Ppt(Book):
           self.warn("long line (>{}) beginning:\n  {}....".format(self.linelimitwarning, m.group(0)))
       f1.write( "{:s}\r\n".format(s) )
     f1.close()
+
+    # save GG .bin file if needed
+    if self.bnPresent:
+      fnb = fn + ".bin"
+      f1 = codecs.open(fnb, "w", "ISO-8859-1")
+      for index,t in enumerate(self.bb):
+        f1.write("{:s}\r\n".format(t))
+      f1.close()
 
   # -------------------------------------------------------------------------------------
   # convert utf-8 to Latin-1 in self.wb
@@ -1348,6 +1404,14 @@ class Ppt(Book):
           self.warn("long line (>{}) beginning:\n  {}....".format(self.linelimitwarning, m.group(0)))
       f1.write( "{:s}\r\n".format(s) )
     f1.close()
+
+    # save GG .bin file if needed
+    if self.bnPresent:
+      fnb = fn + ".bin"
+      f1 = codecs.open(fnb, "w", "ISO-8859-1")
+      for index,t in enumerate(self.bb):
+        f1.write("{:s}\r\n".format(t))
+      f1.close()
 
   # ----- process method group ----------------------------------------------------------
 
@@ -2170,9 +2234,9 @@ class Pph(Book):
 
   # bailout after saving working buffer in bailout.txt
   def bailout(self, buffer):
-    f1 = open("bailout.txt", "w", encoding='utf-8')
+    f1 = codecs.open("bailout.txt", "w", encoding='utf-8')
     for index,t in enumerate(buffer):
-      f1.write( "{:s}\r\n".format(t.rstrip()) )
+      f1.write( "{:s}\r\n".format(t.rstrip()) ) 
     f1.close()
     exit(1)
 
@@ -2230,21 +2294,7 @@ class Pph(Book):
         ck3c = m.group(1)
         self.wb[i] = re.sub(ck0, "class='{0} {1}' {2} ".format(ck1c, ck3c, ck2), self.wb[i])
         self.wb[i] = re.sub("\s\s*", " ", self.wb[i]) # courtesy whitespace cleanup
-    # fix FF problem with interaction between pageno and drop-caps
-    i = 0
-    while i < len(self.wb):
-      m = re.search("(.*?)(<p class='drop-capa.*>)(<span class='pageno'.*?>.*?</span>)(.*)$", self.wb[i])  # look for drop-cap HTML before pageno HTML
-      if m:
-        t = []
-        if m.group(1):
-          t.append(m.group(1))
-        t.append(m.group(3))      # move the pageno span to before the drop-cap paragraph (it will end up in its own div)
-        t.append(m.group(2))
-        if m.group(4):
-          t.append(m.group(4))
-        self.wb[i:i+1] = t
-        i += len(t)
-      i += 1
+
   # -------------------------------------------------------------------------------------
   # courtesy id check
   #
@@ -2737,14 +2787,6 @@ class Pph(Book):
   # -------------------------------------------------------------------------------------
   # save buffer to specified dstfile (HTML output)
   def saveFile(self, fn):
-
-    # remove double blank lines
-    i = 0
-    while i < len(self.wb) - 1:
-      if not self.wb[i] and not self.wb[i+1]:
-        del self.wb[i]
-        i -= 1
-      i += 1
     f1 = codecs.open(fn, "w", self.encoding)
     for index,t in enumerate(self.wb):
       try:
@@ -2753,6 +2795,14 @@ class Pph(Book):
         print( "internal error:\n  cannot write line: {:s}".format(t) )
         self.fatal("exiting")
     f1.close()
+
+    # save GG .bin file if needed
+    if self.bnPresent:
+      fnb = fn + ".bin"
+      f1 = codecs.open(fnb, "w", "ISO-8859-1")
+      for index,t in enumerate(self.bb):
+        f1.write("{:s}\r\n".format(t))
+      f1.close()
 
   # ----- makeHTML method group -----
 
@@ -3204,9 +3254,9 @@ class Pph(Book):
       iw = ""
       if "w=" in s:
         s, iw = self.get_id("w", s)
+        # if not "%" in iw:
+        #   self.fatal("width, if specified, must be in percent")
       ia["iw"] = iw
-      if (not iw.endswith("%")) and (not iw.endswith("px")):
-        self.warn("image width (w=) does not end in px or %. The image will not display properly:\n    {}".format(s0))
 
       # user-requested epub width in %
       ew = ""
@@ -3305,11 +3355,7 @@ class Pph(Book):
     self.css.addcss("[1610] .{} {{ width:{}; }}".format(idn, ia["iw"])) # the HTML illustration width
 
     if ia['ew'] == "":
-      if ia["iw"] != "":
-        ia["ew"] = ia["iw"]
-      else:
-        self.warn("cannot determine epub image width, 50% assumed so ppgen can continue: {}".format(self.wb[self.cl]))
-        ia["ew"] = "50%"  # assume a value to allow calculations below to work
+      ia["ew"] = ia["iw"]
 
     # if epub width in pixels, convert it now
     if "px" in ia["ew"]:
@@ -3641,11 +3687,11 @@ class Pph(Book):
         # there may be some tags *before* the leading space
         tmp = self.wb[i][:]
         ss = ""
-        m = re.match(r"^<[^>]+>|⑯\w+⑰", tmp)
+        m = re.match(r"^<[^>]+>", tmp)
         while m:
           ss += m.group(0)
-          tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp)
-          m = re.match(r"^<[^>]+>|⑯\w+⑰", tmp)
+          tmp = re.sub(r"^<[^>]+>", "", tmp)
+          m = re.match(r"^<[^>]+>", tmp)
         leadsp = len(tmp) - len(tmp.lstrip())
         if cpvs > 0:
           spvs = " style='margin-top:{}em' ".format(cpvs)
@@ -4109,6 +4155,30 @@ class Pph(Book):
       # if blvl == 0 and re.match(r"<span class='pagenum'.*?<\/span>$", self.wb[i]):
       if blvl == 0 and re.match(r"<span class='pageno'.*?<\/span>$", self.wb[i]):      # new 3.24M
         self.wb[i] = "<div>{}</div>".format(self.wb[i])
+
+    # remove double blank lines (must be done before creating .bin file)
+    i = 0
+    while i < len(self.wb) - 1:
+      if not self.wb[i] and not self.wb[i+1]:
+        del self.wb[i]
+        i -= 1
+      i += 1
+
+    #build GG .bin file if any .bn commands found  in postprocess
+    if self.bnPresent:
+      self.bb.append("%pagenumbers = (")
+      for i in range(len(self.wb)):
+        m = re.search("(.*)⑱(.*?)⑱.*",self.wb[i])  # find any .bn information in this line
+        while m:
+          t = "'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG expects 1-based line number)
+          t = re.sub("\[","{",t,1)
+          t = re.sub("]","}",t,1)
+          self.bb.append(t)
+          self.wb[i] = re.sub("⑱.*?⑱","",self.wb[i],count=1)  # remove the .bn information
+          m = re.search("(.*)⑱(.*?)⑱.*",self.wb[i])  # look for another one on the same line
+      self.bb.append(");")
+      self.bb.append("$pngspath = '{}';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      self.bb.append("1;")
 
   # called to retrieve a style string representing current display parameters
   #
