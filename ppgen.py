@@ -839,7 +839,11 @@ class Ppt(Book):
 
   # bailout after saving working buffer in bailout.txt
   def bailout(self, buffer):
-    f1 = codecs.open("bailout.txt", "w", encoding='utf-8')
+    if self.encoding == "utf_8":
+      encoding = "UTF-8"
+    else:
+      encoding = "ISO-8859-1"
+    f1 = codecs.open("bailout.txt", "w", encoding=encoding)
     for index,t in enumerate(buffer):
       f1.write( "{:s}\r\n".format(t.rstrip()) )
     f1.close()
@@ -1133,7 +1137,7 @@ class Ppt(Book):
   def postprocess(self):
 
     # ensure .bn info does not interfere with combining/collapsing space requests
-    i = 0
+    i = 0   ###
     while i < len(self.eb) - 2:
       if self.eb[i].startswith(".RS") and self.eb[i+1].startswith("⑱"):
         j = i + 1
@@ -1686,6 +1690,15 @@ class Ppt(Book):
     t = []
     i = self.cl + 1 # skip the .nf c line
     while self.wb[i] != ".nf-":
+
+      if self.bnPresent and self.wb[i].startswith("⑱"):   #just copy .bn info lines, don't change them at all
+        m =re.match("^⑱.*?⑱$", self.wb[i])
+        if m:
+          bnInBlock = True
+          t.append(self.wb[i])
+          i += 1
+          continue
+
       xt = self.regLL - self.regIN # width of centered line
       xs = "{:^" + str(xt) + "}"
       t.append(" " * self.regIN + xs.format(self.wb[i].strip()))
@@ -1694,8 +1707,17 @@ class Ppt(Book):
     # see if the block has hit the left margin
     need_pad = False
     for line in t:
+      if bnInBlock and line[0] == "⑱":
+        m =re.match("^⑱.*?⑱$", line)
+        if not m:
+          need_pad = True
       if line[0] != " ":
-        need_pad = True
+        if bnInBlock and line[0] == "⑱":
+          m =re.match("^⑱.*?⑱$", line)
+          if not m:
+            need_pad = True
+        else:
+          need_pad = True
     if need_pad:
       self.warn("inserting leading space in wide .nf c")
       for i,line in enumerate(t):
@@ -1737,6 +1759,13 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .ce
         while count > 0:
+          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
+            m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
+            if m:
+              bnInBlock = True
+              self.eb.append(self.wb[i])
+              i += 1
+              continue
           xs = "{:^" + str(regBW) + "}"
           self.eb.append(" " * self.regIN + xs.format(self.wb[i].strip()))
           i += 1
@@ -1748,11 +1777,25 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .rj
         while count > 0:
+          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
+            m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
+            if m:
+              bnInBlock = True
+              self.eb.append(self.wb[i])
+              i += 1
+              continue
           xs = "{:>" + str(regBW) + "}"
           self.eb.append(" " * self.regIN + xs.format(self.wb[i].strip()))
           i += 1
           count -= 1
         continue
+
+      if self.bnPresent and self.wb[i].startswith("⑱"):   #just copy .bn info lines, don't change them at all
+        m =re.match("^⑱.*?⑱$", self.wb[i])
+        if m:
+          self.eb.append(self.wb[i])
+          i += 1
+          continue
 
       s = (" " * self.regIN + self.wb[i])
       # if the line is shorter than 72 characters, just send it to emit buffer
@@ -1789,6 +1832,13 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .ce
         while count > 0:
+          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
+            m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
+            if m:
+              bnInBlock = True
+              t.append(self.wb[i])
+              i += 1
+              continue
           xs = "{:^" + str(regBW) + "}"
           t.append(" " * lmar + xs.format(self.wb[i].strip()))
           i += 1
@@ -1800,6 +1850,13 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .rj
         while count > 0:
+          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
+            m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
+            if m:
+              bnInBlock = True
+              t.append(self.wb[i])
+              i += 1
+              continue
           xs = "{:>" + str(regBW) + "}"
           t.append(" " * lmar + xs.format(self.wb[i].strip()))
           i += 1
@@ -1850,6 +1907,12 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .ce
         while count > 0:
+          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
+            m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
+            if m:
+              self.eb.append(self.wb[i])
+              i += 1
+              continue
           xs = "{:^" + str(regBW) + "}"
           self.eb.append(" " * fixed_indent + xs.format(self.wb[i].strip()))
           i += 1
@@ -1861,6 +1924,12 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .rj
         while count > 0:
+          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
+            m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
+            if m:
+              self.eb.append(self.wb[i])
+              i += 1
+              continue
           xs = "{:>" + str(regBW) + "}"
           self.eb.append(" " * fixed_indent + xs.format(self.wb[i].strip()))
           i += 1
@@ -1930,7 +1999,7 @@ class Ppt(Book):
       j = self.cl + 1
       maxw = 0
       while self.wb[j] != ".ta-":
-        # blank and centerd lines are not considered
+        # blank and centered and .bn info lines are not considered
         if self.wb[j] == "" or not "|" in self.wb[j]:
           j += 1
           continue
@@ -2039,7 +2108,7 @@ class Ppt(Book):
     k1 = self.cl
     while self.wb[k1] != ".ta-":
 
-      # lines that we don't check: centered or blank
+      # lines that we don't check: centered or blank (or .bn info)
       if empty.match(self.wb[k1]) or not "|" in self.wb[k1]:
         k1 += 1
         continue
@@ -2062,7 +2131,7 @@ class Ppt(Book):
         continue
 
       # .bn info line
-      if self.wb[self.cl].startswith("⑱"):
+      if self.bnPresent and self.wb[self.cl].startswith("⑱"):
         m = re.match("^⑱.*?⑱$",self.wb[self.cl])
         if m:
           self.eb.append(self.wb[self.cl])   # copy the .bn info into the table (deleted much later during postprocessing)
@@ -3661,6 +3730,13 @@ class Pph(Book):
     printable_lines_in_block = 0
     pending_mt = 0
     while self.wb[i] != ".nf-":
+
+      if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just leave it in the output as-is
+        m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
+        if m:
+          i += 1
+          continue
+
       if "" == self.wb[i]:
         pending_mt += 1
         i += 1
@@ -3740,12 +3816,23 @@ class Pph(Book):
     printable_lines_in_block = 0
     while self.wb[i] != closing:
 
+      if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just leave it in the output as-is
+        m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
+        if m:
+          i += 1
+          continue
+
       # a centered line inside a no-fill block
       m = re.match(r"\.ce (\d+)", self.wb[i])
       if m:
         count = int(m.group(1))
         i += 1 # skip the .ce
-        while count > 0:
+        while count > 0 and i < len(self.wb):
+          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just leave it in the output as-is
+            m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
+            if m:
+              i += 1
+              continue
           pst = "text-align: center;"
           t.append("    <div style='{}'>{}</div>".format(pst, self.wb[i]))
           i += 1
@@ -3758,6 +3845,11 @@ class Pph(Book):
         count = int(m.group(1))
         i += 1 # skip the .rj
         while count > 0:
+          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just leave it in the output as-is
+            m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
+            if m:
+              i += 1
+              continue
           pst = "text-align: right;"
           t.append("    <div style='{}'>{}</div>".format(pst, self.wb[i]))
           i += 1
@@ -3913,7 +4005,7 @@ class Pph(Book):
       j = self.cl + 1
       maxw = 0
       while self.wb[j] != ".ta-":
-        # blank and centerd lines are not considered
+        # blank and centered and .bn info lines are not considered
         if self.wb[j] == "" or not "|" in self.wb[j]:
           j += 1
           continue
@@ -4088,6 +4180,14 @@ class Pph(Book):
     self.cl += 1 # move into the table rows
     while self.wb[self.cl] != ".ta-":
 
+      # see if .bn info line
+      if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+        m = re.match("^⑱.*?⑱$",self.wb[self.cl])
+        if m:
+          t.append(self.wb[self.cl])   # copy the .bn info into the table (deleted much later during postprocessing)
+          self.cl += 1  
+          continue
+
       # see if blank line
       if "" == self.wb[self.cl]:
         t.append("  <tr><td>&nbsp;</td></tr>")
@@ -4208,6 +4308,7 @@ class Pph(Book):
   # courtesy cleanup of HTML
   # also checks for a single h1 element
   def cleanup(self):
+
     h1cnt = 0
     for i in range(len(self.wb)):
       self.wb[i] = re.sub("\s+>", ">", self.wb[i])  # spaces before close ">"
@@ -4249,24 +4350,40 @@ class Pph(Book):
     while i < len(self.wb) - 1:
       if not self.wb[i] and not self.wb[i+1]:
         del self.wb[i]
-        i -= 1
+        continue
       i += 1
 
     #build GG .bin file if any .bn commands found  in postprocess
     if self.bnPresent:
       self.bb.append("%pagenumbers = (")
-      for i in range(len(self.wb)):
+      i = 0
+      while i < len(self.wb):
+        prevLine = self.wb[i-1] ###
+        if i == 105: ###
+           aadbg = True ###
+        bnInLine = False
+        if self.wb[i] == "":              # skip blank lines, but remember we had one
+          i += 1
+          continue
         m = re.search("(.*?)⑱(.*?)⑱.*",self.wb[i])  # find any .bn information in this line
         while m:
+          bnInLine = True
           t = "'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG expects 1-based line number)
           t = re.sub("\[","{",t,1)
           t = re.sub("]","}",t,1)
           self.bb.append(t)
           self.wb[i] = re.sub("⑱.*?⑱","",self.wb[i],count=1)  # remove the .bn information
           m = re.search("(.*?)⑱(.*?)⑱.*",self.wb[i])  # look for another one on the same line
+        if bnInLine and self.wb[i] == "":  # delete line if it ended up blank
+          del self.wb[i]
+          if i > 0 and self.wb[i-1] == "" and self.wb[i] == "":      # If line before .bn info and line after both blank
+              del self.wb[i]                          # delete the next one, too.
+        else:
+          i += 1
       self.bb.append(");")
       self.bb.append("$pngspath = '{}';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
       self.bb.append("1;")
+
 
   # called to retrieve a style string representing current display parameters
   #
@@ -4378,7 +4495,13 @@ class Pph(Book):
        and self.wb[self.cl] \
        and self.wb[self.cl][0] != "." ): # any dot command in source ends paragraph
       self.cl += 1
-    self.wb[self.cl-1] = self.wb[self.cl-1] + "</p>"
+    i = self.cl - 1
+    if self.bnPresent and self.wb[i].startswith("⑱"):
+      m = re.match("^(.*?)⑱(.*?)⑱$",self.wb[i])
+      while m:
+        i -= 1
+        m = re.match("^(.*?)⑱(.*?)⑱$",self.wb[i])
+    self.wb[i] = self.wb[i] + "</p>"
 
     self.regTI = 0 # any temporary indent has been used.
 
@@ -4451,6 +4574,14 @@ class Pph(Book):
       if self.wb[self.cl] == "</div>":
         self.cl += 1
         continue
+        
+      # don't turn standalone .bn info lines into paragraphs
+      if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+        m = re.match("^(.*?)⑱(.*?)⑱$",self.wb[self.cl])  # look for standalone .bn info
+        if m:   # and skip it if found
+          self.cl += 1                                            
+        continue
+        
       self.doPara() # it's a paragraph to wrap
 
   def makeHTML(self):
