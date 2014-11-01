@@ -879,7 +879,7 @@ class Ppt(Book):
         hold = s[0:howmany]
         s = s[howmany:]
       else:
-        bnloc = s.find("⑱",end=howmany)  # look for .bn info
+        bnloc = s.find("⑱",0,howmany)  # look for .bn info
         if bnloc == -1:       # if no .bn info
           hold = s[0:howmany]
           s = s[howmany:]
@@ -901,21 +901,27 @@ class Ppt(Book):
     # at this point, s is ready to wrap
     mywidth = ll - indent
     t =[]
-    while len(s) > mywidth:
-      twidth = mywidth
+    twidth = mywidth
+    while len(s) > twidth:
+      twidth2 = 0
       if self.bnPresent:
         m = re.match("(.*?)(⑱.*?⑱)(.*)",s)
-        if m:
-          if len(m.group(1)) <= mywidth:  # if .bn info within first mywidth characters
-            twidth = mywidth + len(m.group(2)) # allow wider split to account for .bn info
-      try:
-        snip_at = s.rindex(" ", 0, twidth)
-      except:
-        # could not find a place to wrap
-        snip_at = s.index(" ", twidth) # Plan B
-        self.warn("wide line: {}".format(s))
-      t.append(s[:snip_at])
-      s = s[snip_at+1:]
+        while twidth2 < mywidth and m:
+          twidth2 += len(m.group(1))
+          if twidth2 <= mywidth:  # if .bn info within first mywidth real characters
+            twidth += len(m.group(2)) # allow wider split to account for .bn info
+            stemp = m.group(3)
+            m = re.match("(.*?)(⑱.*?⑱)(.*)",stemp)
+      if len(s) > twidth:
+        try:
+          snip_at = s.rindex(" ", 0, twidth)
+        except:
+          # could not find a place to wrap
+          snip_at = s.index(" ", twidth) # Plan B
+          self.warn("wide line: {}".format(s))
+        t.append(s[:snip_at])
+        s = s[snip_at+1:]
+        twidth = mywidth  
     t.append(s)
 
     for i, line in enumerate(t):
@@ -1126,8 +1132,21 @@ class Ppt(Book):
 
   def postprocess(self):
 
-    if self.bnPresent:  # if a GG-style .bin file is needed
-      self.bb.append("%pagenumbers = (") # insert the .bin header into the bb array
+    # ensure .bn info does not interfere with combining/collapsing space requests
+    i = 0
+    while i < len(self.eb) - 2:
+      if self.eb[i].startswith(".RS") and self.eb[i+1].startswith("⑱"):
+        j = i + 1
+        swap = False
+        while j < len(self.eb) - 1 and self.eb[j].startswith("⑱"):        # look ahead to see if we hit a .RS      
+          if self.eb[j+1].startswith(".RS"):
+            swap = True          
+          j += 1
+        if swap:                                    # if hit .RS,
+          s = self.eb[j]
+          del self.eb[j]
+          self.eb.insert(i+1,s)  # insert the .RS line before the bn info
+      i += 1
 
     # combine space requests
     i = 0
@@ -1154,8 +1173,8 @@ class Ppt(Book):
           self.eb.insert(i,"")
           count -= 1
       i += 1
-    self.bailout(self.eb) ###
-    # restore tokens
+
+      # restore tokens
     for i, line in enumerate(self.eb):
       self.eb[i] = re.sub("ⓓ|Ⓓ", ".", self.eb[i])  # ellipsis dots
       self.eb[i] = self.eb[i].replace("①", "{")
@@ -1185,16 +1204,6 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("◺", "_{")
       self.eb[i] = self.eb[i].replace("◿", "}")
 
-      if self.bnPresent:  # if any .bn were found
-        m = re.search("(.*)⑱(.*?)⑱.*",self.eb[i])  # find any .bn information in this line
-        while m:
-          t = "'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG wants a 1-based count)
-          t = re.sub("\[","{",t,1)
-          t = re.sub("]","}",t,1)
-          self.bb.append(t)
-          self.eb[i] = re.sub("⑱.*?⑱", "", self.eb[i], 1)  # remove the .bn information
-          m = re.search("(.*)⑱(.*?)⑱.*",self.eb[i])  # look for another one on the same line
-
       if self.renc == 'u':
         if "[oe]" in self.eb[i]:
           self.warn("unconverted [oe] ligature written to UTF-8 file.")
@@ -1214,9 +1223,26 @@ class Ppt(Book):
     for i, line in enumerate(self.eb):
       self.eb[i] = self.eb[i].replace("◮", "=")
 
-    # finish building GG .bin file if needed
-    if self.bnPresent:
-      self.bb.append(");")
+    # build GG .bin info if needed
+    if self.bnPresent:  # if any .bn were found
+      self.bb.append("%pagenumbers = (") # insert the .bin header into the bb array
+      i = 0
+      while i < len(self.eb):
+        bnInLine = False
+        m = re.search("(.*?)⑱(.*?)⑱.*",self.eb[i])  # find any .bn information in this line
+        while m:
+          bnInLine = True
+          t = "'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG wants a 1-based count)
+          t = re.sub("\[","{",t,1)
+          t = re.sub("]","}",t,1)
+          self.bb.append(t)
+          self.eb[i] = re.sub("⑱.*?⑱", "", self.eb[i], 1)  # remove the .bn information
+          m = re.search("(.*?)⑱(.*?)⑱.*",self.eb[i])  # look for another one on the same line
+        if bnInLine and self.eb[i] == "": # delete line if it was only .bn info
+          del self.eb[i]
+        else:
+          i += 1
+      self.bb.append(");")  # finish building GG .bin file 
       self.bb.append("$pngspath = '{}';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
       self.bb.append("1;")
 
@@ -1468,6 +1494,11 @@ class Ppt(Book):
       if "nobreak" in rend:
         rend = re.sub("nobreak","",rend)
     self.eb.append(".RS 1")
+    if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3
+      m = re.match("^⑱.*?⑱$",self.wb[self.cl+1])
+      if m:
+        self.eb.append(self.wb[self.cl+1])    # append the .bn info to eb as-is
+        self.cl += 1                                           # and ignore it for handling this .h1/2/3
     h2a = self.wb[self.cl+1].split('|')
     for line in h2a:
       self.eb.append(("{:^72}".format(line)).rstrip())
@@ -1482,6 +1513,11 @@ class Ppt(Book):
       if "nobreak" in rend:
         rend = re.sub("nobreak","",rend)
     self.eb.append(".RS 1")
+    if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3
+      m = re.match("^⑱.*?⑱$",self.wb[self.cl+1])
+      if m:
+        self.eb.append(self.wb[self.cl+1])    # append the .bn info to eb as-is
+        self.cl += 1                                           # and ignore it for handling this .h1/2/3
     h2a = self.wb[self.cl+1].split('|')
     for line in h2a:
       self.eb.append(("{:^72}".format(line)).rstrip())
@@ -1496,6 +1532,11 @@ class Ppt(Book):
       if "nobreak" in rend:
         rend = re.sub("nobreak","",rend)
     self.eb.append(".RS 1")
+    if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3
+      m = re.match("^⑱.*?⑱$",self.wb[self.cl+1])
+      if m:
+        self.eb.append(self.wb[self.cl+1])    # append the .bn info to eb as-is
+        self.cl += 1                                           # and ignore it for handling this .h1/2/3
     h2a = self.wb[self.cl+1].split('|')
     for line in h2a:
       self.eb.append(("{:^72}".format(line)).rstrip())
@@ -1739,6 +1780,7 @@ class Ppt(Book):
     i = self.cl + 1 # skip the .nf b line
     xt = self.regLL - self.regIN
     lmar = (xt - regBW)//2
+    bnInBlock = False                # no .bn info encountered in this block yet
     while self.wb[i] != ".nf-":
 
       # special cases: .ce and .rj
@@ -1764,7 +1806,15 @@ class Ppt(Book):
           count -= 1
         continue
 
-      t.append(" " * self.regIN + " " * lmar + self.wb[i].rstrip())
+      if self.bnPresent and self.wb[i].startswith("⑱"):   #just copy .bn info lines, don't change them at all
+        m =re.match("^⑱.*?⑱$", self.wb[i])
+        if m:
+          bnInBlock = True
+          t.append(self.wb[i])
+        else:
+          t.append(" " * self.regIN + " " * lmar + self.wb[i].rstrip())
+      else:
+        t.append(" " * self.regIN + " " * lmar + self.wb[i].rstrip())          
       i += 1
     self.cl = i + 1 # skip the closing .nf-
 
@@ -1772,7 +1822,12 @@ class Ppt(Book):
     need_pad = False
     for line in t:
       if line[0] != " ":
-        need_pad = True
+        if bnInBlock and line[0] == "⑱":
+          m =re.match("^⑱.*?⑱$", line)
+          if not m:
+            need_pad = True
+        else:
+          need_pad = True
     if need_pad:
       self.warn("inserting leading space in wide .nf b")
       for i,line in enumerate(t):
@@ -2006,6 +2061,14 @@ class Ppt(Book):
         self.cl += 1
         continue
 
+      # .bn info line
+      if self.wb[self.cl].startswith("⑱"):
+        m = re.match("^⑱.*?⑱$",self.wb[self.cl])
+        if m:
+          self.eb.append(self.wb[self.cl])   # copy the .bn info into the table (deleted much later during postprocessing)
+          self.cl += 1  
+          continue
+
       # centered line
       # a line in source that has no vertical pipe
       if not "|" in self.wb[self.cl]:
@@ -2108,7 +2171,9 @@ class Ppt(Book):
 
   def doPara(self):
     t = []
+    bnt = []
     pstart = self.cl
+
     # grab the paragraph from the source file into t[]
     j = pstart
     while (j < len(self.wb) and
@@ -2118,12 +2183,35 @@ class Ppt(Book):
       j += 1
     pend = j
     s = " ".join(t) # one long string for the paragraph
-    u = self.wrap(s, self.regIN, self.regLL, self.regTI)
-    self.regTI = 0 # reset any temporary indent
-    # set paragraph spacing
-    u.insert(0, ".RS 1") # before
-    u.append(".RS 1") # after
-    self.eb += u
+    textInPara = True
+    if self.bnPresent:
+      bnInPara = False
+      m=re.match(".*⑱.*?⑱.*",s)                # any bn info in this paragraph?
+      if m:                                                         # if yes, make sure there are no blanks after it and
+        bnInPara = True                                 # see if there's any real text
+        m = re.match("(.*?)(⑱.*?⑱) (.*)",s) 
+        while m:
+          s = m.group(1) + m.group(2) + m.group(3)
+          m = re.match("(.*?)(⑱.*?⑱) (.*)",s)
+        if s.endswith("⑱"):                      # if there's .bn info at end of s remove any blank preceding it
+          m = re.match("^(.*) (⑱.*?⑱)$",s)
+          if m:
+            s = m.group(1) + m.group(2)
+        stemp = re.sub("⑱.*?⑱", "", s) #  make copy of s with bn info removed
+        if stemp == "":                              # if it was all bn info, note that there's no text to wrap.
+          textInPara = False
+    if textInPara:  # only wrap and add blank lines if there was actual text in the paragraph
+      u = self.wrap(s, self.regIN, self.regLL, self.regTI)
+      self.regTI = 0 # reset any temporary indent
+      # set paragraph spacing
+      u.insert(0, ".RS 1") # before
+      u.append(".RS 1") # after
+      self.eb += u
+    elif bnInPara:
+      bnt.append(s)
+      self.eb += bnt     # if only .bn info, append it.
+    else:
+      self.crash_w_context("Unexpected problem with .bn info",pstart)
     self.cl = pend
 
   def process(self):
@@ -4168,14 +4256,14 @@ class Pph(Book):
     if self.bnPresent:
       self.bb.append("%pagenumbers = (")
       for i in range(len(self.wb)):
-        m = re.search("(.*)⑱(.*?)⑱.*",self.wb[i])  # find any .bn information in this line
+        m = re.search("(.*?)⑱(.*?)⑱.*",self.wb[i])  # find any .bn information in this line
         while m:
           t = "'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG expects 1-based line number)
           t = re.sub("\[","{",t,1)
           t = re.sub("]","}",t,1)
           self.bb.append(t)
           self.wb[i] = re.sub("⑱.*?⑱","",self.wb[i],count=1)  # remove the .bn information
-          m = re.search("(.*)⑱(.*?)⑱.*",self.wb[i])  # look for another one on the same line
+          m = re.search("(.*?)⑱(.*?)⑱.*",self.wb[i])  # look for another one on the same line
       self.bb.append(");")
       self.bb.append("$pngspath = '{}';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
       self.bb.append("1;")
