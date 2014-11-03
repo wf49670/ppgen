@@ -91,30 +91,7 @@ class Book(object):
 
   linelimitwarning = 75
 
-  def __init__(self, args, renc):
-    del self.wb[:]
-    del self.eb[:]
-    self.renc = renc # requested output encoding (t, u, or h)
-    self.debug = args.debug
-    self.srcfile = args.infile
-    self.anonymous = args.anonymous
-    self.log = args.log
-    self.wrapper = textwrap.TextWrapper()
-    self.wrapper.break_long_words = False
-    self.wrapper.break_on_hyphens = False
-    self.nregs["psi"] = "0" # default above/below paragraph spacing for indented text
-    self.nregs["psb"] = "1.0em" # default above/below paragraph spacing for block text
-    self.nregs["pnc"] = "silver" # use to define page number color in HTML
-    self.nregs["lang"] = "en" # base language for the book (used in HTML header)
-    self.nregs["Footnote"] = "Footnote" # English word for Footnote for text files
-    self.nregs["Illustration"] = "Illustration" # English word for Illustration for text files
-    self.nregs["dcs"] = "250%" # drop cap font size
-    self.encoding = "" # input file encoding
-    self.pageno = "" # page number stored as string
-
-  # map UTF-8 characters to characters safe for printing on non UTF-8 terminals
-  def umap(self, s):
-    d = {
+  d = {
      '\u00A0':' ', '\u00A1':'¡', '\u00A2':'¢', '\u00A3':'£', '\u00A4':'¤', '\u00A5':'¥', '\u00A6':'¦', '\u00A7':'§',
      '\u00A8':'¨', '\u00A9':'©', '\u00AA':'ª', '\u00AB':'«', '\u00AC':'¬', '\u00AD':'­', '\u00AE':'®', '\u00AF':'¯',
      '\u00B0':'°', '\u00B1':'±', '\u00B2':'²', '\u00B3':'³', '\u00B4':'´', '\u00B5':'µ', '\u00B6':'¶', '\u00B7':'·',
@@ -214,9 +191,32 @@ class Book(object):
      '\u2042':'***'
     }
     
+  def __init__(self, args, renc):
+    del self.wb[:]
+    del self.eb[:]
+    self.renc = renc # requested output encoding (t, u, or h)
+    self.debug = args.debug
+    self.srcfile = args.infile
+    self.anonymous = args.anonymous
+    self.log = args.log
+    self.wrapper = textwrap.TextWrapper()
+    self.wrapper.break_long_words = False
+    self.wrapper.break_on_hyphens = False
+    self.nregs["psi"] = "0" # default above/below paragraph spacing for indented text
+    self.nregs["psb"] = "1.0em" # default above/below paragraph spacing for block text
+    self.nregs["pnc"] = "silver" # use to define page number color in HTML
+    self.nregs["lang"] = "en" # base language for the book (used in HTML header)
+    self.nregs["Footnote"] = "Footnote" # English word for Footnote for text files
+    self.nregs["Illustration"] = "Illustration" # English word for Illustration for text files
+    self.nregs["dcs"] = "250%" # drop cap font size
+    self.encoding = "" # input file encoding
+    self.pageno = "" # page number stored as string
+
+  # map UTF-8 characters to characters safe for printing on non UTF-8 terminals
+  def umap(self, s):  
     for c in s: # for every character on the line provided
-      if c in d: # is it in the list of converting characters?
-        s += d[c] # yes, replace with converted Latin-1 character
+      if c in self.d: # is it in the list of converting characters?
+        s += self.d[c] # yes, replace with converted Latin-1 character
       else:
         if ord(c) < 0x100:
           s += c # no conversion, transfer character as is
@@ -1308,112 +1308,12 @@ class Ppt(Book):
   # convert utf-8 to Latin-1 in self.wb
   def utoLat(self):
     described = {}
-    d = {
-     '\u00A0':' ', '\u00A1':'¡', '\u00A2':'¢', '\u00A3':'£', '\u00A4':'¤', '\u00A5':'¥', '\u00A6':'¦', '\u00A7':'§',
-     '\u00A8':'¨', '\u00A9':'©', '\u00AA':'ª', '\u00AB':'«', '\u00AC':'¬', '\u00AD':'­', '\u00AE':'®', '\u00AF':'¯',
-     '\u00B0':'°', '\u00B1':'±', '\u00B2':'²', '\u00B3':'³', '\u00B4':'´', '\u00B5':'µ', '\u00B6':'¶', '\u00B7':'·',
-     '\u00B8':'¸', '\u00B9':'¹', '\u00BA':'º', '\u00BB':'»', '\u00BC':'¼', '\u00BD':'½', '\u00BE':'¾', '\u00BF':'¿',
-     '\u00C0':'À', '\u00C1':'Á', '\u00C2':'Â', '\u00C3':'Ã', '\u00C4':'Ä', '\u00C5':'Å', '\u00C6':'Æ', '\u00C7':'Ç',
-     '\u00C8':'È', '\u00C9':'É', '\u00CA':'Ê', '\u00CB':'Ë', '\u00CC':'Ì', '\u00CD':'Í', '\u00CE':'Î', '\u00CF':'Ï',
-     '\u00D0':'Ð', '\u00D1':'Ñ', '\u00D2':'Ò', '\u00D3':'Ó', '\u00D4':'Ô', '\u00D5':'Õ', '\u00D6':'Ö', '\u00D7':'×',
-     '\u00D8':'Ø', '\u00D9':'Ù', '\u00DA':'Ú', '\u00DB':'Û', '\u00DC':'Ü', '\u00DD':'Ý', '\u00DE':'Þ', '\u00DF':'ß',
-     '\u00E0':'à', '\u00E1':'á', '\u00E2':'â', '\u00E3':'ã', '\u00E4':'ä', '\u00E5':'å', '\u00E6':'æ', '\u00E7':'ç',
-     '\u00E8':'è', '\u00E9':'é', '\u00EA':'ê', '\u00EB':'ë', '\u00EC':'ì', '\u00ED':'í', '\u00EE':'î', '\u00EF':'ï',
-     '\u00F0':'ð', '\u00F1':'ñ', '\u00F2':'ò', '\u00F3':'ó', '\u00F4':'ô', '\u00F5':'õ', '\u00F6':'ö', '\u00F7':'÷',
-     '\u00F8':'ø', '\u00F9':'ù', '\u00FA':'ú', '\u00FB':'û', '\u00FC':'ü', '\u00FD':'ý', '\u00FE':'þ', '\u00FF':'ÿ',
-     '\u0100':'A', '\u0101':'a', '\u0102':'A', '\u0103':'a', '\u0104':'A', '\u0105':'a', '\u0106':'C', '\u0107':'c',
-     '\u0108':'C', '\u0109':'c', '\u010A':'C', '\u010B':'c', '\u010C':'C', '\u010D':'c', '\u010E':'D', '\u010F':'d',
-     '\u0110':'D', '\u0111':'d', '\u0112':'E', '\u0113':'e', '\u0114':'E', '\u0115':'e', '\u0116':'E', '\u0117':'e',
-     '\u0118':'E', '\u0119':'e', '\u011A':'E', '\u011B':'e', '\u011C':'G', '\u011D':'g', '\u011E':'G', '\u011F':'g',
-     '\u0120':'G', '\u0121':'g', '\u0122':'G', '\u0123':'g', '\u0124':'H', '\u0125':'h', '\u0126':'H', '\u0127':'h',
-     '\u0128':'I', '\u0129':'i', '\u012A':'I', '\u012B':'i', '\u012C':'I', '\u012D':'i', '\u012E':'I', '\u012F':'i',
-     '\u0130':'I', '\u0132':'IJ','\u0133':'ij','\u0134':'J', '\u0135':'j', '\u0136':'K', '\u0137':'k', '\u0139':'L',
-     '\u013A':'l', '\u013B':'L', '\u013C':'l', '\u013D':'L', '\u013E':'l', '\u013F':'L', '\u0140':'l', '\u0141':'L',
-     '\u0142':'l', '\u0143':'N', '\u0144':'n', '\u0145':'N', '\u0146':'n', '\u0147':'N', '\u0148':'n', '\u0149':'n',
-     '\u014C':'O', '\u014D':'o', '\u014E':'O', '\u014F':'o', '\u0150':'O', '\u0151':'o', '\u0152':'OE','\u0153':'oe',
-     '\u0154':'R', '\u0155':'r', '\u0156':'R', '\u0157':'r', '\u0158':'R', '\u0159':'r', '\u015A':'S', '\u015B':'s',
-     '\u015C':'S', '\u015D':'s', '\u015E':'S', '\u015F':'s', '\u0160':'S', '\u0161':'s', '\u0162':'T', '\u0163':'t',
-     '\u0164':'T', '\u0165':'t', '\u0166':'T', '\u0167':'t', '\u0168':'U', '\u0169':'u', '\u016A':'U', '\u016B':'u',
-     '\u016C':'U', '\u016D':'u', '\u016E':'U', '\u016F':'u', '\u0170':'U', '\u0171':'u', '\u0172':'U', '\u0173':'u',
-     '\u0174':'W', '\u0175':'w', '\u0176':'Y', '\u0177':'y', '\u0178':'Y', '\u0179':'Z', '\u017A':'z', '\u017B':'Z',
-     '\u017C':'z', '\u017D':'Z', '\u017E':'z', '\u0180':'b', '\u0181':'B', '\u0182':'B', '\u0183':'b', '\u0186':'O',
-     '\u0187':'C', '\u0188':'c', '\u018A':'D', '\u018B':'D', '\u018C':'d', '\u0191':'F', '\u0192':'f', '\u0193':'G',
-     '\u0197':'I', '\u0198':'K', '\u0199':'k', '\u019A':'l', '\u019D':'N', '\u019E':'n', '\u019F':'O', '\u01A0':'O',
-     '\u01A1':'o', '\u01A4':'P', '\u01A5':'p', '\u01AB':'t', '\u01AC':'T', '\u01AD':'t', '\u01AE':'T', '\u01AF':'U',
-     '\u01B0':'u', '\u01B2':'V', '\u01B3':'Y', '\u01B4':'y', '\u01B5':'Z', '\u01B6':'z', '\u01C5':'D', '\u01C8':'L',
-     '\u01CB':'N', '\u01CD':'A', '\u01CE':'a', '\u01CF':'I', '\u01D0':'i', '\u01D1':'O', '\u01D2':'o', '\u01D3':'U',
-     '\u01D4':'u', '\u01D5':'U', '\u01D6':'u', '\u01D7':'U', '\u01D8':'u', '\u01D9':'U', '\u01DA':'u', '\u01DB':'U',
-     '\u01DC':'u', '\u01DE':'A', '\u01DF':'a', '\u01E0':'A', '\u01E1':'a', '\u01E2':'A', '\u01E3':'a', '\u01E4':'G',
-     '\u01E5':'g', '\u01E6':'G', '\u01E7':'g', '\u01E8':'K', '\u01E9':'k', '\u01EA':'O', '\u01EB':'o', '\u01EC':'O',
-     '\u01ED':'o', '\u01F0':'j', '\u01F2':'D', '\u01F4':'G', '\u01F5':'g', '\u01F8':'N', '\u01F9':'n', '\u01FA':'A',
-     '\u01FB':'a', '\u01FC':'A', '\u01FD':'a', '\u01FE':'O', '\u01FF':'o', '\u0200':'A', '\u0201':'a', '\u0202':'A',
-     '\u0203':'a', '\u0204':'E', '\u0205':'e', '\u0206':'E', '\u0207':'e', '\u0208':'I', '\u0209':'i', '\u020A':'I',
-     '\u020B':'i', '\u020C':'O', '\u020D':'o', '\u020E':'O', '\u020F':'o', '\u0210':'R', '\u0211':'r', '\u0212':'R',
-     '\u0213':'r', '\u0214':'U', '\u0215':'u', '\u0216':'U', '\u0217':'u', '\u0218':'S', '\u0219':'s', '\u021A':'T',
-     '\u021B':'t', '\u021E':'H', '\u021F':'h', '\u0220':'N', '\u0221':'d', '\u0224':'Z', '\u0225':'z', '\u0226':'A',
-     '\u0227':'a', '\u0228':'E', '\u0229':'e', '\u022A':'O', '\u022B':'o', '\u022C':'O', '\u022D':'o', '\u022E':'O',
-     '\u022F':'o', '\u0230':'O', '\u0231':'o', '\u0232':'Y', '\u0233':'y', '\u0234':'l', '\u0235':'n', '\u0236':'t',
-     '\u0253':'b', '\u0255':'c', '\u0256':'d', '\u0257':'d', '\u0260':'g', '\u0266':'h', '\u0268':'i', '\u026B':'l',
-     '\u026C':'l', '\u026D':'l', '\u0271':'m', '\u0272':'n', '\u0273':'n', '\u027C':'r', '\u027D':'r', '\u027E':'r',
-     '\u0282':'s', '\u0288':'t', '\u0289':'u', '\u028B':'v', '\u0290':'z', '\u0291':'z', '\u029C':'H', '\u029D':'j',
-     '\u02A0':'q', '\u02AE':'h', '\u02AF':'h', '\u040D':'I', '\u045D':'i', '\u04D0':'A', '\u04D1':'a', '\u04D2':'A',
-     '\u04D3':'a', '\u04E2':'I', '\u04E3':'i', '\u04E4':'I', '\u04E5':'i', '\u04E6':'O', '\u04E7':'o', '\u04EC':'E',
-     '\u04ED':'e', '\u04EE':'U', '\u04EF':'u', '\u04F0':'U', '\u04F1':'u', '\u04F2':'U', '\u04F3':'u', '\u1E00':'A',
-     '\u1E01':'a', '\u1E02':'B', '\u1E03':'b', '\u1E04':'B', '\u1E05':'b', '\u1E06':'B', '\u1E07':'b', '\u1E08':'C',
-     '\u1E09':'c', '\u1E0A':'D', '\u1E0B':'d', '\u1E0C':'D', '\u1E0D':'d', '\u1E0E':'D', '\u1E0F':'d', '\u1E10':'D',
-     '\u1E11':'d', '\u1E12':'D', '\u1E13':'d', '\u1E14':'E', '\u1E15':'e', '\u1E16':'E', '\u1E17':'e', '\u1E18':'E',
-     '\u1E19':'e', '\u1E1A':'E', '\u1E1B':'e', '\u1E1C':'E', '\u1E1D':'e', '\u1E1E':'F', '\u1E1F':'f', '\u1E20':'G',
-     '\u1E21':'g', '\u1E22':'H', '\u1E23':'h', '\u1E24':'H', '\u1E25':'h', '\u1E26':'H', '\u1E27':'h', '\u1E28':'H',
-     '\u1E29':'h', '\u1E2A':'H', '\u1E2B':'h', '\u1E2C':'I', '\u1E2D':'i', '\u1E2E':'I', '\u1E2F':'i', '\u1E30':'K',
-     '\u1E31':'k', '\u1E32':'K', '\u1E33':'k', '\u1E34':'K', '\u1E35':'k', '\u1E36':'L', '\u1E37':'l', '\u1E38':'L',
-     '\u1E39':'l', '\u1E3A':'L', '\u1E3B':'l', '\u1E3C':'L', '\u1E3D':'l', '\u1E3E':'M', '\u1E3F':'m', '\u1E40':'M',
-     '\u1E41':'m', '\u1E42':'M', '\u1E43':'m', '\u1E44':'N', '\u1E45':'n', '\u1E46':'N', '\u1E47':'n', '\u1E48':'N',
-     '\u1E49':'n', '\u1E4A':'N', '\u1E4B':'n', '\u1E4C':'O', '\u1E4D':'o', '\u1E4E':'O', '\u1E4F':'o', '\u1E50':'O',
-     '\u1E51':'o', '\u1E52':'O', '\u1E53':'o', '\u1E54':'P', '\u1E55':'p', '\u1E56':'P', '\u1E57':'p', '\u1E58':'R',
-     '\u1E59':'r', '\u1E5A':'R', '\u1E5B':'r', '\u1E5C':'R', '\u1E5D':'r', '\u1E5E':'R', '\u1E5F':'r', '\u1E60':'S',
-     '\u1E61':'s', '\u1E62':'S', '\u1E63':'s', '\u1E64':'S', '\u1E65':'s', '\u1E66':'S', '\u1E67':'s', '\u1E68':'S',
-     '\u1E69':'s', '\u1E6A':'T', '\u1E6B':'t', '\u1E6C':'T', '\u1E6D':'t', '\u1E6E':'T', '\u1E6F':'t', '\u1E70':'T',
-     '\u1E71':'t', '\u1E72':'U', '\u1E73':'u', '\u1E74':'U', '\u1E75':'u', '\u1E76':'U', '\u1E77':'u', '\u1E78':'U',
-     '\u1E79':'u', '\u1E7A':'U', '\u1E7B':'u', '\u1E7C':'V', '\u1E7D':'v', '\u1E7E':'V', '\u1E7F':'v', '\u1E80':'W',
-     '\u1E81':'w', '\u1E82':'W', '\u1E83':'w', '\u1E84':'W', '\u1E85':'w', '\u1E86':'W', '\u1E87':'w', '\u1E88':'W',
-     '\u1E89':'w', '\u1E8A':'X', '\u1E8B':'x', '\u1E8C':'X', '\u1E8D':'x', '\u1E8E':'Y', '\u1E8F':'y', '\u1E90':'Z',
-     '\u1E91':'z', '\u1E92':'Z', '\u1E93':'z', '\u1E94':'Z', '\u1E95':'z', '\u1E96':'h', '\u1E97':'t', '\u1E98':'w',
-     '\u1E99':'y', '\u1E9A':'a', '\u1EA0':'A', '\u1EA1':'a', '\u1EA2':'A', '\u1EA3':'a', '\u1EA4':'A', '\u1EA5':'a',
-     '\u1EA6':'A', '\u1EA7':'a', '\u1EA8':'A', '\u1EA9':'a', '\u1EAA':'A', '\u1EAB':'a', '\u1EAC':'A', '\u1EAD':'a',
-     '\u1EAE':'A', '\u1EAF':'a', '\u1EB0':'A', '\u1EB1':'a', '\u1EB2':'A', '\u1EB3':'a', '\u1EB4':'A', '\u1EB5':'a',
-     '\u1EB6':'A', '\u1EB7':'a', '\u1EB8':'E', '\u1EB9':'e', '\u1EBA':'E', '\u1EBB':'e', '\u1EBC':'E', '\u1EBD':'e',
-     '\u1EBE':'E', '\u1EBF':'e', '\u1EC0':'E', '\u1EC1':'e', '\u1EC2':'E', '\u1EC3':'e', '\u1EC4':'E', '\u1EC5':'e',
-     '\u1EC6':'E', '\u1EC7':'e', '\u1EC8':'I', '\u1EC9':'i', '\u1ECA':'I', '\u1ECB':'i', '\u1ECC':'O', '\u1ECD':'o',
-     '\u1ECE':'O', '\u1ECF':'o', '\u1ED0':'O', '\u1ED1':'o', '\u1ED2':'O', '\u1ED3':'o', '\u1ED4':'O', '\u1ED5':'o',
-     '\u1ED6':'O', '\u1ED7':'o', '\u1ED8':'O', '\u1ED9':'o', '\u1EDA':'O', '\u1EDB':'o', '\u1EDC':'O', '\u1EDD':'o',
-     '\u1EDE':'O', '\u1EDF':'o', '\u1EE0':'O', '\u1EE1':'o', '\u1EE2':'O', '\u1EE3':'o', '\u1EE4':'U', '\u1EE5':'u',
-     '\u1EE6':'U', '\u1EE7':'u', '\u1EE8':'U', '\u1EE9':'u', '\u1EEA':'U', '\u1EEB':'u', '\u1EEC':'U', '\u1EED':'u',
-     '\u1EEE':'U', '\u1EEF':'u', '\u1EF0':'U', '\u1EF1':'u', '\u1EF2':'Y', '\u1EF3':'y', '\u1EF4':'Y', '\u1EF5':'y',
-     '\u1EF6':'Y', '\u1EF7':'y', '\u1EF8':'Y', '\u1EF9':'y', '\u2002':' ', '\u2003':' ', '\u2004':' ', '\u2005':' ',
-     '\u2006':' ', '\u2007':' ', '\u2008':' ', '\u2009':' ', '\u200A':' ', '\u2010':'-', '\u2013':'-', '\u2014':'--',
-     '\u2016':'|', '\u2017':'_', '\u2018':"'", '\u2019':"'", '\u201A':"'", '\u201B':"'", '\u201C':'"', '\u201D':'"',
-     '\u201E':'"', '\u201F':'"', '\u2045':'[', '\u2046':']', '\u2047':'?', '\u2048':'?', '\u2049':'!', '\uFF01':'!',
-     '\uFF02':'"', '\uFF03':'#', '\uFF04':'$', '\uFF05':'%', '\uFF06':'&', '\uFF07':';', '\uFF08':'(', '\uFF09':')',
-     '\uFF0A':'*', '\uFF0B':'+', '\uFF0C':',', '\uFF0D':'-', '\uFF0E':'.', '\uFF0F':'/', '\uFF10':'0', '\uFF11':'1',
-     '\uFF12':'2', '\uFF13':'3', '\uFF14':'4', '\uFF15':'5', '\uFF16':'6', '\uFF17':'7', '\uFF18':'8', '\uFF19':'9',
-     '\uFF1A':':', '\uFF1B':';', '\uFF1D':'=', '\uFF1E':'>', '\uFF1F':'?', '\uFF20':'@', '\uFF21':'A', '\uFF22':'B',
-     '\uFF23':'C', '\uFF24':'D', '\uFF25':'E', '\uFF26':'F', '\uFF27':'G', '\uFF28':'H', '\uFF29':'I', '\uFF2A':'J',
-     '\uFF2B':'K', '\uFF2C':'L', '\uFF2D':'M', '\uFF2E':'N', '\uFF2F':'O', '\uFF30':'P', '\uFF31':'Q', '\uFF32':'R',
-     '\uFF33':'S', '\uFF34':'T', '\uFF35':'U', '\uFF36':'V', '\uFF37':'W', '\uFF38':'X', '\uFF39':'Y', '\uFF3A':'Z',
-     '\uFF3B':'[', '\uFF3C':'\\','\uFF3D':']', '\uFF3E':'^', '\uFF3F':'_', '\uFF41':'a', '\uFF42':'b', '\uFF43':'c',
-     '\uFF44':'d', '\uFF45':'e', '\uFF46':'f', '\uFF47':'g', '\uFF48':'h', '\uFF49':'i', '\uFF4A':'j', '\uFF4B':'k',
-     '\uFF4C':'l', '\uFF4D':'m', '\uFF4E':'n', '\uFF4F':'o', '\uFF50':'p', '\uFF51':'q', '\uFF52':'r', '\uFF53':'s',
-     '\uFF54':'t', '\uFF55':'u', '\uFF56':'v', '\uFF57':'w', '\uFF58':'x', '\uFF59':'y', '\uFF5A':'z', '\uFF5B':'{',
-     '\uFF5C':'|', '\uFF5D':'}', '\uFF5E':'~',
-     '\u2042':'***'
-    }
-
     t = defaultdict(int)
     for i, line in enumerate(self.wb):
       s = ""
       for c in line: # for every character
-        if c in d: # is it in the list of converting characters?
-          s += d[c] # yes, replace with converted Latin-1 character
+        if c in self.d: # is it in the list of converting characters?
+          s += self.d[c] # yes, replace with converted Latin-1 character
           t[c] += 1
         else:
           if ord(c) < 0x100:
@@ -1428,7 +1328,7 @@ class Ppt(Book):
     self.lprint("  {:5}{:5} {}".format("char","count","description"))
     self.lprint("  {:5}{:5} {}".format("----","-----","----------------------------------------"))
     for ch in t:
-      self.lprint("  {:5}{:5} {}".format(d[ch], t[ch], unicodedata.name(ch)))
+      self.lprint("  {:5}{:5} {}".format(self.d[ch], t[ch], unicodedata.name(ch)))
 
     while not self.wb[-1]:
       self.wb.pop()
