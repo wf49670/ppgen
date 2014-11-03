@@ -3643,7 +3643,7 @@ class Pph(Book):
         m = re.match(r"^<[^>]+>|⑯\w+⑰", tmp)
         while m:
           ss += m.group(0)
-          tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp)
+          tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp, 1)
           m = re.match(r"^<[^>]+>|⑯\w+⑰", tmp)
         leadsp = len(tmp) - len(tmp.lstrip())
         if cpvs > 0:
