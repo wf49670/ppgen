@@ -2349,7 +2349,6 @@ class Pph(Book):
           if m:
             pnum = m.group(1)  # the page number
             del self.wb[i]     # original line gone
-            i -= 1             # counteract increment operation below if we deleted the line
             continue           # now go and place it
           # placing the page number
           #  if we see a heading, place it there
