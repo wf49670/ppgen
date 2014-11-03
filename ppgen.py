@@ -2349,7 +2349,6 @@ class Pph(Book):
           if m:
             pnum = m.group(1)  # the page number
             del self.wb[i]     # original line gone
-            i -= 1             # counteract increment operation below if we deleted the line
             continue           # now go and place it
           # placing the page number
           #  if we see a heading, place it there
@@ -3644,7 +3643,7 @@ class Pph(Book):
         m = re.match(r"^<[^>]+>|⑯\w+⑰", tmp)
         while m:
           ss += m.group(0)
-          tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp)
+          tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp, 1)
           m = re.match(r"^<[^>]+>|⑯\w+⑰", tmp)
         leadsp = len(tmp) - len(tmp.lstrip())
         if cpvs > 0:
