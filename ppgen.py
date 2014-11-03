@@ -1137,7 +1137,7 @@ class Ppt(Book):
   def postprocess(self):
 
     # ensure .bn info does not interfere with combining/collapsing space requests
-    i = 0   ###
+    i = 0
     while i < len(self.eb) - 2:
       if self.eb[i].startswith(".RS") and self.eb[i+1].startswith("⑱"):
         j = i + 1
@@ -1690,7 +1690,7 @@ class Ppt(Book):
     t = []
     i = self.cl + 1 # skip the .nf c line
     while self.wb[i] != ".nf-":
-
+      bnInBlock = False
       if self.bnPresent and self.wb[i].startswith("⑱"):   #just copy .bn info lines, don't change them at all
         m =re.match("^⑱.*?⑱$", self.wb[i])
         if m:
@@ -1762,7 +1762,6 @@ class Ppt(Book):
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
             m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
             if m:
-              bnInBlock = True
               self.eb.append(self.wb[i])
               i += 1
               continue
@@ -1780,7 +1779,6 @@ class Ppt(Book):
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
             m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
             if m:
-              bnInBlock = True
               self.eb.append(self.wb[i])
               i += 1
               continue
@@ -2556,7 +2554,6 @@ class Pph(Book):
           if m:
             pnum = m.group(1)  # the page number
             del self.wb[i]     # original line gone
-            i -= 1             # counteract increment operation below if we deleted the line
             continue           # now go and place it
           # placing the page number
           #  if we see a heading, place it there
@@ -2567,6 +2564,12 @@ class Pph(Book):
           if self.wb[i].startswith(".il"):
             self.wb[i] += " pn={}".format(pnum)
             found = True
+          # don't place on a .bn info line
+          if self.bnPresent and self.wb[i].startswith("⑱"):
+            m = re.match("^⑱(.*?)⑱$",self.wb[i])
+            if m:
+              i += 1
+              continue
           # plain text
           if self.wb[i] and not self.wb[i].startswith("."):
             self.wb[i] = "⑯{}⑰".format(pnum) + self.wb[i]
@@ -4358,9 +4361,6 @@ class Pph(Book):
       self.bb.append("%pagenumbers = (")
       i = 0
       while i < len(self.wb):
-        prevLine = self.wb[i-1] ###
-        if i == 105: ###
-           aadbg = True ###
         bnInLine = False
         if self.wb[i] == "":              # skip blank lines, but remember we had one
           i += 1
@@ -4496,7 +4496,7 @@ class Pph(Book):
        and self.wb[self.cl][0] != "." ): # any dot command in source ends paragraph
       self.cl += 1
     i = self.cl - 1
-    if self.bnPresent and self.wb[i].startswith("⑱"):
+    if self.bnPresent and self.wb[i].startswith("⑱"): # if para ended with .bn info, place the </p> before it, not after it.
       m = re.match("^(.*?)⑱(.*?)⑱$",self.wb[i])
       while m:
         i -= 1
@@ -4557,6 +4557,7 @@ class Pph(Book):
     print(self.wb[self.cl])
 
   def process(self):
+
     self.cl = 0
     while self.cl < len(self.wb):
       if "a" in self.debug:
@@ -4574,7 +4575,7 @@ class Pph(Book):
       if self.wb[self.cl] == "</div>":
         self.cl += 1
         continue
-        
+
       # don't turn standalone .bn info lines into paragraphs
       if self.bnPresent and self.wb[self.cl].startswith("⑱"):
         m = re.match("^(.*?)⑱(.*?)⑱$",self.wb[self.cl])  # look for standalone .bn info
