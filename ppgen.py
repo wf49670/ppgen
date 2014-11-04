@@ -1255,7 +1255,6 @@ class Ppt(Book):
     # by detecting the sequence .RS / .bn info / .RS and swapping to end up with
     #   .RS / .RS / .bn info 
     i = 0
-
     if self.bnPresent:
       while i < len(self.eb) - 2:
         if self.eb[i].startswith(".RS") and self.eb[i+1].startswith("⑱"):  # if .RS and possibly .bn info
@@ -2325,7 +2324,8 @@ class Ppt(Book):
       # don't turn standalone .bn info lines into paragraphs
       if self.bnPresent and self.wb[self.cl].startswith("⑱"):
         m = re.match("^(.*?)⑱(.*?)⑱(.*)",self.wb[self.cl])  # look for standalone .bn info
-        if m and m.group(3) == "":   # and skip it if found
+        if m and m.group(3) == "":   # and just append to eb if found
+          self.eb.append(self.wb[self.cl])
           self.cl += 1
         continue
 
@@ -4667,7 +4667,7 @@ class Pph(Book):
       # don't turn standalone .bn info lines into paragraphs
       if self.bnPresent and self.wb[self.cl].startswith("⑱"):
         m = re.match("^(.*?)⑱(.*?)⑱(.*)",self.wb[self.cl])  # look for standalone .bn info
-        if m and m.group(3) == "":   # and skip it if found
+        if m and m.group(3) == "":   # and skip over it if found
           self.cl += 1
         continue
         
