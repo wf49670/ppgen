@@ -2489,7 +2489,21 @@ class Pph(Book):
         ck3c = m.group(1)
         self.wb[i] = re.sub(ck0, "class='{0} {1}' {2} ".format(ck1c, ck3c, ck2), self.wb[i])
         self.wb[i] = re.sub("\s\s*", " ", self.wb[i]) # courtesy whitespace cleanup
-
+    # fix FF problem with interaction between pageno and drop-caps
+    i = 0
+    while i < len(self.wb):
+      m = re.search("(.*?)(<p class='drop-capa.*>)(<span class='pageno'.*?>.*?</span>)(.*)$", self.wb[i])  # look for drop-cap HTML before pageno HTML
+      if m:
+        t = []
+        if m.group(1):
+          t.append(m.group(1))
+        t.append(m.group(3))      # move the pageno span to before the drop-cap paragraph (it will end up in its own div)
+        t.append(m.group(2))
+        if m.group(4):
+          t.append(m.group(4))
+        self.wb[i:i+1] = t
+        i += len(t)
+      i += 1
   # -------------------------------------------------------------------------------------
   # courtesy id check
   #
@@ -3484,6 +3498,8 @@ class Pph(Book):
         # if not "%" in iw:
         #   self.fatal("width, if specified, must be in percent")
       ia["iw"] = iw
+      if (not iw.endswith("%")) and (not iw.endswith("px")):
+        self.warn("image width (w=) does not end in px or %. The image will not display properly:\n    {}".format(s0))
 
       # user-requested epub width in %
       ew = ""
@@ -3582,7 +3598,11 @@ class Pph(Book):
     self.css.addcss("[1610] .{} {{ width:{}; }}".format(idn, ia["iw"])) # the HTML illustration width
 
     if ia['ew'] == "":
-      ia["ew"] = ia["iw"]
+      if ia["iw"] != "":
+        ia["ew"] = ia["iw"]
+      else:
+        self.warn("cannot determine epub image width, 50% assumed so ppgen can continue: {}".format(self.wb[self.cl]))
+        ia["ew"] = "50%"  # assume a value to allow calculations below to work
 
     # if epub width in pixels, convert it now
     if "px" in ia["ew"]:
@@ -4696,7 +4716,7 @@ def main():
     print("{}".format(VERSION))
     exit(1)
 
-  print("ppgen {}".format(VERSION))
+  print("ppgen {} with GG .bin support".format(VERSION)) ###
 
   if 'p' in args.debug:
     print("running on {}".format(platform.system()))
