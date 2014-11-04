@@ -691,7 +691,7 @@ class Book(object):
     self.bnPresent = False
     while i < len(self.wb):
       if self.wb[i].startswith(".bn"):
-        m = re.search("([a-zA-Z0-9]+)\.png",self.wb[i])
+        m = re.search("(\w+?)\.png",self.wb[i])
         if m:
           self.bnPresent = True
           self.wb[i] = "⑱{}⑱".format(m.group(1))
@@ -1137,20 +1137,36 @@ class Ppt(Book):
   def postprocess(self):
 
     # ensure .bn info does not interfere with combining/collapsing space requests
+    # by detecting the sequence .RS / .bn info / .RS and swapping to end up with
+    #   .RS / .RS / .bn info 
     i = 0
-    while i < len(self.eb) - 2:
-      if self.eb[i].startswith(".RS") and self.eb[i+1].startswith("⑱"):
-        j = i + 1
-        swap = False
-        while j < len(self.eb) - 1 and self.eb[j].startswith("⑱"):        # look ahead to see if we hit a .RS      
-          if self.eb[j+1].startswith(".RS"):
-            swap = True          
-          j += 1
-        if swap:                                    # if hit .RS,
-          s = self.eb[j]
-          del self.eb[j]
-          self.eb.insert(i+1,s)  # insert the .RS line before the bn info
-      i += 1
+
+    if self.bnPresent:
+      while i < len(self.eb) - 2:
+        if self.eb[i].startswith(".RS") and self.eb[i+1].startswith("⑱"):  # if .RS and possibly .bn info
+          m = re.match("^⑱.*?⑱(.*)$",self.eb[i+1])  # confirm .bn info only (no other data on line)
+          if m:                                      # if .bn info
+            if m.group(1) == "":         # and othing else
+
+                # handle case of .RS , .bn (from above), .bn by advancing over a sequence of .bn until we find .RS or data
+                # if we end on .RS then remove that .RS and insert it before the first .bn in the sequence
+                # i => first .RS
+                # i + 1 => first .bn
+                # i + 2,3,... => possible subsequent .bn
+                j = i + 2
+                m = True
+                while m and j < len(self.eb) - 1:
+                    m = False
+                    if self.eb[j].startswith("⑱"):  # possible .bn info
+                      m  =  re.match("^⑱.*?⑱(.*)$",self.eb[j])  # confirm .bn info only (no other data on line)
+                      if m:
+                        j += 1
+                    elif self.eb[j].startswith(".RS"): # .RS line; need to move it
+                      temp = self.eb[j]    # make a copy
+                      del self.eb[j]  # delete the .RS line
+                      self.eb.insert(i+1, temp)  # insert it after the first .RS
+                    # everything else (data, or .bn + data) falls through as it can't affect .RS combining
+        i += 1
 
     # combine space requests
     i = 0
@@ -3170,6 +3186,15 @@ class Pph(Book):
       self.pvs = 1
 
     del self.wb[self.cl] # the .h line
+
+    # if we have .bn info after the .h and before the header join them together
+    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+      m = re.match("^⑱.*?⑱$", self.wb[self.cl])
+      if m:
+        i = self.cl
+        if i < len(self.wb) -1:
+          self.wb[i] = self.wb[i] + self.wb[i+1]
+          del self.wb[i+1]
     s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
     s = re.sub("\|", "<br />", s)
     t = []
@@ -3226,6 +3251,15 @@ class Pph(Book):
       self.pvs = 2
 
     del self.wb[self.cl] # the .h line
+
+    # if we have .bn info after the .h and before the header join them together
+    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+      m = re.match("^⑱.*?⑱$", self.wb[self.cl])
+      if m:
+        i = self.cl
+        if i < len(self.wb) -1:
+          self.wb[i] = self.wb[i] + self.wb[i+1]
+          del self.wb[i+1]
     s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
     s = re.sub("\|", "<br />", s)
     t = []
@@ -3286,6 +3320,15 @@ class Pph(Book):
       self.pvs = 1
 
     del self.wb[self.cl] # the .h line
+
+    # if we have .bn info after the .h and before the header join them together
+    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+      m = re.match("^⑱.*?⑱$", self.wb[self.cl])
+      if m:
+        i = self.cl
+        if i < len(self.wb) -1:
+          self.wb[i] = self.wb[i] + self.wb[i+1]
+          del self.wb[i+1]
     s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
     s = re.sub("\|", "<br />", s)
     t = []
@@ -3819,8 +3862,8 @@ class Pph(Book):
     printable_lines_in_block = 0
     while self.wb[i] != closing:
 
-      if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just leave it in the output as-is
-        m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
+      if self.bnPresent:  # if this line is bn info then just leave it in the output as-is
+        m = re.search("⑱(.*?)⑱",self.wb[i])
         if m:
           i += 1
           continue
