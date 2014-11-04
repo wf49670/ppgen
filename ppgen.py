@@ -326,14 +326,16 @@ class Book(object):
 
   # display error message and exit
   def fatal(self, message):
-    sys.stderr.write("FATAL: " + message + "\n")
+    s = self.umap(message)
+    sys.stderr.write("FATAL: " + s + "\n")
     exit(1)
 
   # display warning
   def warn(self, message):
     if message not in self.warnings: # don't give exact same warning more than once.
-      self.warnings.append(message)
-      sys.stderr.write("**warning: " + message + "\n")
+      s = self.umap(message)
+      self.warnings.append(s)
+      sys.stderr.write("**warning: " + s + "\n")
 
   # display informational message
   def info(self, message):
