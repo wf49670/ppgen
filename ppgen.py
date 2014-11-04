@@ -1271,16 +1271,16 @@ class Ppt(Book):
                 j = i + 2
                 m = True
                 while m and j < len(self.eb) - 1:
-                    m = False
-                    if self.eb[j].startswith("⑱"):  # possible .bn info
-                      m  =  re.match("^⑱.*?⑱(.*)$",self.eb[j])  # confirm .bn info only (no other data on line)
-                      if m:
-                        j += 1
-                    elif self.eb[j].startswith(".RS"): # .RS line; need to move it
-                      temp = self.eb[j]    # make a copy
-                      del self.eb[j]  # delete the .RS line
-                      self.eb.insert(i+1, temp)  # insert it after the first .RS
-                    # everything else (data, or .bn + data) falls through as it can't affect .RS combining
+                  m = False
+                  if self.eb[j].startswith("⑱"):  # possible .bn info
+                    m  =  re.match("^⑱.*?⑱(.*)$",self.eb[j])  # confirm .bn info only (no other data on line)
+                    if m:
+                      j += 1
+                  elif self.eb[j].startswith(".RS"): # .RS line; need to move it
+                    temp = self.eb[j]    # make a copy
+                    del self.eb[j]  # delete the .RS line
+                    self.eb.insert(i+1, temp)  # insert it after the first .RS
+                  # everything else (data, or .bn + data) falls through as it can't affect .RS combining
         i += 1
 
     # combine space requests
@@ -2321,6 +2321,14 @@ class Ppt(Book):
       if not self.wb[self.cl]: # skip blank lines
         self.cl += 1
         continue
+
+      # don't turn standalone .bn info lines into paragraphs
+      if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+        m = re.match("^(.*?)⑱(.*?)⑱(.*)",self.wb[self.cl])  # look for standalone .bn info
+        if m and m.group(3) == "":   # and skip it if found
+          self.cl += 1
+        continue
+
       # will hit either a dot directive or wrappable text
       if re.match(r"\.", self.wb[self.cl]):
         self.doDot()
@@ -4638,9 +4646,9 @@ class Pph(Book):
 
       # don't turn standalone .bn info lines into paragraphs
       if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-        m = re.match("^(.*?)⑱(.*?)⑱$",self.wb[self.cl])  # look for standalone .bn info
-        if m:   # and skip it if found
-          self.cl += 1                                            
+        m = re.match("^(.*?)⑱(.*?)⑱(.*)",self.wb[self.cl])  # look for standalone .bn info
+        if m and m.group(3) == "":   # and skip it if found
+          self.cl += 1
         continue
         
       self.doPara() # it's a paragraph to wrap
