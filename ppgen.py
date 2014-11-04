@@ -213,16 +213,17 @@ class Book(object):
     self.pageno = "" # page number stored as string
 
   # map UTF-8 characters to characters safe for printing on non UTF-8 terminals
-  def umap(self, s):  
+  def umap(self, s):
+    t = ""
     for c in s: # for every character on the line provided
       if c in self.d: # is it in the list of converting characters?
-        s += self.d[c] # yes, replace with converted Latin-1 character
+        t += self.d[c] # yes, replace with converted Latin-1 character
       else:
         if ord(c) < 0x100:
-          s += c # no conversion, transfer character as is
+          t += c # no conversion, transfer character as is
         else:
-          s += "[{}]".format(unicodedata.name(c))
-    return s
+          t += "*" # use an asterisk if not plain text
+    return t
   
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # get the value of the requested parameter from attr string
@@ -409,7 +410,6 @@ class Book(object):
       else:
         print("   {}".format(s))
     self.fatal("exiting")
-
 
   # extract content of an optionally quoted string
   # used in .nr
@@ -4291,7 +4291,8 @@ class Pph(Book):
     self.cl = 0
     while self.cl < len(self.wb):
       if "a" in self.debug:
-        print(self.wb[self.cl])
+        s = self.wb[self.cl]
+        print( self.umap(s) )  # safe print the current line
       if not self.wb[self.cl]: # skip blank lines
         self.cl += 1
         continue
