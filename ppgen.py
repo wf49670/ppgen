@@ -1359,7 +1359,7 @@ class Ppt(Book):
 
     # build GG .bin info if needed
     if self.bnPresent:  # if any .bn were found
-      self.bb.append("%pagenumbers = (") # insert the .bin header into the bb array
+      self.bb.append("%::pagenumbers = (") # insert the .bin header into the bb array
       i = 0
       while i < len(self.eb):
         bnInLine = False
@@ -1377,7 +1377,7 @@ class Ppt(Book):
         else:
           i += 1
       self.bb.append(");")  # finish building GG .bin file 
-      self.bb.append("$pngspath = '{}';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      self.bb.append("$::pngspath = '{}';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
       self.bb.append("1;")
 
   # -------------------------------------------------------------------------------------
