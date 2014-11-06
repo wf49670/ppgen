@@ -1318,7 +1318,7 @@ class Ppt(Book):
           s += self.d[c] # yes, replace with converted Latin-1 character
           t[c] += 1
         else:
-          if ord(c) < 0x100:
+          if ord(c) < 0x80:  # safe limit for code page 437
             s += c # no conversion, transfer character as is
           else:
             s += "[{}]".format(unicodedata.name(c))
