@@ -1259,8 +1259,7 @@ class Ppt(Book):
       while i < len(self.eb) - 2:
         if self.eb[i].startswith(".RS") and self.eb[i+1].startswith("⑱"):  # if .RS and possibly .bn info
           m = re.match("^⑱.*?⑱(.*)$",self.eb[i+1])  # confirm .bn info only (no other data on line)
-          if m:                                      # if .bn info
-            if m.group(1) == "":         # and othing else
+          if m and m.group(1) == "":         # if so
 
                 # handle case of .RS , .bn (from above), .bn by advancing over a sequence of .bn until we find .RS or data
                 # if we end on .RS then remove that .RS and insert it before the first .bn in the sequence
@@ -1273,12 +1272,14 @@ class Ppt(Book):
                   m = False
                   if self.eb[j].startswith("⑱"):  # possible .bn info
                     m  =  re.match("^⑱.*?⑱(.*)$",self.eb[j])  # confirm .bn info only (no other data on line)
-                    if m:
+                    if m and m.group(1) == "":
                       j += 1
                   elif self.eb[j].startswith(".RS"): # .RS line; need to move it
                     temp = self.eb[j]    # make a copy
                     del self.eb[j]  # delete the .RS line
                     self.eb.insert(i+1, temp)  # insert it after the first .RS
+                  else:
+                    m = False
                   # everything else (data, or .bn + data) falls through as it can't affect .RS combining
         i += 1
 
@@ -1529,8 +1530,8 @@ class Ppt(Book):
         rend = re.sub("nobreak","",rend)
     self.eb.append(".RS 1")
     if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3
-      m = re.match("^⑱.*?⑱$",self.wb[self.cl+1])
-      if m:
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl+1])
+      if m and m.group(1) == "":
         self.eb.append(self.wb[self.cl+1])    # append the .bn info to eb as-is
         self.cl += 1                                           # and ignore it for handling this .h1/2/3
     h2a = self.wb[self.cl+1].split('|')
@@ -1548,8 +1549,8 @@ class Ppt(Book):
         rend = re.sub("nobreak","",rend)
     self.eb.append(".RS 1")
     if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3
-      m = re.match("^⑱.*?⑱$",self.wb[self.cl+1])
-      if m:
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl+1])
+      if m and m.group(1) == "":
         self.eb.append(self.wb[self.cl+1])    # append the .bn info to eb as-is
         self.cl += 1                                           # and ignore it for handling this .h1/2/3
     h2a = self.wb[self.cl+1].split('|')
@@ -1567,8 +1568,8 @@ class Ppt(Book):
         rend = re.sub("nobreak","",rend)
     self.eb.append(".RS 1")
     if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3
-      m = re.match("^⑱.*?⑱$",self.wb[self.cl+1])
-      if m:
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl+1])
+      if m and m.group(1) == "":
         self.eb.append(self.wb[self.cl+1])    # append the .bn info to eb as-is
         self.cl += 1                                           # and ignore it for handling this .h1/2/3
     h2a = self.wb[self.cl+1].split('|')
@@ -1722,8 +1723,8 @@ class Ppt(Book):
     while self.wb[i] != ".nf-":
       bnInBlock = False
       if self.bnPresent and self.wb[i].startswith("⑱"):   #just copy .bn info lines, don't change them at all
-        m =re.match("^⑱.*?⑱$", self.wb[i])
-        if m:
+        m =re.match("^⑱.*?⑱(.*)", self.wb[i])
+        if m and m.group(1) == "":
           bnInBlock = True
           t.append(self.wb[i])
           i += 1
@@ -1737,14 +1738,10 @@ class Ppt(Book):
     # see if the block has hit the left margin
     need_pad = False
     for line in t:
-      if bnInBlock and line[0] == "⑱":
-        m =re.match("^⑱.*?⑱$", line)
-        if not m:
-          need_pad = True
       if line[0] != " ":
         if bnInBlock and line[0] == "⑱":
-          m =re.match("^⑱.*?⑱$", line)
-          if not m:
+          m =re.match("^⑱.*?⑱(.*)", line)
+          if not (m and m.group(1) == ""):
             need_pad = True
         else:
           need_pad = True
@@ -1790,8 +1787,8 @@ class Ppt(Book):
         i += 1 # skip the .ce
         while count > 0:
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
-            if m:
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+            if m and m.group(1) == "":
               self.eb.append(self.wb[i])
               i += 1
               continue
@@ -1807,8 +1804,8 @@ class Ppt(Book):
         i += 1 # skip the .rj
         while count > 0:
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
-            if m:
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+            if m and m.group(1) == "":
               self.eb.append(self.wb[i])
               i += 1
               continue
@@ -1819,8 +1816,8 @@ class Ppt(Book):
         continue
 
       if self.bnPresent and self.wb[i].startswith("⑱"):   #just copy .bn info lines, don't change them at all
-        m =re.match("^⑱.*?⑱$", self.wb[i])
-        if m:
+        m =re.match("^⑱.*?⑱(.*)", self.wb[i])
+        if m and m.group(1) == "":
           self.eb.append(self.wb[i])
           i += 1
           continue
@@ -1861,8 +1858,8 @@ class Ppt(Book):
         i += 1 # skip the .ce
         while count > 0:
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
-            if m:
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+            if m and m.group(1) == "":
               bnInBlock = True
               t.append(self.wb[i])
               i += 1
@@ -1879,8 +1876,8 @@ class Ppt(Book):
         i += 1 # skip the .rj
         while count > 0:
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
-            if m:
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+            if m and m.group(1) == "":
               bnInBlock = True
               t.append(self.wb[i])
               i += 1
@@ -1892,8 +1889,8 @@ class Ppt(Book):
         continue
 
       if self.bnPresent and self.wb[i].startswith("⑱"):   #just copy .bn info lines, don't change them at all
-        m =re.match("^⑱.*?⑱$", self.wb[i])
-        if m:
+        m =re.match("^⑱.*?⑱(.*)", self.wb[i])
+        if m and m.group(1) == "":
           bnInBlock = True
           t.append(self.wb[i])
         else:
@@ -1908,8 +1905,8 @@ class Ppt(Book):
     for line in t:
       if line[0] != " ":
         if bnInBlock and line[0] == "⑱":
-          m =re.match("^⑱.*?⑱$", line)
-          if not m:
+          m =re.match("^⑱.*?⑱(.*)", line)
+          if not (m and m.group(1) == ""):
             need_pad = True
         else:
           need_pad = True
@@ -1936,8 +1933,8 @@ class Ppt(Book):
         i += 1 # skip the .ce
         while count > 0:
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
-            if m:
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+            if m and m.group(1) == "":
               self.eb.append(self.wb[i])
               i += 1
               continue
@@ -1953,8 +1950,8 @@ class Ppt(Book):
         i += 1 # skip the .rj
         while count > 0:
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
-            if m:
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+            if m and m.group(1) == "":
               self.eb.append(self.wb[i])
               i += 1
               continue
@@ -2160,8 +2157,8 @@ class Ppt(Book):
 
       # .bn info line
       if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-        m = re.match("^⑱.*?⑱$",self.wb[self.cl])
-        if m:
+        m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
+        if m and m.group(1) == "":
           self.eb.append(self.wb[self.cl])   # copy the .bn info into the table (deleted much later during postprocessing)
           self.cl += 1  
           continue
@@ -2286,6 +2283,9 @@ class Ppt(Book):
       m=re.match(".*⑱.*?⑱.*",s)                # any bn info in this paragraph?
       if m:                                                         # if yes, make sure there are no blanks after it and
         bnInPara = True                                 # see if there's any real text
+        # this seems like a long way to do it, rather than using re.sub, but 
+        # I had some odd problems trying to use re.sub as I couldn't get \1
+        # to substitute back in properly. So I loop using re.match instead.
         m = re.match("(.*?)(⑱.*?⑱) (.*)",s) 
         while m:
           s = m.group(1) + m.group(2) + m.group(3)
@@ -2323,8 +2323,8 @@ class Ppt(Book):
 
       # don't turn standalone .bn info lines into paragraphs
       if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-        m = re.match("^(.*?)⑱(.*?)⑱(.*)",self.wb[self.cl])  # look for standalone .bn info
-        if m and m.group(3) == "":   # and just append to eb if found
+        m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])  # look for standalone .bn info
+        if m and m.group(1) == "":   # and just append to eb if found 
           self.eb.append(self.wb[self.cl])
           self.cl += 1
         continue
@@ -2620,8 +2620,8 @@ class Pph(Book):
             found = True
           # don't place on a .bn info line
           if self.bnPresent and self.wb[i].startswith("⑱"):
-            m = re.match("^⑱(.*?)⑱$",self.wb[i])
-            if m:
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+            if m and m.group(1) == "":
               i += 1
               continue
           # plain text
@@ -2743,6 +2743,12 @@ class Pph(Book):
         while not self.wb[i].startswith(".nf-"): # as long as we are in a .nf
           if self.wb[i].startswith(".nf "):
             self.crash_w_context("nested no-fill block:", i)
+          # ignore .bn lines; just pass them through
+          if self.bnPresent and self.wb[i].startswith("⑱"): 
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+            if m and m.group(1) == "":
+              i += 1
+              continue
           # find all tags on this line; ignore <a and </a tags completely for this purpose
           t = re.findall("<\/?[^a][^>]*>", self.wb[i])
           sstart = "" # what to prepend to the line
@@ -3227,8 +3233,8 @@ class Pph(Book):
 
     # if we have .bn info after the .h and before the header join them together
     if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-      m = re.match("^⑱.*?⑱$", self.wb[self.cl])
-      if m:
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
+      if m and m.group(1) == "":
         i = self.cl
         if i < len(self.wb) -1:
           self.wb[i] = self.wb[i] + self.wb[i+1]
@@ -3292,8 +3298,8 @@ class Pph(Book):
 
     # if we have .bn info after the .h and before the header join them together
     if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-      m = re.match("^⑱.*?⑱$", self.wb[self.cl])
-      if m:
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
+      if m and m.group(1) == "":
         i = self.cl
         if i < len(self.wb) -1:
           self.wb[i] = self.wb[i] + self.wb[i+1]
@@ -3361,8 +3367,8 @@ class Pph(Book):
 
     # if we have .bn info after the .h and before the header join them together
     if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-      m = re.match("^⑱.*?⑱$", self.wb[self.cl])
-      if m:
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
+      if m and m.group(1) == "":
         i = self.cl
         if i < len(self.wb) -1:
           self.wb[i] = self.wb[i] + self.wb[i+1]
@@ -3822,8 +3828,8 @@ class Pph(Book):
     while self.wb[i] != ".nf-":
 
       if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just leave it in the output as-is
-        m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
-        if m:
+        m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+        if m and m.group(1) == "":
           i += 1
           continue
 
@@ -3906,9 +3912,10 @@ class Pph(Book):
     printable_lines_in_block = 0
     while self.wb[i] != closing:
 
-      if self.bnPresent:  # if this line is bn info then just leave it in the output as-is
-        m = re.search("⑱(.*?)⑱",self.wb[i])
-        if m:
+      # if this line is just bn info then just leave it in the output as-is
+      if self.bnPresent and self.wb[i].startswith("⑱"):
+        m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+        if m and m.group(1)=="":
           i += 1
           continue
 
@@ -3919,8 +3926,8 @@ class Pph(Book):
         i += 1 # skip the .ce
         while count > 0 and i < len(self.wb):
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just leave it in the output as-is
-            m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
-            if m:
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+            if m and m.group(1) == "":
               i += 1
               continue
           pst = "text-align: center;"
@@ -3936,8 +3943,8 @@ class Pph(Book):
         i += 1 # skip the .rj
         while count > 0:
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just leave it in the output as-is
-            m = re.match("^⑱(.*?)⑱$",self.wb[i]) 
-            if m:
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+            if m and m.group(1) == "":
               i += 1
               continue
           pst = "text-align: right;"
@@ -4272,8 +4279,8 @@ class Pph(Book):
 
       # see if .bn info line
       if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-        m = re.match("^⑱.*?⑱$",self.wb[self.cl])
-        if m:
+        m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
+        if m and m.group(1) == "":
           t.append(self.wb[self.cl])   # copy the .bn info into the table (deleted much later during postprocessing)
           self.cl += 1  
           continue
@@ -4459,7 +4466,7 @@ class Pph(Book):
           t = re.sub("\[","{",t,1)
           t = re.sub("]","}",t,1)
           self.bb.append(t)
-          self.wb[i] = re.sub("⑱.*?⑱","",self.wb[i],count=1)  # remove the .bn information
+          self.wb[i] = re.sub("⑱.*?⑱","",self.wb[i],1)  # remove the .bn information
           m = re.search("(.*?)⑱(.*?)⑱.*",self.wb[i])  # look for another one on the same line
         if bnInLine and self.wb[i] == "":  # delete line if it ended up blank
           del self.wb[i]
@@ -4583,11 +4590,13 @@ class Pph(Book):
        and self.wb[self.cl][0] != "." ): # any dot command in source ends paragraph
       self.cl += 1
     i = self.cl - 1
-    if self.bnPresent and self.wb[i].startswith("⑱"): # if para ended with .bn info, place the </p> before it, not after it.
-      m = re.match("^(.*?)⑱(.*?)⑱$",self.wb[i])
-      while m:
+    # if para ended with .bn info, place the </p> before it, not after it to avoid extra
+    # blank lines after we remove the .bn info later
+    if self.bnPresent and self.wb[i].startswith("⑱"):
+      m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+      while m and m.group(1) == "":
         i -= 1
-        m = re.match("^(.*?)⑱(.*?)⑱$",self.wb[i])
+        m = re.match("^⑱.*?⑱(.*)",self.wb[i])
     self.wb[i] = self.wb[i] + "</p>"
 
     self.regTI = 0 # any temporary indent has been used.
@@ -4666,8 +4675,8 @@ class Pph(Book):
 
       # don't turn standalone .bn info lines into paragraphs
       if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-        m = re.match("^(.*?)⑱(.*?)⑱(.*)",self.wb[self.cl])  # look for standalone .bn info
-        if m and m.group(3) == "":   # and skip over it if found
+        m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])  # look for standalone .bn info
+        if m and m.group(1) == "":   # and skip over it if found
           self.cl += 1
         continue
         
@@ -4679,7 +4688,7 @@ class Pph(Book):
     self.placeCSS()
     self.cleanup()
 
-  def run(self): # HTML
+  def run(self): # HTML ###
     self.loadFile(self.srcfile)
     self.preprocess()
     self.process()
