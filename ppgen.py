@@ -4688,7 +4688,7 @@ class Pph(Book):
     self.placeCSS()
     self.cleanup()
 
-  def run(self): # HTML ###
+  def run(self): # HTML
     self.loadFile(self.srcfile)
     self.preprocess()
     self.process()
@@ -4725,7 +4725,7 @@ def main():
     print("{}".format(VERSION))
     exit(1)
 
-  print("ppgen {} with GG .bin support".format(VERSION)) ###
+  print("ppgen {}".format(VERSION))
 
   if 'p' in args.debug:
     print("running on {}".format(platform.system()))
