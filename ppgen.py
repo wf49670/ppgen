@@ -1036,12 +1036,22 @@ class Ppt(Book):
           snip_at = s.rindex(" ", 0, twidth)
         except:
           # could not find a place to wrap
-          snip_at = s.index(" ", twidth) # Plan B
-          self.warn("wide line: {}".format(s))
+          try: # this one might fail, too, so catch exceptions
+            snip_at = s.index(" ", twidth) # Plan B
+          except:
+            snip_at = len(s)
+          if len(t) == 0:
+            self.warn("wide line: {}".format(hold + s)) # include any "hold" characters if wrapping first line
+          else:
+            self.warn("wide line: {}".format(s)) # else just include the current line.
         t.append(s[:snip_at])
-        s = s[snip_at+1:]
+        if snip_at < len(s):
+          s = s[snip_at+1:]
+        else:
+          s = ""
         twidth = mywidth  
-    t.append(s)
+    if len(s) > 0:
+      t.append(s)
 
     for i, line in enumerate(t):
         t[i] = t[i].replace("◠◠", "—") # restore dash
