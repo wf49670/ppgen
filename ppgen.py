@@ -2995,11 +2995,11 @@ class Pph(Book):
         self.wb[i] = re.sub(r"#(\d+)#", s, self.wb[i], 1)
         m = re.search(r"#(\d+)#", self.wb[i])
 
-      m = re.search(r"#(.*?):(.*?)#", self.wb[i]) # named reference
+      m = re.search(r"#([^'>]*?):(.*?)#", self.wb[i]) # named reference
       while m:
         s = "<a href='⫉{}'>{}</a>".format(m.group(2), m.group(1)) # link to that
-        self.wb[i] = re.sub(r"#(.*?):(.*?)#", s, self.wb[i], 1)
-        m = re.search(r"#(.*?):(.*?)#", self.wb[i])
+        self.wb[i] = re.sub(r"#([^'>]*?):(.*?)#", s, self.wb[i], 1)
+        m = re.search(r"#([^'>]*?):(.*?)#", self.wb[i])
 
       self.wb[i] = re.sub("⫉", '#', self.wb[i])
 
