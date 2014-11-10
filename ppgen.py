@@ -3096,7 +3096,11 @@ class Pph(Book):
 
   # .li literal (pass-through)
   def doLit(self):
-    del self.wb[self.cl]  # .li
+    if self.pvs > 0: # handle any pending vertical space before the .li
+      self.wb[self.cl] = "<div style=\"margin-top:{}em;\"></div>".format(self.pvs)
+      self.pvs = 0
+    else:
+      del self.wb[self.cl]  # .li
     while (self.cl < len(self.wb)) and self.wb[self.cl] != ".li-":
       # leave in place
       self.cl += 1
