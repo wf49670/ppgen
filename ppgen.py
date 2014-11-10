@@ -4466,7 +4466,7 @@ class Pph(Book):
 
     #build GG .bin file if any .bn commands found  in postprocess
     if self.bnPresent:
-      self.bb.append("%pagenumbers = (")
+      self.bb.append("%::pagenumbers = (")
       i = 0
       while i < len(self.wb):
         bnInLine = False
@@ -4489,7 +4489,7 @@ class Pph(Book):
         else:
           i += 1
       self.bb.append(");")
-      self.bb.append("$pngspath = '{}';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      self.bb.append("$::pngspath = '{}';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
       self.bb.append("1;")
 
 
