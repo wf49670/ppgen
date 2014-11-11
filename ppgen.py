@@ -2620,7 +2620,7 @@ class Pph(Book):
           # if we hit the start of a .li, warn the user and put the page number line back in.
           # it can't float into or over the .li, so it will appear wherever it appears
           if self.wb[i].startswith(".li"):
-            self.warn(".li encountered while placing page number")
+            self.warn(".li encountered while placing page number: {}".format(pnum))
             self.wb.insert(i,"⑯{}⑰".format(pnum)) # insert page number before the .li
             i += 2 # bump past new page number line and the .li
             found = True
