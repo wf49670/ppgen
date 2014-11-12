@@ -3137,7 +3137,7 @@ class Pph(Book):
     self.css.addcss("[1465] div.pbb { page-break-before:always; }")
     self.css.addcss("[1466] hr.pb { border:none;border-bottom:1px solid; margin-bottom:1em; }")
     self.css.addcss("[1467] @media handheld { hr.pb { display:none; }}")
-    self.wb[self.cl:self.cl+1] = ["<div class='pbb'></div>", "<hr class='pb' style='{}'/>".format(hcss)]
+    self.wb[self.cl:self.cl+1] = ["<div class='pbb'></div>", "<hr class='pb' style='{}' />".format(hcss)]
     self.cl += 2
 
   # extract any "class=" argument from string s
@@ -4306,7 +4306,7 @@ class Pph(Book):
     # set relative widths of columns
     t.append("<colgroup>")
     for (i,w) in enumerate(widths):
-     t.append("<col width='{}%'/>".format(pwidths[i]))
+     t.append("<col width='{}%' />".format(pwidths[i]))
     t.append("</colgroup>")
 
     startloc = self.cl
