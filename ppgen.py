@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.37"
+VERSION="3.42"  # 09-Nov-2014
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -63,6 +63,7 @@ def xp(msg):
 class Book(object):
   wb = [] # working buffer
   eb = [] # emit buffer
+  bb = [] # GG .bin file buffer
   regLL = 72 # line length
   regIN = 0 # indent
   regTI = 0 # temporary indent
@@ -91,6 +92,106 @@ class Book(object):
 
   linelimitwarning = 75
 
+  d = {
+     '\u00A0':' ', '\u00A1':'¡', '\u00A2':'¢', '\u00A3':'£', '\u00A4':'¤', '\u00A5':'¥', '\u00A6':'¦', '\u00A7':'§',
+     '\u00A8':'¨', '\u00A9':'©', '\u00AA':'ª', '\u00AB':'«', '\u00AC':'¬', '\u00AD':'­', '\u00AE':'®', '\u00AF':'¯',
+     '\u00B0':'°', '\u00B1':'±', '\u00B2':'²', '\u00B3':'³', '\u00B4':'´', '\u00B5':'µ', '\u00B6':'¶', '\u00B7':'·',
+     '\u00B8':'¸', '\u00B9':'¹', '\u00BA':'º', '\u00BB':'»', '\u00BC':'¼', '\u00BD':'½', '\u00BE':'¾', '\u00BF':'¿',
+     '\u00C0':'À', '\u00C1':'Á', '\u00C2':'Â', '\u00C3':'Ã', '\u00C4':'Ä', '\u00C5':'Å', '\u00C6':'Æ', '\u00C7':'Ç',
+     '\u00C8':'È', '\u00C9':'É', '\u00CA':'Ê', '\u00CB':'Ë', '\u00CC':'Ì', '\u00CD':'Í', '\u00CE':'Î', '\u00CF':'Ï',
+     '\u00D0':'Ð', '\u00D1':'Ñ', '\u00D2':'Ò', '\u00D3':'Ó', '\u00D4':'Ô', '\u00D5':'Õ', '\u00D6':'Ö', '\u00D7':'×',
+     '\u00D8':'Ø', '\u00D9':'Ù', '\u00DA':'Ú', '\u00DB':'Û', '\u00DC':'Ü', '\u00DD':'Ý', '\u00DE':'Þ', '\u00DF':'ß',
+     '\u00E0':'à', '\u00E1':'á', '\u00E2':'â', '\u00E3':'ã', '\u00E4':'ä', '\u00E5':'å', '\u00E6':'æ', '\u00E7':'ç',
+     '\u00E8':'è', '\u00E9':'é', '\u00EA':'ê', '\u00EB':'ë', '\u00EC':'ì', '\u00ED':'í', '\u00EE':'î', '\u00EF':'ï',
+     '\u00F0':'ð', '\u00F1':'ñ', '\u00F2':'ò', '\u00F3':'ó', '\u00F4':'ô', '\u00F5':'õ', '\u00F6':'ö', '\u00F7':'÷',
+     '\u00F8':'ø', '\u00F9':'ù', '\u00FA':'ú', '\u00FB':'û', '\u00FC':'ü', '\u00FD':'ý', '\u00FE':'þ', '\u00FF':'ÿ',
+     '\u0100':'A', '\u0101':'a', '\u0102':'A', '\u0103':'a', '\u0104':'A', '\u0105':'a', '\u0106':'C', '\u0107':'c',
+     '\u0108':'C', '\u0109':'c', '\u010A':'C', '\u010B':'c', '\u010C':'C', '\u010D':'c', '\u010E':'D', '\u010F':'d',
+     '\u0110':'D', '\u0111':'d', '\u0112':'E', '\u0113':'e', '\u0114':'E', '\u0115':'e', '\u0116':'E', '\u0117':'e',
+     '\u0118':'E', '\u0119':'e', '\u011A':'E', '\u011B':'e', '\u011C':'G', '\u011D':'g', '\u011E':'G', '\u011F':'g',
+     '\u0120':'G', '\u0121':'g', '\u0122':'G', '\u0123':'g', '\u0124':'H', '\u0125':'h', '\u0126':'H', '\u0127':'h',
+     '\u0128':'I', '\u0129':'i', '\u012A':'I', '\u012B':'i', '\u012C':'I', '\u012D':'i', '\u012E':'I', '\u012F':'i',
+     '\u0130':'I', '\u0132':'IJ','\u0133':'ij','\u0134':'J', '\u0135':'j', '\u0136':'K', '\u0137':'k', '\u0139':'L',
+     '\u013A':'l', '\u013B':'L', '\u013C':'l', '\u013D':'L', '\u013E':'l', '\u013F':'L', '\u0140':'l', '\u0141':'L',
+     '\u0142':'l', '\u0143':'N', '\u0144':'n', '\u0145':'N', '\u0146':'n', '\u0147':'N', '\u0148':'n', '\u0149':'n',
+     '\u014C':'O', '\u014D':'o', '\u014E':'O', '\u014F':'o', '\u0150':'O', '\u0151':'o', '\u0152':'OE','\u0153':'oe',
+     '\u0154':'R', '\u0155':'r', '\u0156':'R', '\u0157':'r', '\u0158':'R', '\u0159':'r', '\u015A':'S', '\u015B':'s',
+     '\u015C':'S', '\u015D':'s', '\u015E':'S', '\u015F':'s', '\u0160':'S', '\u0161':'s', '\u0162':'T', '\u0163':'t',
+     '\u0164':'T', '\u0165':'t', '\u0166':'T', '\u0167':'t', '\u0168':'U', '\u0169':'u', '\u016A':'U', '\u016B':'u',
+     '\u016C':'U', '\u016D':'u', '\u016E':'U', '\u016F':'u', '\u0170':'U', '\u0171':'u', '\u0172':'U', '\u0173':'u',
+     '\u0174':'W', '\u0175':'w', '\u0176':'Y', '\u0177':'y', '\u0178':'Y', '\u0179':'Z', '\u017A':'z', '\u017B':'Z',
+     '\u017C':'z', '\u017D':'Z', '\u017E':'z', '\u0180':'b', '\u0181':'B', '\u0182':'B', '\u0183':'b', '\u0186':'O',
+     '\u0187':'C', '\u0188':'c', '\u018A':'D', '\u018B':'D', '\u018C':'d', '\u0191':'F', '\u0192':'f', '\u0193':'G',
+     '\u0197':'I', '\u0198':'K', '\u0199':'k', '\u019A':'l', '\u019D':'N', '\u019E':'n', '\u019F':'O', '\u01A0':'O',
+     '\u01A1':'o', '\u01A4':'P', '\u01A5':'p', '\u01AB':'t', '\u01AC':'T', '\u01AD':'t', '\u01AE':'T', '\u01AF':'U',
+     '\u01B0':'u', '\u01B2':'V', '\u01B3':'Y', '\u01B4':'y', '\u01B5':'Z', '\u01B6':'z', '\u01C5':'D', '\u01C8':'L',
+     '\u01CB':'N', '\u01CD':'A', '\u01CE':'a', '\u01CF':'I', '\u01D0':'i', '\u01D1':'O', '\u01D2':'o', '\u01D3':'U',
+     '\u01D4':'u', '\u01D5':'U', '\u01D6':'u', '\u01D7':'U', '\u01D8':'u', '\u01D9':'U', '\u01DA':'u', '\u01DB':'U',
+     '\u01DC':'u', '\u01DE':'A', '\u01DF':'a', '\u01E0':'A', '\u01E1':'a', '\u01E2':'A', '\u01E3':'a', '\u01E4':'G',
+     '\u01E5':'g', '\u01E6':'G', '\u01E7':'g', '\u01E8':'K', '\u01E9':'k', '\u01EA':'O', '\u01EB':'o', '\u01EC':'O',
+     '\u01ED':'o', '\u01F0':'j', '\u01F2':'D', '\u01F4':'G', '\u01F5':'g', '\u01F8':'N', '\u01F9':'n', '\u01FA':'A',
+     '\u01FB':'a', '\u01FC':'A', '\u01FD':'a', '\u01FE':'O', '\u01FF':'o', '\u0200':'A', '\u0201':'a', '\u0202':'A',
+     '\u0203':'a', '\u0204':'E', '\u0205':'e', '\u0206':'E', '\u0207':'e', '\u0208':'I', '\u0209':'i', '\u020A':'I',
+     '\u020B':'i', '\u020C':'O', '\u020D':'o', '\u020E':'O', '\u020F':'o', '\u0210':'R', '\u0211':'r', '\u0212':'R',
+     '\u0213':'r', '\u0214':'U', '\u0215':'u', '\u0216':'U', '\u0217':'u', '\u0218':'S', '\u0219':'s', '\u021A':'T',
+     '\u021B':'t', '\u021E':'H', '\u021F':'h', '\u0220':'N', '\u0221':'d', '\u0224':'Z', '\u0225':'z', '\u0226':'A',
+     '\u0227':'a', '\u0228':'E', '\u0229':'e', '\u022A':'O', '\u022B':'o', '\u022C':'O', '\u022D':'o', '\u022E':'O',
+     '\u022F':'o', '\u0230':'O', '\u0231':'o', '\u0232':'Y', '\u0233':'y', '\u0234':'l', '\u0235':'n', '\u0236':'t',
+     '\u0253':'b', '\u0255':'c', '\u0256':'d', '\u0257':'d', '\u0260':'g', '\u0266':'h', '\u0268':'i', '\u026B':'l',
+     '\u026C':'l', '\u026D':'l', '\u0271':'m', '\u0272':'n', '\u0273':'n', '\u027C':'r', '\u027D':'r', '\u027E':'r',
+     '\u0282':'s', '\u0288':'t', '\u0289':'u', '\u028B':'v', '\u0290':'z', '\u0291':'z', '\u029C':'H', '\u029D':'j',
+     '\u02A0':'q', '\u02AE':'h', '\u02AF':'h', '\u040D':'I', '\u045D':'i', '\u04D0':'A', '\u04D1':'a', '\u04D2':'A',
+     '\u04D3':'a', '\u04E2':'I', '\u04E3':'i', '\u04E4':'I', '\u04E5':'i', '\u04E6':'O', '\u04E7':'o', '\u04EC':'E',
+     '\u04ED':'e', '\u04EE':'U', '\u04EF':'u', '\u04F0':'U', '\u04F1':'u', '\u04F2':'U', '\u04F3':'u', '\u1E00':'A',
+     '\u1E01':'a', '\u1E02':'B', '\u1E03':'b', '\u1E04':'B', '\u1E05':'b', '\u1E06':'B', '\u1E07':'b', '\u1E08':'C',
+     '\u1E09':'c', '\u1E0A':'D', '\u1E0B':'d', '\u1E0C':'D', '\u1E0D':'d', '\u1E0E':'D', '\u1E0F':'d', '\u1E10':'D',
+     '\u1E11':'d', '\u1E12':'D', '\u1E13':'d', '\u1E14':'E', '\u1E15':'e', '\u1E16':'E', '\u1E17':'e', '\u1E18':'E',
+     '\u1E19':'e', '\u1E1A':'E', '\u1E1B':'e', '\u1E1C':'E', '\u1E1D':'e', '\u1E1E':'F', '\u1E1F':'f', '\u1E20':'G',
+     '\u1E21':'g', '\u1E22':'H', '\u1E23':'h', '\u1E24':'H', '\u1E25':'h', '\u1E26':'H', '\u1E27':'h', '\u1E28':'H',
+     '\u1E29':'h', '\u1E2A':'H', '\u1E2B':'h', '\u1E2C':'I', '\u1E2D':'i', '\u1E2E':'I', '\u1E2F':'i', '\u1E30':'K',
+     '\u1E31':'k', '\u1E32':'K', '\u1E33':'k', '\u1E34':'K', '\u1E35':'k', '\u1E36':'L', '\u1E37':'l', '\u1E38':'L',
+     '\u1E39':'l', '\u1E3A':'L', '\u1E3B':'l', '\u1E3C':'L', '\u1E3D':'l', '\u1E3E':'M', '\u1E3F':'m', '\u1E40':'M',
+     '\u1E41':'m', '\u1E42':'M', '\u1E43':'m', '\u1E44':'N', '\u1E45':'n', '\u1E46':'N', '\u1E47':'n', '\u1E48':'N',
+     '\u1E49':'n', '\u1E4A':'N', '\u1E4B':'n', '\u1E4C':'O', '\u1E4D':'o', '\u1E4E':'O', '\u1E4F':'o', '\u1E50':'O',
+     '\u1E51':'o', '\u1E52':'O', '\u1E53':'o', '\u1E54':'P', '\u1E55':'p', '\u1E56':'P', '\u1E57':'p', '\u1E58':'R',
+     '\u1E59':'r', '\u1E5A':'R', '\u1E5B':'r', '\u1E5C':'R', '\u1E5D':'r', '\u1E5E':'R', '\u1E5F':'r', '\u1E60':'S',
+     '\u1E61':'s', '\u1E62':'S', '\u1E63':'s', '\u1E64':'S', '\u1E65':'s', '\u1E66':'S', '\u1E67':'s', '\u1E68':'S',
+     '\u1E69':'s', '\u1E6A':'T', '\u1E6B':'t', '\u1E6C':'T', '\u1E6D':'t', '\u1E6E':'T', '\u1E6F':'t', '\u1E70':'T',
+     '\u1E71':'t', '\u1E72':'U', '\u1E73':'u', '\u1E74':'U', '\u1E75':'u', '\u1E76':'U', '\u1E77':'u', '\u1E78':'U',
+     '\u1E79':'u', '\u1E7A':'U', '\u1E7B':'u', '\u1E7C':'V', '\u1E7D':'v', '\u1E7E':'V', '\u1E7F':'v', '\u1E80':'W',
+     '\u1E81':'w', '\u1E82':'W', '\u1E83':'w', '\u1E84':'W', '\u1E85':'w', '\u1E86':'W', '\u1E87':'w', '\u1E88':'W',
+     '\u1E89':'w', '\u1E8A':'X', '\u1E8B':'x', '\u1E8C':'X', '\u1E8D':'x', '\u1E8E':'Y', '\u1E8F':'y', '\u1E90':'Z',
+     '\u1E91':'z', '\u1E92':'Z', '\u1E93':'z', '\u1E94':'Z', '\u1E95':'z', '\u1E96':'h', '\u1E97':'t', '\u1E98':'w',
+     '\u1E99':'y', '\u1E9A':'a', '\u1EA0':'A', '\u1EA1':'a', '\u1EA2':'A', '\u1EA3':'a', '\u1EA4':'A', '\u1EA5':'a',
+     '\u1EA6':'A', '\u1EA7':'a', '\u1EA8':'A', '\u1EA9':'a', '\u1EAA':'A', '\u1EAB':'a', '\u1EAC':'A', '\u1EAD':'a',
+     '\u1EAE':'A', '\u1EAF':'a', '\u1EB0':'A', '\u1EB1':'a', '\u1EB2':'A', '\u1EB3':'a', '\u1EB4':'A', '\u1EB5':'a',
+     '\u1EB6':'A', '\u1EB7':'a', '\u1EB8':'E', '\u1EB9':'e', '\u1EBA':'E', '\u1EBB':'e', '\u1EBC':'E', '\u1EBD':'e',
+     '\u1EBE':'E', '\u1EBF':'e', '\u1EC0':'E', '\u1EC1':'e', '\u1EC2':'E', '\u1EC3':'e', '\u1EC4':'E', '\u1EC5':'e',
+     '\u1EC6':'E', '\u1EC7':'e', '\u1EC8':'I', '\u1EC9':'i', '\u1ECA':'I', '\u1ECB':'i', '\u1ECC':'O', '\u1ECD':'o',
+     '\u1ECE':'O', '\u1ECF':'o', '\u1ED0':'O', '\u1ED1':'o', '\u1ED2':'O', '\u1ED3':'o', '\u1ED4':'O', '\u1ED5':'o',
+     '\u1ED6':'O', '\u1ED7':'o', '\u1ED8':'O', '\u1ED9':'o', '\u1EDA':'O', '\u1EDB':'o', '\u1EDC':'O', '\u1EDD':'o',
+     '\u1EDE':'O', '\u1EDF':'o', '\u1EE0':'O', '\u1EE1':'o', '\u1EE2':'O', '\u1EE3':'o', '\u1EE4':'U', '\u1EE5':'u',
+     '\u1EE6':'U', '\u1EE7':'u', '\u1EE8':'U', '\u1EE9':'u', '\u1EEA':'U', '\u1EEB':'u', '\u1EEC':'U', '\u1EED':'u',
+     '\u1EEE':'U', '\u1EEF':'u', '\u1EF0':'U', '\u1EF1':'u', '\u1EF2':'Y', '\u1EF3':'y', '\u1EF4':'Y', '\u1EF5':'y',
+     '\u1EF6':'Y', '\u1EF7':'y', '\u1EF8':'Y', '\u1EF9':'y', '\u2002':' ', '\u2003':' ', '\u2004':' ', '\u2005':' ',
+     '\u2006':' ', '\u2007':' ', '\u2008':' ', '\u2009':' ', '\u200A':' ', '\u2010':'-', '\u2013':'-', '\u2014':'--',
+     '\u2016':'|', '\u2017':'_', '\u2018':"'", '\u2019':"'", '\u201A':"'", '\u201B':"'", '\u201C':'"', '\u201D':'"',
+     '\u201E':'"', '\u201F':'"', '\u2045':'[', '\u2046':']', '\u2047':'?', '\u2048':'?', '\u2049':'!', '\uFF01':'!',
+     '\uFF02':'"', '\uFF03':'#', '\uFF04':'$', '\uFF05':'%', '\uFF06':'&', '\uFF07':';', '\uFF08':'(', '\uFF09':')',
+     '\uFF0A':'*', '\uFF0B':'+', '\uFF0C':',', '\uFF0D':'-', '\uFF0E':'.', '\uFF0F':'/', '\uFF10':'0', '\uFF11':'1',
+     '\uFF12':'2', '\uFF13':'3', '\uFF14':'4', '\uFF15':'5', '\uFF16':'6', '\uFF17':'7', '\uFF18':'8', '\uFF19':'9',
+     '\uFF1A':':', '\uFF1B':';', '\uFF1D':'=', '\uFF1E':'>', '\uFF1F':'?', '\uFF20':'@', '\uFF21':'A', '\uFF22':'B',
+     '\uFF23':'C', '\uFF24':'D', '\uFF25':'E', '\uFF26':'F', '\uFF27':'G', '\uFF28':'H', '\uFF29':'I', '\uFF2A':'J',
+     '\uFF2B':'K', '\uFF2C':'L', '\uFF2D':'M', '\uFF2E':'N', '\uFF2F':'O', '\uFF30':'P', '\uFF31':'Q', '\uFF32':'R',
+     '\uFF33':'S', '\uFF34':'T', '\uFF35':'U', '\uFF36':'V', '\uFF37':'W', '\uFF38':'X', '\uFF39':'Y', '\uFF3A':'Z',
+     '\uFF3B':'[', '\uFF3C':'\\','\uFF3D':']', '\uFF3E':'^', '\uFF3F':'_', '\uFF41':'a', '\uFF42':'b', '\uFF43':'c',
+     '\uFF44':'d', '\uFF45':'e', '\uFF46':'f', '\uFF47':'g', '\uFF48':'h', '\uFF49':'i', '\uFF4A':'j', '\uFF4B':'k',
+     '\uFF4C':'l', '\uFF4D':'m', '\uFF4E':'n', '\uFF4F':'o', '\uFF50':'p', '\uFF51':'q', '\uFF52':'r', '\uFF53':'s',
+     '\uFF54':'t', '\uFF55':'u', '\uFF56':'v', '\uFF57':'w', '\uFF58':'x', '\uFF59':'y', '\uFF5A':'z', '\uFF5B':'{',
+     '\uFF5C':'|', '\uFF5D':'}', '\uFF5E':'~',
+     '\u2042':'***'
+    }
+    
   def __init__(self, args, renc):
     del self.wb[:]
     del self.eb[:]
@@ -108,9 +209,23 @@ class Book(object):
     self.nregs["lang"] = "en" # base language for the book (used in HTML header)
     self.nregs["Footnote"] = "Footnote" # English word for Footnote for text files
     self.nregs["Illustration"] = "Illustration" # English word for Illustration for text files
+    self.nregs["dcs"] = "250%" # drop cap font size
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string
 
+  # map UTF-8 characters to characters safe for printing on non UTF-8 terminals
+  def umap(self, s):
+    t = ""
+    for c in s: # for every character on the line provided
+      if c in self.d: # is it in the list of converting characters?
+        t += self.d[c] # yes, replace with converted Latin-1 character
+      else:
+        if ord(c) < 0x100:
+          t += c # no conversion, transfer character as is
+        else:
+          t += "*" # use an asterisk if not plain text
+    return t
+  
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # get the value of the requested parameter from attr string
   # remove parameter from string, return string and parameter
@@ -212,14 +327,16 @@ class Book(object):
 
   # display error message and exit
   def fatal(self, message):
-    sys.stderr.write("FATAL: " + message + "\n")
+    s = self.umap(message)
+    sys.stderr.write("FATAL: " + s + "\n")
     exit(1)
 
   # display warning
   def warn(self, message):
     if message not in self.warnings: # don't give exact same warning more than once.
-      self.warnings.append(message)
-      sys.stderr.write("**warning: " + message + "\n")
+      s = self.umap(message)
+      self.warnings.append(s)
+      sys.stderr.write("**warning: " + s + "\n")
 
   # display informational message
   def info(self, message):
@@ -283,19 +400,19 @@ class Book(object):
     elif ".dv" == dotcmd: # user-specifice <div> for HTML
       self.doDiv()
     else:
-      self.fatal("unhandled dot command: {}".format(self.wb[self.cl]))
+      self.crash_w_context("unhandled dot command: {}".format(self.wb[self.cl]), self.cl)
 
   def crash_w_context(self, msg, i, r=5):
     print("{}\ncontext:".format(msg))
     startline = max(0,i-r)
     endline = min(len(self.wb),i+r)
     for j in range(startline,endline):
+      s = self.umap(self.wb[j])
       if j == i:
-        print(">> {}".format(self.wb[j]))
+        print(">> {}".format(s))
       else:
-        print("   {}".format(self.wb[j]))
+        print("   {}".format(s))
     self.fatal("exiting")
-
 
   # extract content of an optionally quoted string
   # used in .nr
@@ -337,6 +454,9 @@ class Book(object):
         known_register = True
       if registerName == "Illustration": # foreign language translation for "Illustration"
         self.nregs["Illustration"] = self.deQuote(m.group(2), self.cl)
+        known_register = True
+      if registerName == "dcs": # drop cap font size
+        self.nregs["dcs"] = m.group(2)
         known_register = True
       if not known_register:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
@@ -580,7 +700,19 @@ class Book(object):
     i = 0
     while i < len(self.wb):
       if self.wb[i].startswith(".pm"):
-        tlex = shlex.split(self.wb[i])  # ".pm" "tnote" "a" "<li>"
+        while (i < len(self.wb) - 1) and self.wb[i].endswith("\\"):   # allow continuation via ending \ for .pm
+          self.wb[i] = re.sub(r"\\$", "", self.wb[i]) + self.wb[i+1]
+          del self.wb[i+1]
+        if self.wb[i].endswith("\\"):
+          self.fatal("file ends with continued .pm")
+        try:
+          tlex = shlex.split(self.wb[i])  # ".pm" "tnote" "a" "<li>"
+        except:
+          if 'd' in self.debug:
+            traceback.print_exc()
+            self.fatal("Above error occurred while processing line: {}".format(self.wb[i]))
+          else:
+            self.fatal("Error occurred parsing .pm arguments for: {}".format(self.wb[i]))
         macroid = tlex[1]  # "tnote"
         # t = self.macro[macroid].copy() # after 3.3 only
         # t = self.macro[macroid][:] # another way
@@ -697,6 +829,20 @@ class Book(object):
         self.warn("{} <- user metadata no longer supported.".format(self.wb[i]))
         del(self.wb[i])
         i -= 1
+      i += 1
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # .bn (GG-compatible .bin file maintenance)
+    i = 0
+    self.bnPresent = False
+    while i < len(self.wb):
+      if self.wb[i].startswith(".bn"):
+        m = re.search("(\w+?)\.png",self.wb[i])
+        if m:
+          self.bnPresent = True
+          self.wb[i] = "⑱{}⑱".format(m.group(1))
+        else:
+          self.crash_w_context("malformed .bn command",i)
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -817,6 +963,7 @@ class Book(object):
 class Ppt(Book):
   eb = [] # emit buffer for generated text
   wb = [] # working buffer
+  bb = [] # GG .bin buffer
 
   long_table_line_count = 0
 
@@ -838,41 +985,36 @@ class Ppt(Book):
 
   # bailout after saving working buffer in bailout.txt
   def bailout(self, buffer):
-    f1 = open("bailout.txt", "w", encoding='utf-8')
+    if self.encoding == "utf_8":
+      encoding = "UTF-8"
+    else:
+      encoding = "ISO-8859-1"
+    f1 = codecs.open("bailout.txt", "w", encoding=encoding)
     for index,t in enumerate(buffer):
       f1.write( "{:s}\r\n".format(t.rstrip()) )
     f1.close()
     exit(1)
-
-  def meanstdv(self, x):
-    """ Calculate mean and standard deviation of data x[] """
-    n, mean, std = len(x), 0, 0
-    if n == 0:
-      return (0, 0, 0)
-    if n == 1:
-      return (1, len(x[0]), 0)
-    for a in x:
-  	  mean = mean + len(a)
-    mean = mean / float(n)
-    for a in x:
-  	  std = std + (len(a) - mean)**2
-    std = sqrt(std / float(n-1))
-    return n, mean, std
 
   def line_len_diff(self, x):
     """ calculate max diff between longest and shortest line of data x[] """
     longest_line_len = 0
     shortest_line_len = 1000
     for line in x:
-      longest_line_len = max(longest_line_len, len(line))
-      shortest_line_len = min(shortest_line_len, len(line))
+      tline = line
+      if self.bnPresent:  # remove .bn info if any before doing calculation
+        tline = re.sub("⑱.*?⑱","",tline)
+      longest_line_len = max(longest_line_len, len(tline))
+      shortest_line_len = min(shortest_line_len, len(tline))
     return longest_line_len - shortest_line_len
 
   def shortest_line_len(self, x):
     """ return length of shotest line in x[] """
     shortest_line_len = 1000
     for line in x:
-      shortest_line_len = min(shortest_line_len, len(line))
+      tline = line
+      if self.bnPresent: # remove .bn info if any before doing calculation
+        tline = re.sub("⑱.*?⑱","",tline)
+      shortest_line_len = min(shortest_line_len, len(tline))
     return shortest_line_len
 
   # wrap string into paragraph in t[]
@@ -883,8 +1025,24 @@ class Ppt(Book):
     hold = ""
     if ti < 0:
       howmany = -1 * ti
-      hold = s[0:howmany]
-      s = s[howmany:]
+      if not self.bnPresent:
+        hold = s[0:howmany]
+        s = s[howmany:]
+      else:
+        bnloc = s.find("⑱",0,howmany)  # look for .bn info
+        if bnloc == -1:       # if no .bn info
+          hold = s[0:howmany]
+          s = s[howmany:]
+        else:  # must account for .bn info
+          m = re.match("(.*?)(⑱.*?⑱)(.*)",s)
+          if m:
+            howmany1 = len(m.group(1))
+            howmany2 = howmany - howmany1
+            hold = s[0:howmany1] + m.group(2) + m.group3[0:howmany2]
+            howmany3 = len(hold)
+            s = s[howmany3:]
+          else:
+            self.fatal("error processing .bn info: {}".format(s))
 
     # if ti > 0, add leading nbsp
     if ti > 0:
@@ -893,16 +1051,38 @@ class Ppt(Book):
     # at this point, s is ready to wrap
     mywidth = ll - indent
     t =[]
-    while len(s) > mywidth:
-      try:
-        snip_at = s.rindex(" ", 0, mywidth)
-      except:
-        # could not find a place to wrap
-        snip_at = s.index(" ", mywidth) # Plan B
-        self.warn("wide line: {}".format(s))
-      t.append(s[:snip_at])
-      s = s[snip_at+1:]
-    t.append(s)
+    twidth = mywidth
+    while len(s) > twidth:
+      twidth2 = 0
+      if self.bnPresent:
+        m = re.match("(.*?)(⑱.*?⑱)(.*)",s)
+        while twidth2 < mywidth and m:
+          twidth2 += len(m.group(1))
+          if twidth2 <= mywidth:  # if .bn info within first mywidth real characters
+            twidth += len(m.group(2)) # allow wider split to account for .bn info
+            stemp = m.group(3)
+            m = re.match("(.*?)(⑱.*?⑱)(.*)",stemp)
+      if len(s) > twidth:
+        try:
+          snip_at = s.rindex(" ", 0, twidth)
+        except:
+          # could not find a place to wrap
+          try: # this one might fail, too, so catch exceptions
+            snip_at = s.index(" ", twidth) # Plan B
+          except:
+            snip_at = len(s)
+          if len(t) == 0:
+            self.warn("wide line: {}".format(hold + s)) # include any "hold" characters if wrapping first line
+          else:
+            self.warn("wide line: {}".format(s)) # else just include the current line.
+        t.append(s[:snip_at])
+        if snip_at < len(s):
+          s = s[snip_at+1:]
+        else:
+          s = ""
+        twidth = mywidth  
+    if len(s) > 0:
+      t.append(s)
 
     for i, line in enumerate(t):
         t[i] = t[i].replace("◠◠", "—") # restore dash
@@ -1112,6 +1292,38 @@ class Ppt(Book):
 
   def postprocess(self):
 
+    # ensure .bn info does not interfere with combining/collapsing space requests
+    # by detecting the sequence .RS / .bn info / .RS and swapping to end up with
+    #   .RS / .RS / .bn info 
+    i = 0
+    if self.bnPresent:
+      while i < len(self.eb) - 2:
+        if self.eb[i].startswith(".RS") and self.eb[i+1].startswith("⑱"):  # if .RS and possibly .bn info
+          m = re.match("^⑱.*?⑱(.*)$",self.eb[i+1])  # confirm .bn info only (no other data on line)
+          if m and m.group(1) == "":         # if so
+
+                # handle case of .RS , .bn (from above), .bn by advancing over a sequence of .bn until we find .RS or data
+                # if we end on .RS then remove that .RS and insert it before the first .bn in the sequence
+                # i => first .RS
+                # i + 1 => first .bn
+                # i + 2,3,... => possible subsequent .bn
+                j = i + 2
+                m = True
+                while m and j < len(self.eb) - 1:
+                  m = False
+                  if self.eb[j].startswith("⑱"):  # possible .bn info
+                    m  =  re.match("^⑱.*?⑱(.*)$",self.eb[j])  # confirm .bn info only (no other data on line)
+                    if m and m.group(1) == "":
+                      j += 1
+                  elif self.eb[j].startswith(".RS"): # .RS line; need to move it
+                    temp = self.eb[j]    # make a copy
+                    del self.eb[j]  # delete the .RS line
+                    self.eb.insert(i+1, temp)  # insert it after the first .RS
+                  else:
+                    m = False
+                  # everything else (data, or .bn + data) falls through as it can't affect .RS combining
+        i += 1
+
     # combine space requests
     i = 0
     while i < len(self.eb) - 1:
@@ -1138,7 +1350,7 @@ class Ppt(Book):
           count -= 1
       i += 1
 
-    # restore tokens
+      # restore tokens
     for i, line in enumerate(self.eb):
       self.eb[i] = re.sub("ⓓ|Ⓓ", ".", self.eb[i])  # ellipsis dots
       self.eb[i] = self.eb[i].replace("①", "{")
@@ -1223,6 +1435,29 @@ class Ppt(Book):
 
         print("Search string {}:{} matched in {} lines, replaced {} times.".format(i, self.srs[i], k, ll))
 
+    # build GG .bin info if needed
+    if self.bnPresent:  # if any .bn were found
+      self.bb.append("%::pagenumbers = (") # insert the .bin header into the bb array
+      i = 0
+      while i < len(self.eb):
+        bnInLine = False
+        m = re.search("(.*?)⑱(.*?)⑱.*",self.eb[i])  # find any .bn information in this line
+        while m:
+          bnInLine = True
+          t = " 'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG wants a 1-based count)
+          t = re.sub("\[","{",t,1)
+          t = re.sub("]","}",t,1)
+          self.bb.append(t)
+          self.eb[i] = re.sub("⑱.*?⑱", "", self.eb[i], 1)  # remove the .bn information
+          m = re.search("(.*?)⑱(.*?)⑱.*",self.eb[i])  # look for another one on the same line
+        if bnInLine and self.eb[i] == "": # delete line if it was only .bn info
+          del self.eb[i]
+        else:
+          i += 1
+      self.bb.append(");")  # finish building GG .bin file 
+      self.bb.append("$::pngspath = '{}';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      self.bb.append("1;")
+
   # -------------------------------------------------------------------------------------
   # save emit buffer in UTF-8 encoding to specified dstfile (text output, UTF-8)
   def saveFileU(self, fn):
@@ -1242,119 +1477,27 @@ class Ppt(Book):
       f1.write( "{:s}\r\n".format(s) )
     f1.close()
 
+    # save GG .bin file if needed
+    if self.bnPresent:
+      fnb = fn + ".bin"
+      f1 = codecs.open(fnb, "w", "ISO-8859-1")
+      for index,t in enumerate(self.bb):
+        f1.write("{:s}\r\n".format(t))
+      f1.close()
+
   # -------------------------------------------------------------------------------------
   # convert utf-8 to Latin-1 in self.wb
   def utoLat(self):
     described = {}
-    d = {
-     '\u00A0':' ', '\u00A1':'¡', '\u00A2':'¢', '\u00A3':'£', '\u00A4':'¤', '\u00A5':'¥', '\u00A6':'¦', '\u00A7':'§',
-     '\u00A8':'¨', '\u00A9':'©', '\u00AA':'ª', '\u00AB':'«', '\u00AC':'¬', '\u00AD':'­', '\u00AE':'®', '\u00AF':'¯',
-     '\u00B0':'°', '\u00B1':'±', '\u00B2':'²', '\u00B3':'³', '\u00B4':'´', '\u00B5':'µ', '\u00B6':'¶', '\u00B7':'·',
-     '\u00B8':'¸', '\u00B9':'¹', '\u00BA':'º', '\u00BB':'»', '\u00BC':'¼', '\u00BD':'½', '\u00BE':'¾', '\u00BF':'¿',
-     '\u00C0':'À', '\u00C1':'Á', '\u00C2':'Â', '\u00C3':'Ã', '\u00C4':'Ä', '\u00C5':'Å', '\u00C6':'Æ', '\u00C7':'Ç',
-     '\u00C8':'È', '\u00C9':'É', '\u00CA':'Ê', '\u00CB':'Ë', '\u00CC':'Ì', '\u00CD':'Í', '\u00CE':'Î', '\u00CF':'Ï',
-     '\u00D0':'Ð', '\u00D1':'Ñ', '\u00D2':'Ò', '\u00D3':'Ó', '\u00D4':'Ô', '\u00D5':'Õ', '\u00D6':'Ö', '\u00D7':'×',
-     '\u00D8':'Ø', '\u00D9':'Ù', '\u00DA':'Ú', '\u00DB':'Û', '\u00DC':'Ü', '\u00DD':'Ý', '\u00DE':'Þ', '\u00DF':'ß',
-     '\u00E0':'à', '\u00E1':'á', '\u00E2':'â', '\u00E3':'ã', '\u00E4':'ä', '\u00E5':'å', '\u00E6':'æ', '\u00E7':'ç',
-     '\u00E8':'è', '\u00E9':'é', '\u00EA':'ê', '\u00EB':'ë', '\u00EC':'ì', '\u00ED':'í', '\u00EE':'î', '\u00EF':'ï',
-     '\u00F0':'ð', '\u00F1':'ñ', '\u00F2':'ò', '\u00F3':'ó', '\u00F4':'ô', '\u00F5':'õ', '\u00F6':'ö', '\u00F7':'÷',
-     '\u00F8':'ø', '\u00F9':'ù', '\u00FA':'ú', '\u00FB':'û', '\u00FC':'ü', '\u00FD':'ý', '\u00FE':'þ', '\u00FF':'ÿ',
-     '\u0100':'A', '\u0101':'a', '\u0102':'A', '\u0103':'a', '\u0104':'A', '\u0105':'a', '\u0106':'C', '\u0107':'c',
-     '\u0108':'C', '\u0109':'c', '\u010A':'C', '\u010B':'c', '\u010C':'C', '\u010D':'c', '\u010E':'D', '\u010F':'d',
-     '\u0110':'D', '\u0111':'d', '\u0112':'E', '\u0113':'e', '\u0114':'E', '\u0115':'e', '\u0116':'E', '\u0117':'e',
-     '\u0118':'E', '\u0119':'e', '\u011A':'E', '\u011B':'e', '\u011C':'G', '\u011D':'g', '\u011E':'G', '\u011F':'g',
-     '\u0120':'G', '\u0121':'g', '\u0122':'G', '\u0123':'g', '\u0124':'H', '\u0125':'h', '\u0126':'H', '\u0127':'h',
-     '\u0128':'I', '\u0129':'i', '\u012A':'I', '\u012B':'i', '\u012C':'I', '\u012D':'i', '\u012E':'I', '\u012F':'i',
-     '\u0130':'I', '\u0132':'IJ','\u0133':'ij','\u0134':'J', '\u0135':'j', '\u0136':'K', '\u0137':'k', '\u0139':'L',
-     '\u013A':'l', '\u013B':'L', '\u013C':'l', '\u013D':'L', '\u013E':'l', '\u013F':'L', '\u0140':'l', '\u0141':'L',
-     '\u0142':'l', '\u0143':'N', '\u0144':'n', '\u0145':'N', '\u0146':'n', '\u0147':'N', '\u0148':'n', '\u0149':'n',
-     '\u014C':'O', '\u014D':'o', '\u014E':'O', '\u014F':'o', '\u0150':'O', '\u0151':'o', '\u0152':'OE','\u0153':'oe',
-     '\u0154':'R', '\u0155':'r', '\u0156':'R', '\u0157':'r', '\u0158':'R', '\u0159':'r', '\u015A':'S', '\u015B':'s',
-     '\u015C':'S', '\u015D':'s', '\u015E':'S', '\u015F':'s', '\u0160':'S', '\u0161':'s', '\u0162':'T', '\u0163':'t',
-     '\u0164':'T', '\u0165':'t', '\u0166':'T', '\u0167':'t', '\u0168':'U', '\u0169':'u', '\u016A':'U', '\u016B':'u',
-     '\u016C':'U', '\u016D':'u', '\u016E':'U', '\u016F':'u', '\u0170':'U', '\u0171':'u', '\u0172':'U', '\u0173':'u',
-     '\u0174':'W', '\u0175':'w', '\u0176':'Y', '\u0177':'y', '\u0178':'Y', '\u0179':'Z', '\u017A':'z', '\u017B':'Z',
-     '\u017C':'z', '\u017D':'Z', '\u017E':'z', '\u0180':'b', '\u0181':'B', '\u0182':'B', '\u0183':'b', '\u0186':'O',
-     '\u0187':'C', '\u0188':'c', '\u018A':'D', '\u018B':'D', '\u018C':'d', '\u0191':'F', '\u0192':'f', '\u0193':'G',
-     '\u0197':'I', '\u0198':'K', '\u0199':'k', '\u019A':'l', '\u019D':'N', '\u019E':'n', '\u019F':'O', '\u01A0':'O',
-     '\u01A1':'o', '\u01A4':'P', '\u01A5':'p', '\u01AB':'t', '\u01AC':'T', '\u01AD':'t', '\u01AE':'T', '\u01AF':'U',
-     '\u01B0':'u', '\u01B2':'V', '\u01B3':'Y', '\u01B4':'y', '\u01B5':'Z', '\u01B6':'z', '\u01C5':'D', '\u01C8':'L',
-     '\u01CB':'N', '\u01CD':'A', '\u01CE':'a', '\u01CF':'I', '\u01D0':'i', '\u01D1':'O', '\u01D2':'o', '\u01D3':'U',
-     '\u01D4':'u', '\u01D5':'U', '\u01D6':'u', '\u01D7':'U', '\u01D8':'u', '\u01D9':'U', '\u01DA':'u', '\u01DB':'U',
-     '\u01DC':'u', '\u01DE':'A', '\u01DF':'a', '\u01E0':'A', '\u01E1':'a', '\u01E2':'A', '\u01E3':'a', '\u01E4':'G',
-     '\u01E5':'g', '\u01E6':'G', '\u01E7':'g', '\u01E8':'K', '\u01E9':'k', '\u01EA':'O', '\u01EB':'o', '\u01EC':'O',
-     '\u01ED':'o', '\u01F0':'j', '\u01F2':'D', '\u01F4':'G', '\u01F5':'g', '\u01F8':'N', '\u01F9':'n', '\u01FA':'A',
-     '\u01FB':'a', '\u01FC':'A', '\u01FD':'a', '\u01FE':'O', '\u01FF':'o', '\u0200':'A', '\u0201':'a', '\u0202':'A',
-     '\u0203':'a', '\u0204':'E', '\u0205':'e', '\u0206':'E', '\u0207':'e', '\u0208':'I', '\u0209':'i', '\u020A':'I',
-     '\u020B':'i', '\u020C':'O', '\u020D':'o', '\u020E':'O', '\u020F':'o', '\u0210':'R', '\u0211':'r', '\u0212':'R',
-     '\u0213':'r', '\u0214':'U', '\u0215':'u', '\u0216':'U', '\u0217':'u', '\u0218':'S', '\u0219':'s', '\u021A':'T',
-     '\u021B':'t', '\u021E':'H', '\u021F':'h', '\u0220':'N', '\u0221':'d', '\u0224':'Z', '\u0225':'z', '\u0226':'A',
-     '\u0227':'a', '\u0228':'E', '\u0229':'e', '\u022A':'O', '\u022B':'o', '\u022C':'O', '\u022D':'o', '\u022E':'O',
-     '\u022F':'o', '\u0230':'O', '\u0231':'o', '\u0232':'Y', '\u0233':'y', '\u0234':'l', '\u0235':'n', '\u0236':'t',
-     '\u0253':'b', '\u0255':'c', '\u0256':'d', '\u0257':'d', '\u0260':'g', '\u0266':'h', '\u0268':'i', '\u026B':'l',
-     '\u026C':'l', '\u026D':'l', '\u0271':'m', '\u0272':'n', '\u0273':'n', '\u027C':'r', '\u027D':'r', '\u027E':'r',
-     '\u0282':'s', '\u0288':'t', '\u0289':'u', '\u028B':'v', '\u0290':'z', '\u0291':'z', '\u029C':'H', '\u029D':'j',
-     '\u02A0':'q', '\u02AE':'h', '\u02AF':'h', '\u040D':'I', '\u045D':'i', '\u04D0':'A', '\u04D1':'a', '\u04D2':'A',
-     '\u04D3':'a', '\u04E2':'I', '\u04E3':'i', '\u04E4':'I', '\u04E5':'i', '\u04E6':'O', '\u04E7':'o', '\u04EC':'E',
-     '\u04ED':'e', '\u04EE':'U', '\u04EF':'u', '\u04F0':'U', '\u04F1':'u', '\u04F2':'U', '\u04F3':'u', '\u1E00':'A',
-     '\u1E01':'a', '\u1E02':'B', '\u1E03':'b', '\u1E04':'B', '\u1E05':'b', '\u1E06':'B', '\u1E07':'b', '\u1E08':'C',
-     '\u1E09':'c', '\u1E0A':'D', '\u1E0B':'d', '\u1E0C':'D', '\u1E0D':'d', '\u1E0E':'D', '\u1E0F':'d', '\u1E10':'D',
-     '\u1E11':'d', '\u1E12':'D', '\u1E13':'d', '\u1E14':'E', '\u1E15':'e', '\u1E16':'E', '\u1E17':'e', '\u1E18':'E',
-     '\u1E19':'e', '\u1E1A':'E', '\u1E1B':'e', '\u1E1C':'E', '\u1E1D':'e', '\u1E1E':'F', '\u1E1F':'f', '\u1E20':'G',
-     '\u1E21':'g', '\u1E22':'H', '\u1E23':'h', '\u1E24':'H', '\u1E25':'h', '\u1E26':'H', '\u1E27':'h', '\u1E28':'H',
-     '\u1E29':'h', '\u1E2A':'H', '\u1E2B':'h', '\u1E2C':'I', '\u1E2D':'i', '\u1E2E':'I', '\u1E2F':'i', '\u1E30':'K',
-     '\u1E31':'k', '\u1E32':'K', '\u1E33':'k', '\u1E34':'K', '\u1E35':'k', '\u1E36':'L', '\u1E37':'l', '\u1E38':'L',
-     '\u1E39':'l', '\u1E3A':'L', '\u1E3B':'l', '\u1E3C':'L', '\u1E3D':'l', '\u1E3E':'M', '\u1E3F':'m', '\u1E40':'M',
-     '\u1E41':'m', '\u1E42':'M', '\u1E43':'m', '\u1E44':'N', '\u1E45':'n', '\u1E46':'N', '\u1E47':'n', '\u1E48':'N',
-     '\u1E49':'n', '\u1E4A':'N', '\u1E4B':'n', '\u1E4C':'O', '\u1E4D':'o', '\u1E4E':'O', '\u1E4F':'o', '\u1E50':'O',
-     '\u1E51':'o', '\u1E52':'O', '\u1E53':'o', '\u1E54':'P', '\u1E55':'p', '\u1E56':'P', '\u1E57':'p', '\u1E58':'R',
-     '\u1E59':'r', '\u1E5A':'R', '\u1E5B':'r', '\u1E5C':'R', '\u1E5D':'r', '\u1E5E':'R', '\u1E5F':'r', '\u1E60':'S',
-     '\u1E61':'s', '\u1E62':'S', '\u1E63':'s', '\u1E64':'S', '\u1E65':'s', '\u1E66':'S', '\u1E67':'s', '\u1E68':'S',
-     '\u1E69':'s', '\u1E6A':'T', '\u1E6B':'t', '\u1E6C':'T', '\u1E6D':'t', '\u1E6E':'T', '\u1E6F':'t', '\u1E70':'T',
-     '\u1E71':'t', '\u1E72':'U', '\u1E73':'u', '\u1E74':'U', '\u1E75':'u', '\u1E76':'U', '\u1E77':'u', '\u1E78':'U',
-     '\u1E79':'u', '\u1E7A':'U', '\u1E7B':'u', '\u1E7C':'V', '\u1E7D':'v', '\u1E7E':'V', '\u1E7F':'v', '\u1E80':'W',
-     '\u1E81':'w', '\u1E82':'W', '\u1E83':'w', '\u1E84':'W', '\u1E85':'w', '\u1E86':'W', '\u1E87':'w', '\u1E88':'W',
-     '\u1E89':'w', '\u1E8A':'X', '\u1E8B':'x', '\u1E8C':'X', '\u1E8D':'x', '\u1E8E':'Y', '\u1E8F':'y', '\u1E90':'Z',
-     '\u1E91':'z', '\u1E92':'Z', '\u1E93':'z', '\u1E94':'Z', '\u1E95':'z', '\u1E96':'h', '\u1E97':'t', '\u1E98':'w',
-     '\u1E99':'y', '\u1E9A':'a', '\u1EA0':'A', '\u1EA1':'a', '\u1EA2':'A', '\u1EA3':'a', '\u1EA4':'A', '\u1EA5':'a',
-     '\u1EA6':'A', '\u1EA7':'a', '\u1EA8':'A', '\u1EA9':'a', '\u1EAA':'A', '\u1EAB':'a', '\u1EAC':'A', '\u1EAD':'a',
-     '\u1EAE':'A', '\u1EAF':'a', '\u1EB0':'A', '\u1EB1':'a', '\u1EB2':'A', '\u1EB3':'a', '\u1EB4':'A', '\u1EB5':'a',
-     '\u1EB6':'A', '\u1EB7':'a', '\u1EB8':'E', '\u1EB9':'e', '\u1EBA':'E', '\u1EBB':'e', '\u1EBC':'E', '\u1EBD':'e',
-     '\u1EBE':'E', '\u1EBF':'e', '\u1EC0':'E', '\u1EC1':'e', '\u1EC2':'E', '\u1EC3':'e', '\u1EC4':'E', '\u1EC5':'e',
-     '\u1EC6':'E', '\u1EC7':'e', '\u1EC8':'I', '\u1EC9':'i', '\u1ECA':'I', '\u1ECB':'i', '\u1ECC':'O', '\u1ECD':'o',
-     '\u1ECE':'O', '\u1ECF':'o', '\u1ED0':'O', '\u1ED1':'o', '\u1ED2':'O', '\u1ED3':'o', '\u1ED4':'O', '\u1ED5':'o',
-     '\u1ED6':'O', '\u1ED7':'o', '\u1ED8':'O', '\u1ED9':'o', '\u1EDA':'O', '\u1EDB':'o', '\u1EDC':'O', '\u1EDD':'o',
-     '\u1EDE':'O', '\u1EDF':'o', '\u1EE0':'O', '\u1EE1':'o', '\u1EE2':'O', '\u1EE3':'o', '\u1EE4':'U', '\u1EE5':'u',
-     '\u1EE6':'U', '\u1EE7':'u', '\u1EE8':'U', '\u1EE9':'u', '\u1EEA':'U', '\u1EEB':'u', '\u1EEC':'U', '\u1EED':'u',
-     '\u1EEE':'U', '\u1EEF':'u', '\u1EF0':'U', '\u1EF1':'u', '\u1EF2':'Y', '\u1EF3':'y', '\u1EF4':'Y', '\u1EF5':'y',
-     '\u1EF6':'Y', '\u1EF7':'y', '\u1EF8':'Y', '\u1EF9':'y', '\u2002':' ', '\u2003':' ', '\u2004':' ', '\u2005':' ',
-     '\u2006':' ', '\u2007':' ', '\u2008':' ', '\u2009':' ', '\u200A':' ', '\u2010':'-', '\u2013':'-', '\u2014':'--',
-     '\u2016':'|', '\u2017':'_', '\u2018':"'", '\u2019':"'", '\u201A':"'", '\u201B':"'", '\u201C':'"', '\u201D':'"',
-     '\u201E':'"', '\u201F':'"', '\u2045':'[', '\u2046':']', '\u2047':'?', '\u2048':'?', '\u2049':'!', '\uFF01':'!',
-     '\uFF02':'"', '\uFF03':'#', '\uFF04':'$', '\uFF05':'%', '\uFF06':'&', '\uFF07':';', '\uFF08':'(', '\uFF09':')',
-     '\uFF0A':'*', '\uFF0B':'+', '\uFF0C':',', '\uFF0D':'-', '\uFF0E':'.', '\uFF0F':'/', '\uFF10':'0', '\uFF11':'1',
-     '\uFF12':'2', '\uFF13':'3', '\uFF14':'4', '\uFF15':'5', '\uFF16':'6', '\uFF17':'7', '\uFF18':'8', '\uFF19':'9',
-     '\uFF1A':':', '\uFF1B':';', '\uFF1D':'=', '\uFF1E':'>', '\uFF1F':'?', '\uFF20':'@', '\uFF21':'A', '\uFF22':'B',
-     '\uFF23':'C', '\uFF24':'D', '\uFF25':'E', '\uFF26':'F', '\uFF27':'G', '\uFF28':'H', '\uFF29':'I', '\uFF2A':'J',
-     '\uFF2B':'K', '\uFF2C':'L', '\uFF2D':'M', '\uFF2E':'N', '\uFF2F':'O', '\uFF30':'P', '\uFF31':'Q', '\uFF32':'R',
-     '\uFF33':'S', '\uFF34':'T', '\uFF35':'U', '\uFF36':'V', '\uFF37':'W', '\uFF38':'X', '\uFF39':'Y', '\uFF3A':'Z',
-     '\uFF3B':'[', '\uFF3C':'\\','\uFF3D':']', '\uFF3E':'^', '\uFF3F':'_', '\uFF41':'a', '\uFF42':'b', '\uFF43':'c',
-     '\uFF44':'d', '\uFF45':'e', '\uFF46':'f', '\uFF47':'g', '\uFF48':'h', '\uFF49':'i', '\uFF4A':'j', '\uFF4B':'k',
-     '\uFF4C':'l', '\uFF4D':'m', '\uFF4E':'n', '\uFF4F':'o', '\uFF50':'p', '\uFF51':'q', '\uFF52':'r', '\uFF53':'s',
-     '\uFF54':'t', '\uFF55':'u', '\uFF56':'v', '\uFF57':'w', '\uFF58':'x', '\uFF59':'y', '\uFF5A':'z', '\uFF5B':'{',
-     '\uFF5C':'|', '\uFF5D':'}', '\uFF5E':'~',
-     '\u2042':'***'
-    }
-
     t = defaultdict(int)
     for i, line in enumerate(self.wb):
       s = ""
       for c in line: # for every character
-        if c in d: # is it in the list of converting characters?
-          s += d[c] # yes, replace with converted Latin-1 character
+        if c in self.d: # is it in the list of converting characters?
+          s += self.d[c] # yes, replace with converted Latin-1 character
           t[c] += 1
         else:
-          if ord(c) < 0x100:
+          if ord(c) < 0x80:  # safe limit for code page 437
             s += c # no conversion, transfer character as is
           else:
             s += "[{}]".format(unicodedata.name(c))
@@ -1366,7 +1509,7 @@ class Ppt(Book):
     self.lprint("  {:5}{:5} {}".format("char","count","description"))
     self.lprint("  {:5}{:5} {}".format("----","-----","----------------------------------------"))
     for ch in t:
-      self.lprint("  {:5}{:5} {}".format(d[ch], t[ch], unicodedata.name(ch)))
+      self.lprint("  {:5}{:5} {}".format(self.d[ch], t[ch], unicodedata.name(ch)))
 
     while not self.wb[-1]:
       self.wb.pop()
@@ -1399,6 +1542,14 @@ class Ppt(Book):
           self.warn("long line (>{}) beginning:\n  {}....".format(self.linelimitwarning, m.group(0)))
       f1.write( "{:s}\r\n".format(s) )
     f1.close()
+
+    # save GG .bin file if needed
+    if self.bnPresent:
+      fnb = fn + ".bin"
+      f1 = codecs.open(fnb, "w", "ISO-8859-1")
+      for index,t in enumerate(self.bb):
+        f1.write("{:s}\r\n".format(t))
+      f1.close()
 
   # ----- process method group ----------------------------------------------------------
 
@@ -1455,6 +1606,11 @@ class Ppt(Book):
       if "nobreak" in rend:
         rend = re.sub("nobreak","",rend)
     self.eb.append(".RS 1")
+    if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl+1])
+      if m and m.group(1) == "":
+        self.eb.append(self.wb[self.cl+1])    # append the .bn info to eb as-is
+        self.cl += 1                                           # and ignore it for handling this .h1/2/3
     h2a = self.wb[self.cl+1].split('|')
     for line in h2a:
       self.eb.append(("{:^72}".format(line)).rstrip())
@@ -1469,6 +1625,11 @@ class Ppt(Book):
       if "nobreak" in rend:
         rend = re.sub("nobreak","",rend)
     self.eb.append(".RS 1")
+    if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl+1])
+      if m and m.group(1) == "":
+        self.eb.append(self.wb[self.cl+1])    # append the .bn info to eb as-is
+        self.cl += 1                                           # and ignore it for handling this .h1/2/3
     h2a = self.wb[self.cl+1].split('|')
     for line in h2a:
       self.eb.append(("{:^72}".format(line)).rstrip())
@@ -1483,6 +1644,11 @@ class Ppt(Book):
       if "nobreak" in rend:
         rend = re.sub("nobreak","",rend)
     self.eb.append(".RS 1")
+    if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl+1])
+      if m and m.group(1) == "":
+        self.eb.append(self.wb[self.cl+1])    # append the .bn info to eb as-is
+        self.cl += 1                                           # and ignore it for handling this .h1/2/3
     h2a = self.wb[self.cl+1].split('|')
     for line in h2a:
       self.eb.append(("{:^72}".format(line)).rstrip())
@@ -1632,6 +1798,15 @@ class Ppt(Book):
     t = []
     i = self.cl + 1 # skip the .nf c line
     while self.wb[i] != ".nf-":
+      bnInBlock = False
+      if self.bnPresent and self.wb[i].startswith("⑱"):   #just copy .bn info lines, don't change them at all
+        m =re.match("^⑱.*?⑱(.*)", self.wb[i])
+        if m and m.group(1) == "":
+          bnInBlock = True
+          t.append(self.wb[i])
+          i += 1
+          continue
+
       xt = self.regLL - self.regIN # width of centered line
       xs = "{:^" + str(xt) + "}"
       t.append(" " * self.regIN + xs.format(self.wb[i].strip()))
@@ -1641,7 +1816,12 @@ class Ppt(Book):
     need_pad = False
     for line in t:
       if line[0] != " ":
-        need_pad = True
+        if bnInBlock and line[0] == "⑱":
+          m =re.match("^⑱.*?⑱(.*)", line)
+          if not (m and m.group(1) == ""):
+            need_pad = True
+        else:
+          need_pad = True
     if need_pad:
       self.warn("inserting leading space in wide .nf c")
       for i,line in enumerate(t):
@@ -1683,6 +1863,12 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .ce
         while count > 0:
+          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+            if m and m.group(1) == "":
+              self.eb.append(self.wb[i])
+              i += 1
+              continue
           xs = "{:^" + str(regBW) + "}"
           self.eb.append(" " * self.regIN + xs.format(self.wb[i].strip()))
           i += 1
@@ -1694,11 +1880,24 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .rj
         while count > 0:
+          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+            if m and m.group(1) == "":
+              self.eb.append(self.wb[i])
+              i += 1
+              continue
           xs = "{:>" + str(regBW) + "}"
           self.eb.append(" " * self.regIN + xs.format(self.wb[i].strip()))
           i += 1
           count -= 1
         continue
+
+      if self.bnPresent and self.wb[i].startswith("⑱"):   #just copy .bn info lines, don't change them at all
+        m =re.match("^⑱.*?⑱(.*)", self.wb[i])
+        if m and m.group(1) == "":
+          self.eb.append(self.wb[i])
+          i += 1
+          continue
 
       s = (" " * self.regIN + self.wb[i])
       # if the line is shorter than 72 characters, just send it to emit buffer
@@ -1726,6 +1925,7 @@ class Ppt(Book):
     i = self.cl + 1 # skip the .nf b line
     xt = self.regLL - self.regIN
     lmar = (xt - regBW)//2
+    bnInBlock = False                # no .bn info encountered in this block yet
     while self.wb[i] != ".nf-":
 
       # special cases: .ce and .rj
@@ -1734,6 +1934,13 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .ce
         while count > 0:
+          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+            if m and m.group(1) == "":
+              bnInBlock = True
+              t.append(self.wb[i])
+              i += 1
+              continue
           xs = "{:^" + str(regBW) + "}"
           t.append(" " * lmar + xs.format(self.wb[i].strip()))
           i += 1
@@ -1745,13 +1952,28 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .rj
         while count > 0:
+          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+            if m and m.group(1) == "":
+              bnInBlock = True
+              t.append(self.wb[i])
+              i += 1
+              continue
           xs = "{:>" + str(regBW) + "}"
           t.append(" " * lmar + xs.format(self.wb[i].strip()))
           i += 1
           count -= 1
         continue
 
-      t.append(" " * self.regIN + " " * lmar + self.wb[i].rstrip())
+      if self.bnPresent and self.wb[i].startswith("⑱"):   #just copy .bn info lines, don't change them at all
+        m =re.match("^⑱.*?⑱(.*)", self.wb[i])
+        if m and m.group(1) == "":
+          bnInBlock = True
+          t.append(self.wb[i])
+        else:
+          t.append(" " * self.regIN + " " * lmar + self.wb[i].rstrip())
+      else:
+        t.append(" " * self.regIN + " " * lmar + self.wb[i].rstrip())          
       i += 1
     self.cl = i + 1 # skip the closing .nf-
 
@@ -1759,7 +1981,12 @@ class Ppt(Book):
     need_pad = False
     for line in t:
       if line[0] != " ":
-        need_pad = True
+        if bnInBlock and line[0] == "⑱":
+          m =re.match("^⑱.*?⑱(.*)", line)
+          if not (m and m.group(1) == ""):
+            need_pad = True
+        else:
+          need_pad = True
     if need_pad:
       self.warn("inserting leading space in wide .nf b")
       for i,line in enumerate(t):
@@ -1782,6 +2009,12 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .ce
         while count > 0:
+          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+            if m and m.group(1) == "":
+              self.eb.append(self.wb[i])
+              i += 1
+              continue
           xs = "{:^" + str(regBW) + "}"
           self.eb.append(" " * fixed_indent + xs.format(self.wb[i].strip()))
           i += 1
@@ -1793,6 +2026,12 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .rj
         while count > 0:
+          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+            if m and m.group(1) == "":
+              self.eb.append(self.wb[i])
+              i += 1
+              continue
           xs = "{:>" + str(regBW) + "}"
           self.eb.append(" " * fixed_indent + xs.format(self.wb[i].strip()))
           i += 1
@@ -1813,19 +2052,26 @@ class Ppt(Book):
     if m:
       self.crash_w_context("attempting to close an unopened block with {}".format(self.wb[self.cl]),self.cl)
     m = re.match(r"\.nf (.)", self.wb[self.cl])
+    nf_handled = False
     if m:
       margin_override = False
       if re.match(r"\.nf . 0", self.wb[self.cl]):
         margin_override = True # ignored in text
       nftype = m.group(1) # c, l, b or r
       if nftype == 'c':
+        nf_handled = True
         self.doNfc(margin_override)
-      if nftype == 'l':
+      elif nftype == 'l':
+        nf_handled = True
         self.doNfl(margin_override)
-      if nftype == 'r':
+      elif nftype == 'r':
+        nf_handled = True
         self.doNfr(margin_override)
-      if nftype == 'b':
+      elif nftype == 'b':
+        nf_handled = True
         self.doNfb(margin_override)
+    if not nf_handled:
+      self.crash_w_context("invalid .nf option: {}".format(self.wb[self.cl]),self.cl)
 
   # footnotes
   # here on footnote start or end
@@ -1862,7 +2108,7 @@ class Ppt(Book):
       j = self.cl + 1
       maxw = 0
       while self.wb[j] != ".ta-":
-        # blank and centerd lines are not considered
+        # blank and centered and .bn info lines are not considered
         if self.wb[j] == "" or not "|" in self.wb[j]:
           j += 1
           continue
@@ -1971,7 +2217,7 @@ class Ppt(Book):
     k1 = self.cl
     while self.wb[k1] != ".ta-":
 
-      # lines that we don't check: centered or blank
+      # lines that we don't check: centered or blank (or .bn info)
       if empty.match(self.wb[k1]) or not "|" in self.wb[k1]:
         k1 += 1
         continue
@@ -1992,6 +2238,14 @@ class Ppt(Book):
         self.eb.append("")
         self.cl += 1
         continue
+
+      # .bn info line
+      if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+        m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
+        if m and m.group(1) == "":
+          self.eb.append(self.wb[self.cl])   # copy the .bn info into the table (deleted much later during postprocessing)
+          self.cl += 1  
+          continue
 
       # centered line
       # a line in source that has no vertical pipe
@@ -2095,7 +2349,9 @@ class Ppt(Book):
 
   def doPara(self):
     t = []
+    bnt = []
     pstart = self.cl
+
     # grab the paragraph from the source file into t[]
     j = pstart
     while (j < len(self.wb) and
@@ -2105,22 +2361,58 @@ class Ppt(Book):
       j += 1
     pend = j
     s = " ".join(t) # one long string for the paragraph
-    u = self.wrap(s, self.regIN, self.regLL, self.regTI)
-    self.regTI = 0 # reset any temporary indent
-    # set paragraph spacing
-    u.insert(0, ".RS 1") # before
-    u.append(".RS 1") # after
-    self.eb += u
+    textInPara = True
+    if self.bnPresent:
+      bnInPara = False
+      m=re.match(".*⑱.*?⑱.*",s)                # any bn info in this paragraph?
+      if m:                                                         # if yes, make sure there are no blanks after it and
+        bnInPara = True                                 # see if there's any real text
+        # this seems like a long way to do it, rather than using re.sub, but 
+        # I had some odd problems trying to use re.sub as I couldn't get \1
+        # to substitute back in properly. So I loop using re.match instead.
+        m = re.match("(.*?)(⑱.*?⑱) (.*)",s) 
+        while m:
+          s = m.group(1) + m.group(2) + m.group(3)
+          m = re.match("(.*?)(⑱.*?⑱) (.*)",s)
+        if s.endswith("⑱"):                      # if there's .bn info at end of s remove any blank preceding it
+          m = re.match("^(.*) (⑱.*?⑱)$",s)
+          if m:
+            s = m.group(1) + m.group(2)
+        stemp = re.sub("⑱.*?⑱", "", s) #  make copy of s with bn info removed
+        if stemp == "":                              # if it was all bn info, note that there's no text to wrap.
+          textInPara = False
+    if textInPara:  # only wrap and add blank lines if there was actual text in the paragraph
+      u = self.wrap(s, self.regIN, self.regLL, self.regTI)
+      self.regTI = 0 # reset any temporary indent
+      # set paragraph spacing
+      u.insert(0, ".RS 1") # before
+      u.append(".RS 1") # after
+      self.eb += u
+    elif bnInPara:
+      bnt.append(s)
+      self.eb += bnt     # if only .bn info, append it.
+    else:
+      self.crash_w_context("Unexpected problem with .bn info",pstart)
     self.cl = pend
 
   def process(self):
     self.cl = 0
     while self.cl < len(self.wb):
       if "a" in self.debug:
-        print(self.wb[self.cl])
+        s = self.wb[self.cl]
+        print( self.umap(s) )  # safe print the current line
       if not self.wb[self.cl]: # skip blank lines
         self.cl += 1
         continue
+
+      # don't turn standalone .bn info lines into paragraphs
+      if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+        m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])  # look for standalone .bn info
+        if m and m.group(1) == "":   # and just append to eb if found 
+          self.eb.append(self.wb[self.cl])
+          self.cl += 1
+        continue
+
       # will hit either a dot directive or wrappable text
       if re.match(r"\.", self.wb[self.cl]):
         self.doDot()
@@ -2221,9 +2513,9 @@ class Pph(Book):
 
   # bailout after saving working buffer in bailout.txt
   def bailout(self, buffer):
-    f1 = open("bailout.txt", "w", encoding='utf-8')
+    f1 = codecs.open("bailout.txt", "w", encoding='utf-8')
     for index,t in enumerate(buffer):
-      f1.write( "{:s}\r\n".format(t.rstrip()) )
+      f1.write( "{:s}\r\n".format(t.rstrip()) ) 
     f1.close()
     exit(1)
 
@@ -2281,7 +2573,21 @@ class Pph(Book):
         ck3c = m.group(1)
         self.wb[i] = re.sub(ck0, "class='{0} {1}' {2} ".format(ck1c, ck3c, ck2), self.wb[i])
         self.wb[i] = re.sub("\s\s*", " ", self.wb[i]) # courtesy whitespace cleanup
-
+    # fix FF problem with interaction between pageno and drop-caps
+    i = 0
+    while i < len(self.wb):
+      m = re.search("(.*?)(<p class='drop-capa.*>)(<span class='pageno'.*?>.*?</span>)(.*)$", self.wb[i])  # look for drop-cap HTML before pageno HTML
+      if m:
+        t = []
+        if m.group(1):
+          t.append(m.group(1))
+        t.append(m.group(3))      # move the pageno span to before the drop-cap paragraph (it will end up in its own div)
+        t.append(m.group(2))
+        if m.group(4):
+          t.append(m.group(4))
+        self.wb[i:i+1] = t
+        i += len(t)
+      i += 1
   # -------------------------------------------------------------------------------------
   # courtesy id check
   #
@@ -2378,15 +2684,19 @@ class Pph(Book):
         found = False
         while not found and (i < len(self.wb)):    # loop until we find a valid insertion spot
 
-          # if we hit the start of a .li, warn the user
+          # if we hit the start of a .li, warn the user and put the page number line back in.
+          # it can't float into or over the .li, so it will appear wherever it appears
           if self.wb[i].startswith(".li"):
-            self.warn(".li encountered while placing page number")
+            self.warn(".li encountered while placing page number: {}".format(pnum))
+            self.wb.insert(i,"⑯{}⑰".format(pnum)) # insert page number before the .li
+            i += 2 # bump past new page number line and the .li
+            found = True
+            continue
           # it is possible to hit another pn match before finding a suitable home
           m = re.match(r"⑯(.+)⑰", self.wb[i])  # must be on line by itself
           if m:
             pnum = m.group(1)  # the page number
             del self.wb[i]     # original line gone
-            i -= 1             # counteract increment operation below if we deleted the line
             continue           # now go and place it
           # placing the page number
           #  if we see a heading, place it there
@@ -2397,6 +2707,12 @@ class Pph(Book):
           if self.wb[i].startswith(".il"):
             self.wb[i] += " pn={}".format(pnum)
             found = True
+          # don't place on a .bn info line
+          if self.bnPresent and self.wb[i].startswith("⑱"):
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+            if m and m.group(1) == "":
+              i += 1
+              continue
           # plain text
           if self.wb[i] and not self.wb[i].startswith("."):
             self.wb[i] = "⑯{}⑰".format(pnum) + self.wb[i]
@@ -2511,40 +2827,48 @@ class Pph(Book):
     i = 0
     while i < len(self.wb):
       if self.wb[i].startswith(".nf"): # find a no-fill block
-        tagstack = []
-        i += 1 # step inside the .nf block
-        while not self.wb[i].startswith(".nf-"): # as long as we are in a .nf
-          if self.wb[i].startswith(".nf "):
-            self.crash_w_context("nested no-fill block:", i)
-          # find all tags on this line; ignore <a and </a tags completely for this purpose
-          t = re.findall("<\/?[^a][^>]*>", self.wb[i])
-          sstart = "" # what to prepend to the line
-          for s in tagstack: # build the start string
-            sstart += s
-          self.wb[i] = sstart + self.wb[i] # rewrite the line with new start
-          for s in t: # we may have more tags on this line
-            if not s.startswith("</"): # it is of form <..> an opening tag
-              tagstack.append(s) # save it on the stack
-            else:  # it is of form </..> a closing tag
-              tmp = re.sub("<\/", "<", s) # decide what its opening tag would be
-              try:
-                if tmp[0:2] != tagstack[-1][0:2]: # needs close the one most recently open
-                  self.fatal("mismatched tag {}".format(s))
-              except:
-                self.fatal("courtesy inline tag processing: {}".format(self.wb[i])) # one too many
-              tagstack.pop() # discard both tags on stack, they balanced each other out.
-          send = "" # string end
-          for s in reversed(tagstack): # if there is something left, tack it on end of line
-            closetag =  re.sub("<","</", s) # make it into a closing tag
-            if closetag.startswith("</c"): # anything that had arguments closes without them
-              closetag = "</c>" # colors
-            if closetag.startswith("</fs"):
-              closetag = "</fs>" # font size
-            if closetag.startswith("</lang"):
-              closetag = "</lang>" # language
-            send += closetag
-          self.wb[i] = self.wb[i] + send
-          i += 1
+        m = re.match(r"\.nf ([lrcb])", self.wb[i])
+        if m:
+          tagstack = []
+          i += 1 # step inside the .nf block
+          while i < len(self.wb) and not self.wb[i].startswith(".nf-"): # as long as we are in a .nf
+            if self.wb[i].startswith(".nf "):
+              self.crash_w_context("nested no-fill block:", i)
+            # ignore .bn lines; just pass them through
+            if self.bnPresent and self.wb[i].startswith("⑱"):
+              m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+              if m and m.group(1) == "":
+                i += 1
+                continue
+            # find all tags on this line; ignore <a and </a tags completely for this purpose
+            t = re.findall("<\/?[^a][^>]*>", self.wb[i])
+            sstart = "" # what to prepend to the line
+            for s in tagstack: # build the start string
+              sstart += s
+            self.wb[i] = sstart + self.wb[i] # rewrite the line with new start
+            for s in t: # we may have more tags on this line
+              if not s.startswith("</"): # it is of form <..> an opening tag
+                tagstack.append(s) # save it on the stack
+              else:  # it is of form </..> a closing tag
+                tmp = re.sub("<\/", "<", s) # decide what its opening tag would be
+                try:
+                  if tmp[0:2] != tagstack[-1][0:2]: # needs close the one most recently open
+                    self.fatal("mismatched tag {}".format(s))
+                except:
+                  self.fatal("courtesy inline tag processing: {}".format(self.wb[i])) # one too many
+                tagstack.pop() # discard both tags on stack, they balanced each other out.
+            send = "" # string end
+            for s in reversed(tagstack): # if there is something left, tack it on end of line
+              closetag =  re.sub("<","</", s) # make it into a closing tag
+              if closetag.startswith("</c"): # anything that had arguments closes without them
+                closetag = "</c>" # colors
+              if closetag.startswith("</fs"):
+                closetag = "</fs>" # font size
+              if closetag.startswith("</lang"):
+                closetag = "</lang>" # language
+              send += closetag
+            self.wb[i] = self.wb[i] + send
+            i += 1
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2752,11 +3076,11 @@ class Pph(Book):
         self.wb[i] = re.sub(r"#(\d+)#", s, self.wb[i], 1)
         m = re.search(r"#(\d+)#", self.wb[i])
 
-      m = re.search(r"#(.*?):(.*?)#", self.wb[i]) # named reference
+      m = re.search(r"#([^'>]*?):(.*?)#", self.wb[i]) # named reference
       while m:
         s = "<a href='⫉{}'>{}</a>".format(m.group(2), m.group(1)) # link to that
-        self.wb[i] = re.sub(r"#(.*?):(.*?)#", s, self.wb[i], 1)
-        m = re.search(r"#(.*?):(.*?)#", self.wb[i])
+        self.wb[i] = re.sub(r"#([^'>]*?):(.*?)#", s, self.wb[i], 1)
+        m = re.search(r"#([^'>]*?):(.*?)#", self.wb[i])
 
       self.wb[i] = re.sub("⫉", '#', self.wb[i])
 
@@ -2809,14 +3133,6 @@ class Pph(Book):
   # -------------------------------------------------------------------------------------
   # save buffer to specified dstfile (HTML output)
   def saveFile(self, fn):
-
-    # remove double blank lines
-    i = 0
-    while i < len(self.wb) - 1:
-      if not self.wb[i] and not self.wb[i+1]:
-        del self.wb[i]
-        i -= 1
-      i += 1
     f1 = codecs.open(fn, "w", self.encoding)
     for index,t in enumerate(self.wb):
       try:
@@ -2825,6 +3141,14 @@ class Pph(Book):
         print( "internal error:\n  cannot write line: {:s}".format(t) )
         self.fatal("exiting")
     f1.close()
+
+    # save GG .bin file if needed
+    if self.bnPresent:
+      fnb = fn + ".bin"
+      f1 = codecs.open(fnb, "w", "ISO-8859-1")
+      for index,t in enumerate(self.bb):
+        f1.write("{:s}\r\n".format(t))
+      f1.close()
 
   # ----- makeHTML method group -----
 
@@ -2888,7 +3212,11 @@ class Pph(Book):
 
   # .li literal (pass-through)
   def doLit(self):
-    del self.wb[self.cl]  # .li
+    if self.pvs > 0: # handle any pending vertical space before the .li
+      self.wb[self.cl] = "<div style=\"margin-top:{}em;\"></div>".format(self.pvs)
+      self.pvs = 0
+    else:
+      del self.wb[self.cl]  # .li
     while (self.cl < len(self.wb)) and self.wb[self.cl] != ".li-":
       # leave in place
       self.cl += 1
@@ -2902,10 +3230,16 @@ class Pph(Book):
   # in epub/mobi, a physical page break is used so use a
   # @media handheld to make the horizontal rule invisible
   def doPb(self):
+    # if there is a pending vertical space, include it in style
+    hcss = "margin-top:1em; "  # default
+    if self.pvs > 0:
+      hcss = " margin-top:{}em; ".format(self.pvs)
+      self.pvs = 0
+      
     self.css.addcss("[1465] div.pbb { page-break-before:always; }")
-    self.css.addcss("[1466] hr.pb { border:none;border-bottom:1px solid; margin:1em auto; }")
+    self.css.addcss("[1466] hr.pb { border:none;border-bottom:1px solid; margin-bottom:1em; }")
     self.css.addcss("[1467] @media handheld { hr.pb { display:none; }}")
-    self.wb[self.cl:self.cl+1] = ["<div class='pbb'></div>", "<hr class='pb' />"]
+    self.wb[self.cl:self.cl+1] = ["<div class='pbb'></div>", "<hr class='pb' style='{}'/>".format(hcss)]
     self.cl += 2
 
   # extract any "class=" argument from string s
@@ -3026,6 +3360,15 @@ class Pph(Book):
       self.pvs = 1
 
     del self.wb[self.cl] # the .h line
+
+    # if we have .bn info after the .h and before the header join them together
+    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
+      if m and m.group(1) == "":
+        i = self.cl
+        if i < len(self.wb) -1:
+          self.wb[i] = self.wb[i] + self.wb[i+1]
+          del self.wb[i+1]
     s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
     s = re.sub("\|", "<br />", s)
     t = []
@@ -3082,6 +3425,15 @@ class Pph(Book):
       self.pvs = 2
 
     del self.wb[self.cl] # the .h line
+
+    # if we have .bn info after the .h and before the header join them together
+    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
+      if m and m.group(1) == "":
+        i = self.cl
+        if i < len(self.wb) -1:
+          self.wb[i] = self.wb[i] + self.wb[i+1]
+          del self.wb[i+1]
     s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
     s = re.sub("\|", "<br />", s)
     t = []
@@ -3142,6 +3494,15 @@ class Pph(Book):
       self.pvs = 1
 
     del self.wb[self.cl] # the .h line
+
+    # if we have .bn info after the .h and before the header join them together
+    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
+      if m and m.group(1) == "":
+        i = self.cl
+        if i < len(self.wb) -1:
+          self.wb[i] = self.wb[i] + self.wb[i+1]
+          del self.wb[i+1]
     s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
     s = re.sub("\|", "<br />", s)
     t = []
@@ -3273,6 +3634,8 @@ class Pph(Book):
         # if not "%" in iw:
         #   self.fatal("width, if specified, must be in percent")
       ia["iw"] = iw
+      if (not iw.endswith("%")) and (not iw.endswith("px")):
+        self.warn("image width (w=) does not end in px or %. The image will not display properly:\n    {}".format(s0))
 
       # user-requested epub width in %
       ew = ""
@@ -3371,7 +3734,11 @@ class Pph(Book):
     self.css.addcss("[1610] .{} {{ width:{}; }}".format(idn, ia["iw"])) # the HTML illustration width
 
     if ia['ew'] == "":
-      ia["ew"] = ia["iw"]
+      if ia["iw"] != "":
+        ia["ew"] = ia["iw"]
+      else:
+        self.warn("cannot determine epub image width, 50% assumed so ppgen can continue: {}".format(self.wb[self.cl]))
+        ia["ew"] = "50%"  # assume a value to allow calculations below to work
 
     # if epub width in pixels, convert it now
     if "px" in ia["ew"]:
@@ -3589,6 +3956,13 @@ class Pph(Book):
     printable_lines_in_block = 0
     pending_mt = 0
     while self.wb[i] != ".nf-":
+
+      if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just leave it in the output as-is
+        m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+        if m and m.group(1) == "":
+          i += 1
+          continue
+
       if "" == self.wb[i]:
         pending_mt += 1
         i += 1
@@ -3668,12 +4042,24 @@ class Pph(Book):
     printable_lines_in_block = 0
     while self.wb[i] != closing:
 
+      # if this line is just bn info then just leave it in the output as-is
+      if self.bnPresent and self.wb[i].startswith("⑱"):
+        m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+        if m and m.group(1)=="":
+          i += 1
+          continue
+
       # a centered line inside a no-fill block
       m = re.match(r"\.ce (\d+)", self.wb[i])
       if m:
         count = int(m.group(1))
         i += 1 # skip the .ce
-        while count > 0:
+        while count > 0 and i < len(self.wb):
+          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just leave it in the output as-is
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+            if m and m.group(1) == "":
+              i += 1
+              continue
           pst = "text-align: center;"
           t.append("    <div style='{}'>{}</div>".format(pst, self.wb[i]))
           i += 1
@@ -3686,6 +4072,11 @@ class Pph(Book):
         count = int(m.group(1))
         i += 1 # skip the .rj
         while count > 0:
+          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just leave it in the output as-is
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+            if m and m.group(1) == "":
+              i += 1
+              continue
           pst = "text-align: right;"
           t.append("    <div style='{}'>{}</div>".format(pst, self.wb[i]))
           i += 1
@@ -3706,8 +4097,8 @@ class Pph(Book):
         m = re.match(r"^<[^>]+>", tmp)
         while m:
           ss += m.group(0)
-          tmp = re.sub(r"^<[^>]+>", "", tmp)
-          m = re.match(r"^<[^>]+>", tmp)
+          tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp, 1)
+          m = re.match(r"^<[^>]+>|⑯\w+⑰", tmp)
         leadsp = len(tmp) - len(tmp.lstrip())
         if cpvs > 0:
           spvs = " style='margin-top:{}em' ".format(cpvs)
@@ -3745,6 +4136,10 @@ class Pph(Book):
 
   # .nf no-fill blocks, all types
   def doNf(self):
+    m = re.match(r"\.nf-", self.wb[self.cl])
+    if m:
+      self.crash_w_context("attempting to close an unopened block with {}".format(self.wb[self.cl]),self.cl)
+    nf_handled = False
     m = re.match(r"\.nf (.)", self.wb[self.cl])
     if m:
       nftype = m.group(1) # c, l, b or r
@@ -3752,9 +4147,13 @@ class Pph(Book):
       if re.match(r"\.nf . 0", self.wb[self.cl]):
         margin_override = True # ignored in text
       if nftype == 'c':
+        nf_handled = True
         self.doNfc(margin_override)
-      if nftype in ['l','r','b']:
+      elif nftype in ['l','r','b']:
+        nf_handled = True
         self.doNfb(nftype, margin_override)
+    if not nf_handled:
+      self.crash_w_context("invalid .nf option: {}".format(self.wb[self.cl]),self.cl)
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -3807,7 +4206,17 @@ class Pph(Book):
           self.css.addcss("[1431] div.footnote>:first-child { margin-top:1em; }")
           self.css.addcss("[1432] div.footnote .label { display: inline-block; width: 0em; text-indent: -2.5em; text-align: right;}")
           fnname = m.group(1)
-          self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
+          
+          # if there is a pending vertical space, include it in style
+          hcss = ""
+          if self.pvs > 0:
+            hcss = " margin-top:{}em; ".format(self.pvs)
+            self.pvs = 0
+            
+          if hcss != "":
+            self.wb[self.cl] = "<div class='footnote' id='f{}' style='{}'>".format(fnname, hcss)
+          else:
+            self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
           s = "<span class='label'><a href='#r{0}'>{0}</a>.&nbsp;&nbsp;</span>".format(fnname)
           self.cl += 1
           self.wb[self.cl] = s + self.wb[self.cl]
@@ -3831,7 +4240,7 @@ class Pph(Book):
       j = self.cl + 1
       maxw = 0
       while self.wb[j] != ".ta-":
-        # blank and centerd lines are not considered
+        # blank and centered and .bn info lines are not considered
         if self.wb[j] == "" or not "|" in self.wb[j]:
           j += 1
           continue
@@ -4006,6 +4415,14 @@ class Pph(Book):
     self.cl += 1 # move into the table rows
     while self.wb[self.cl] != ".ta-":
 
+      # see if .bn info line
+      if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+        m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
+        if m and m.group(1) == "":
+          t.append(self.wb[self.cl])   # copy the .bn info into the table (deleted much later during postprocessing)
+          self.cl += 1  
+          continue
+
       # see if blank line
       if "" == self.wb[self.cl]:
         t.append("  <tr><td>&nbsp;</td></tr>")
@@ -4100,10 +4517,12 @@ class Pph(Book):
       dclh = m.group(2)
       dcadjs = "{}_{}".format(dcadj, dclh)
       dcadjs = re.sub(r"\.", "_", dcadjs) # name formatting
+      mt = (250.0 / float(re.sub("%","",self.nregs["dcs"]))) * 0.1
+      mr = (250.0 / float(re.sub("%","",self.nregs["dcs"]))) * 0.1
     else:
       self.fatal("incorrect format for .dc arg1 arg2 command")
-    self.css.addcss("[1930] p.drop-capa{0} {{ text-indent:-{1}em; }}".format(dcadjs,dcadj))
-    self.css.addcss("[1931] p.drop-capa{0}:first-letter {{ float:left;margin:0.1em 0.1em 0em 0em;font-size:250%;line-height:{1}em;text-indent:0 }}".format(dcadjs,dclh))
+    self.css.addcss("[1930] p.drop-capa{} {{ text-indent:-{}em; }}".format(dcadjs,dcadj))
+    self.css.addcss("[1931] p.drop-capa{}:first-letter {{ float:left;margin:{:0.3f}em {:0.3f}em 0em 0em;font-size:{};line-height:{}em;text-indent:0 }}".format(dcadjs,mt,mr,self.nregs["dcs"],dclh))
     self.css.addcss("[1933] @media handheld {")
     self.css.addcss("[1935]   p.drop-capa{} {{ text-indent:0 }}".format(dcadjs))
     self.css.addcss("[1936]   p.drop-capa{}:first-letter {{ float:none;margin:0;font-size:100%; }}".format(dcadjs))
@@ -4124,6 +4543,7 @@ class Pph(Book):
   # courtesy cleanup of HTML
   # also checks for a single h1 element
   def cleanup(self):
+
     h1cnt = 0
     for i in range(len(self.wb)):
       self.wb[i] = re.sub("\s+>", ">", self.wb[i])  # spaces before close ">"
@@ -4159,6 +4579,43 @@ class Pph(Book):
       # if blvl == 0 and re.match(r"<span class='pagenum'.*?<\/span>$", self.wb[i]):
       if blvl == 0 and re.match(r"<span class='pageno'.*?<\/span>$", self.wb[i]):      # new 3.24M
         self.wb[i] = "<div>{}</div>".format(self.wb[i])
+
+    # remove double blank lines (must be done before creating .bin file)
+    i = 0
+    while i < len(self.wb) - 1:
+      if not self.wb[i] and not self.wb[i+1]:
+        del self.wb[i]
+        continue
+      i += 1
+
+    #build GG .bin file if any .bn commands found  in postprocess
+    if self.bnPresent:
+      self.bb.append("%::pagenumbers = (")
+      i = 0
+      while i < len(self.wb):
+        bnInLine = False
+        if self.wb[i] == "":              # skip blank lines, but remember we had one
+          i += 1
+          continue
+        m = re.search("(.*?)⑱(.*?)⑱.*",self.wb[i])  # find any .bn information in this line
+        while m:
+          bnInLine = True
+          t = " 'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG expects 1-based line number)
+          t = re.sub("\[","{",t,1)
+          t = re.sub("]","}",t,1)
+          self.bb.append(t)
+          self.wb[i] = re.sub("⑱.*?⑱","",self.wb[i],1)  # remove the .bn information
+          m = re.search("(.*?)⑱(.*?)⑱.*",self.wb[i])  # look for another one on the same line
+        if bnInLine and self.wb[i] == "":  # delete line if it ended up blank
+          del self.wb[i]
+          if i > 0 and self.wb[i-1] == "" and self.wb[i] == "":      # If line before .bn info and line after both blank
+              del self.wb[i]                          # delete the next one, too.
+        else:
+          i += 1
+      self.bb.append(");")
+      self.bb.append("$::pngspath = '{}';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      self.bb.append("1;")
+
 
   # called to retrieve a style string representing current display parameters
   #
@@ -4270,7 +4727,15 @@ class Pph(Book):
        and self.wb[self.cl] \
        and self.wb[self.cl][0] != "." ): # any dot command in source ends paragraph
       self.cl += 1
-    self.wb[self.cl-1] = self.wb[self.cl-1] + "</p>"
+    i = self.cl - 1
+    # if para ended with .bn info, place the </p> before it, not after it to avoid extra
+    # blank lines after we remove the .bn info later
+    if self.bnPresent and self.wb[i].startswith("⑱"):
+      m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+      while m and m.group(1) == "":
+        i -= 1
+        m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+    self.wb[i] = self.wb[i] + "</p>"
 
     self.regTI = 0 # any temporary indent has been used.
 
@@ -4326,10 +4791,12 @@ class Pph(Book):
     print(self.wb[self.cl])
 
   def process(self):
+
     self.cl = 0
     while self.cl < len(self.wb):
       if "a" in self.debug:
-        print(self.wb[self.cl])
+        s = self.wb[self.cl]
+        print( self.umap(s) )  # safe print the current line
       if not self.wb[self.cl]: # skip blank lines
         self.cl += 1
         continue
@@ -4343,6 +4810,14 @@ class Pph(Book):
       if self.wb[self.cl] == "</div>":
         self.cl += 1
         continue
+
+      # don't turn standalone .bn info lines into paragraphs
+      if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+        m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])  # look for standalone .bn info
+        if m and m.group(1) == "":   # and skip over it if found
+          self.cl += 1
+        continue
+        
       self.doPara() # it's a paragraph to wrap
 
   def makeHTML(self):
