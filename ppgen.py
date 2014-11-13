@@ -1613,6 +1613,7 @@ class Ppt(Book):
       self.cl += 1 # the illo line
       caption = ""
       if self.cl < len(self.wb) and self.wb[self.cl].startswith(".ca"):
+        self.eb.append(".RS 1") # request at least one space in text before illustration
         # there is a caption. it may be on multiple lines
         if ".ca" == self.wb[self.cl]:
           # multiple line caption
@@ -1638,6 +1639,7 @@ class Ppt(Book):
           t = self.wrap(s, 0, self.regLL, 0)
           self.eb += t
           self.cl += 1 # caption line
+        self.eb.append(".RS 1") # request at least one space in text after illustration          
 
       else:
         # no caption, just illustration
