@@ -1610,10 +1610,10 @@ class Ppt(Book):
     if m:
       # ignore the illustration line
       # is the .il line followed by a caption line?
+      self.eb.append(".RS 1") # request at least one space in text before illustration
       self.cl += 1 # the illo line
       caption = ""
       if self.cl < len(self.wb) and self.wb[self.cl].startswith(".ca"):
-        self.eb.append(".RS 1") # request at least one space in text before illustration
         # there is a caption. it may be on multiple lines
         if ".ca" == self.wb[self.cl]:
           # multiple line caption
@@ -1639,12 +1639,11 @@ class Ppt(Book):
           t = self.wrap(s, 0, self.regLL, 0)
           self.eb += t
           self.cl += 1 # caption line
-        self.eb.append(".RS 1") # request at least one space in text after illustration          
-
       else:
         # no caption, just illustration
         t = ["[{}]".format(self.nregs["Illustration"])]
         self.eb += t
+      self.eb.append(".RS 1") # request at least one space in text after illustration          
 
   # .in left margin indent
   def doIn(self):
@@ -3257,7 +3256,7 @@ class Pph(Book):
       self.pvs = 0
     else: # default 1 before, 1 after
       hcss += "margin-top:1em;"
-      self.pvs = 1
+    self.pvs = 1
 
     del self.wb[self.cl] # the .h line
 
@@ -3322,7 +3321,7 @@ class Pph(Book):
       self.pvs = 0
     else: # default 4 before, 2 after
       hcss += "margin-top:4em;"
-      self.pvs = 2
+    self.pvs = 2
 
     del self.wb[self.cl] # the .h line
 
@@ -3389,9 +3388,9 @@ class Pph(Book):
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
       self.pvs = 0
-    else: # default 4 before, 2 after
+    else: # default 2 before, 1 after
       hcss += "margin-top:2em;"
-      self.pvs = 1
+    self.pvs = 1
 
     del self.wb[self.cl] # the .h line
 
@@ -3433,7 +3432,7 @@ class Pph(Book):
   def doSpace(self):
     m = re.match(r"\.sp (\d+)", self.wb[self.cl])
     if m:
-      self.pvs = int(m.group(1))
+      self.pvs = max(int(m.group(1), self.pvs))  # honor if larger than current pvs
       del self.wb[self.cl]
     else:
       self.fatal("malformed space directive: {}".format(self.wb[self.cl]))
