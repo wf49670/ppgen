@@ -400,7 +400,7 @@ class Book(object):
     elif ".dv" == dotcmd: # user-specifice <div> for HTML
       self.doDiv()
     else:
-      self.fatal("unhandled dot command: {}".format(self.wb[self.cl]))
+      self.crash_w_context("unhandled dot command: {}".format(self.wb[self.cl]), self.cl)
 
   def crash_w_context(self, msg, i, r=5):
     print("{}\ncontext:".format(msg))
@@ -1612,6 +1612,7 @@ class Ppt(Book):
       self.cl += 1 # the illo line
       caption = ""
       if self.cl < len(self.wb) and self.wb[self.cl].startswith(".ca"):
+        self.eb.append(".RS 1") # request at least one space in text before illustration
         # there is a caption. it may be on multiple lines
         if ".ca" == self.wb[self.cl]:
           # multiple line caption
@@ -1637,6 +1638,7 @@ class Ppt(Book):
           t = self.wrap(s, 0, self.regLL, 0)
           self.eb += t
           self.cl += 1 # caption line
+        self.eb.append(".RS 1") # request at least one space in text after illustration          
 
       else:
         # no caption, just illustration
@@ -1796,7 +1798,7 @@ class Ppt(Book):
         i += 1 # skip the .ce
         while count > 0:
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
             if m and m.group(1) == "":
               self.eb.append(self.wb[i])
               i += 1
@@ -1813,7 +1815,7 @@ class Ppt(Book):
         i += 1 # skip the .rj
         while count > 0:
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
             if m and m.group(1) == "":
               self.eb.append(self.wb[i])
               i += 1
@@ -1867,7 +1869,7 @@ class Ppt(Book):
         i += 1 # skip the .ce
         while count > 0:
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
             if m and m.group(1) == "":
               bnInBlock = True
               t.append(self.wb[i])
@@ -1885,7 +1887,7 @@ class Ppt(Book):
         i += 1 # skip the .rj
         while count > 0:
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
             if m and m.group(1) == "":
               bnInBlock = True
               t.append(self.wb[i])
@@ -1942,7 +1944,7 @@ class Ppt(Book):
         i += 1 # skip the .ce
         while count > 0:
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
             if m and m.group(1) == "":
               self.eb.append(self.wb[i])
               i += 1
@@ -1959,7 +1961,7 @@ class Ppt(Book):
         i += 1 # skip the .rj
         while count > 0:
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
             if m and m.group(1) == "":
               self.eb.append(self.wb[i])
               i += 1
@@ -1984,19 +1986,26 @@ class Ppt(Book):
     if m:
       self.crash_w_context("attempting to close an unopened block with {}".format(self.wb[self.cl]),self.cl)
     m = re.match(r"\.nf (.)", self.wb[self.cl])
+    nf_handled = False
     if m:
       margin_override = False
       if re.match(r"\.nf . 0", self.wb[self.cl]):
         margin_override = True # ignored in text
       nftype = m.group(1) # c, l, b or r
       if nftype == 'c':
+        nf_handled = True
         self.doNfc(margin_override)
-      if nftype == 'l':
+      elif nftype == 'l':
+        nf_handled = True
         self.doNfl(margin_override)
-      if nftype == 'r':
+      elif nftype == 'r':
+        nf_handled = True
         self.doNfr(margin_override)
-      if nftype == 'b':
+      elif nftype == 'b':
+        nf_handled = True
         self.doNfb(margin_override)
+    if not nf_handled:
+      self.crash_w_context("invalid .nf option: {}".format(self.wb[self.cl]),self.cl)
 
   # footnotes
   # here on footnote start or end
@@ -2609,9 +2618,14 @@ class Pph(Book):
         found = False
         while not found and (i < len(self.wb)):    # loop until we find a valid insertion spot
 
-          # if we hit the start of a .li, warn the user
+          # if we hit the start of a .li, warn the user and put the page number line back in.
+          # it can't float into or over the .li, so it will appear wherever it appears
           if self.wb[i].startswith(".li"):
-            self.warn(".li encountered while placing page number")
+            self.warn(".li encountered while placing page number: {}".format(pnum))
+            self.wb.insert(i,"⑯{}⑰".format(pnum)) # insert page number before the .li
+            i += 2 # bump past new page number line and the .li
+            found = True
+            continue
           # it is possible to hit another pn match before finding a suitable home
           m = re.match(r"⑯(.+)⑰", self.wb[i])  # must be on line by itself
           if m:
@@ -2747,46 +2761,48 @@ class Pph(Book):
     i = 0
     while i < len(self.wb):
       if self.wb[i].startswith(".nf"): # find a no-fill block
-        tagstack = []
-        i += 1 # step inside the .nf block
-        while not self.wb[i].startswith(".nf-"): # as long as we are in a .nf
-          if self.wb[i].startswith(".nf "):
-            self.crash_w_context("nested no-fill block:", i)
-          # ignore .bn lines; just pass them through
-          if self.bnPresent and self.wb[i].startswith("⑱"): 
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
-            if m and m.group(1) == "":
-              i += 1
-              continue
-          # find all tags on this line; ignore <a and </a tags completely for this purpose
-          t = re.findall("<\/?[^a][^>]*>", self.wb[i])
-          sstart = "" # what to prepend to the line
-          for s in tagstack: # build the start string
-            sstart += s
-          self.wb[i] = sstart + self.wb[i] # rewrite the line with new start
-          for s in t: # we may have more tags on this line
-            if not s.startswith("</"): # it is of form <..> an opening tag
-              tagstack.append(s) # save it on the stack
-            else:  # it is of form </..> a closing tag
-              tmp = re.sub("<\/", "<", s) # decide what its opening tag would be
-              try:
-                if tmp[0:2] != tagstack[-1][0:2]: # needs close the one most recently open
-                  self.fatal("mismatched tag {}".format(s))
-              except:
-                self.fatal("courtesy inline tag processing: {}".format(self.wb[i])) # one too many
-              tagstack.pop() # discard both tags on stack, they balanced each other out.
-          send = "" # string end
-          for s in reversed(tagstack): # if there is something left, tack it on end of line
-            closetag =  re.sub("<","</", s) # make it into a closing tag
-            if closetag.startswith("</c"): # anything that had arguments closes without them
-              closetag = "</c>" # colors
-            if closetag.startswith("</fs"):
-              closetag = "</fs>" # font size
-            if closetag.startswith("</lang"):
-              closetag = "</lang>" # language
-            send += closetag
-          self.wb[i] = self.wb[i] + send
-          i += 1
+        m = re.match(r"\.nf ([lrcb])", self.wb[i])
+        if m:
+          tagstack = []
+          i += 1 # step inside the .nf block
+          while i < len(self.wb) and not self.wb[i].startswith(".nf-"): # as long as we are in a .nf
+            if self.wb[i].startswith(".nf "):
+              self.crash_w_context("nested no-fill block:", i)
+            # ignore .bn lines; just pass them through
+            if self.bnPresent and self.wb[i].startswith("⑱"):
+              m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+              if m and m.group(1) == "":
+                i += 1
+                continue
+            # find all tags on this line; ignore <a and </a tags completely for this purpose
+            t = re.findall("<\/?[^a][^>]*>", self.wb[i])
+            sstart = "" # what to prepend to the line
+            for s in tagstack: # build the start string
+              sstart += s
+            self.wb[i] = sstart + self.wb[i] # rewrite the line with new start
+            for s in t: # we may have more tags on this line
+              if not s.startswith("</"): # it is of form <..> an opening tag
+                tagstack.append(s) # save it on the stack
+              else:  # it is of form </..> a closing tag
+                tmp = re.sub("<\/", "<", s) # decide what its opening tag would be
+                try:
+                  if tmp[0:2] != tagstack[-1][0:2]: # needs close the one most recently open
+                    self.fatal("mismatched tag {}".format(s))
+                except:
+                  self.fatal("courtesy inline tag processing: {}".format(self.wb[i])) # one too many
+                tagstack.pop() # discard both tags on stack, they balanced each other out.
+            send = "" # string end
+            for s in reversed(tagstack): # if there is something left, tack it on end of line
+              closetag =  re.sub("<","</", s) # make it into a closing tag
+              if closetag.startswith("</c"): # anything that had arguments closes without them
+                closetag = "</c>" # colors
+              if closetag.startswith("</fs"):
+                closetag = "</fs>" # font size
+              if closetag.startswith("</lang"):
+                closetag = "</lang>" # language
+              send += closetag
+            self.wb[i] = self.wb[i] + send
+            i += 1
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2994,11 +3010,11 @@ class Pph(Book):
         self.wb[i] = re.sub(r"#(\d+)#", s, self.wb[i], 1)
         m = re.search(r"#(\d+)#", self.wb[i])
 
-      m = re.search(r"#(.*?):(.*?)#", self.wb[i]) # named reference
+      m = re.search(r"#([^'>]*?):(.*?)#", self.wb[i]) # named reference
       while m:
         s = "<a href='⫉{}'>{}</a>".format(m.group(2), m.group(1)) # link to that
-        self.wb[i] = re.sub(r"#(.*?):(.*?)#", s, self.wb[i], 1)
-        m = re.search(r"#(.*?):(.*?)#", self.wb[i])
+        self.wb[i] = re.sub(r"#([^'>]*?):(.*?)#", s, self.wb[i], 1)
+        m = re.search(r"#([^'>]*?):(.*?)#", self.wb[i])
 
       self.wb[i] = re.sub("⫉", '#', self.wb[i])
 
@@ -3122,7 +3138,7 @@ class Pph(Book):
     self.css.addcss("[1465] div.pbb { page-break-before:always; }")
     self.css.addcss("[1466] hr.pb { border:none;border-bottom:1px solid; margin-bottom:1em; }")
     self.css.addcss("[1467] @media handheld { hr.pb { display:none; }}")
-    self.wb[self.cl:self.cl+1] = ["<div class='pbb'></div>", "<hr class='pb' style='{}'/>".format(hcss)]
+    self.wb[self.cl:self.cl+1] = ["<div class='pbb'></div>", "<hr class='pb' style='{}' />".format(hcss)]
     self.cl += 2
 
   # extract any "class=" argument from string s
@@ -3841,7 +3857,7 @@ class Pph(Book):
     while self.wb[i] != ".nf-":
 
       if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just leave it in the output as-is
-        m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+        m = re.match("^⑱.*?⑱(.*)",self.wb[i])
         if m and m.group(1) == "":
           i += 1
           continue
@@ -3939,7 +3955,7 @@ class Pph(Book):
         i += 1 # skip the .ce
         while count > 0 and i < len(self.wb):
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just leave it in the output as-is
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
             if m and m.group(1) == "":
               i += 1
               continue
@@ -3956,7 +3972,7 @@ class Pph(Book):
         i += 1 # skip the .rj
         while count > 0:
           if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just leave it in the output as-is
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i]) 
+            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
             if m and m.group(1) == "":
               i += 1
               continue
@@ -4019,6 +4035,10 @@ class Pph(Book):
 
   # .nf no-fill blocks, all types
   def doNf(self):
+    m = re.match(r"\.nf-", self.wb[self.cl])
+    if m:
+      self.crash_w_context("attempting to close an unopened block with {}".format(self.wb[self.cl]),self.cl)
+    nf_handled = False
     m = re.match(r"\.nf (.)", self.wb[self.cl])
     if m:
       nftype = m.group(1) # c, l, b or r
@@ -4026,9 +4046,13 @@ class Pph(Book):
       if re.match(r"\.nf . 0", self.wb[self.cl]):
         margin_override = True # ignored in text
       if nftype == 'c':
+        nf_handled = True
         self.doNfc(margin_override)
-      if nftype in ['l','r','b']:
+      elif nftype in ['l','r','b']:
+        nf_handled = True
         self.doNfb(nftype, margin_override)
+    if not nf_handled:
+      self.crash_w_context("invalid .nf option: {}".format(self.wb[self.cl]),self.cl)
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -4283,7 +4307,7 @@ class Pph(Book):
     # set relative widths of columns
     t.append("<colgroup>")
     for (i,w) in enumerate(widths):
-     t.append("<col width='{}%'/>".format(pwidths[i]))
+     t.append("<col width='{}%' />".format(pwidths[i]))
     t.append("</colgroup>")
 
     startloc = self.cl
