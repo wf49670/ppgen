@@ -3432,7 +3432,7 @@ class Pph(Book):
   def doSpace(self):
     m = re.match(r"\.sp (\d+)", self.wb[self.cl])
     if m:
-      self.pvs = max(int(m.group(1), self.pvs))  # honor if larger than current pvs
+      self.pvs = int(m.group(1))
       del self.wb[self.cl]
     else:
       self.fatal("malformed space directive: {}".format(self.wb[self.cl]))
