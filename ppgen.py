@@ -1609,10 +1609,10 @@ class Ppt(Book):
     if m:
       # ignore the illustration line
       # is the .il line followed by a caption line?
+      self.eb.append(".RS 1") # request at least one space in text before illustration
       self.cl += 1 # the illo line
       caption = ""
       if self.cl < len(self.wb) and self.wb[self.cl].startswith(".ca"):
-        self.eb.append(".RS 1") # request at least one space in text before illustration
         # there is a caption. it may be on multiple lines
         if ".ca" == self.wb[self.cl]:
           # multiple line caption
@@ -1638,12 +1638,11 @@ class Ppt(Book):
           t = self.wrap(s, 0, self.regLL, 0)
           self.eb += t
           self.cl += 1 # caption line
-        self.eb.append(".RS 1") # request at least one space in text after illustration          
-
       else:
         # no caption, just illustration
         t = ["[{}]".format(self.nregs["Illustration"])]
         self.eb += t
+      self.eb.append(".RS 1") # request at least one space in text after illustration          
 
   # .in left margin indent
   def doIn(self):
@@ -3256,7 +3255,7 @@ class Pph(Book):
       self.pvs = 0
     else: # default 1 before, 1 after
       hcss += "margin-top:1em;"
-      self.pvs = 1
+    self.pvs = 1
 
     del self.wb[self.cl] # the .h line
 
@@ -3321,7 +3320,7 @@ class Pph(Book):
       self.pvs = 0
     else: # default 4 before, 2 after
       hcss += "margin-top:4em;"
-      self.pvs = 2
+    self.pvs = 2
 
     del self.wb[self.cl] # the .h line
 
@@ -3339,10 +3338,8 @@ class Pph(Book):
 
     # new in 1.79
     # I always want a div. If it's not a no-break, give it class='chapter'
-    if "nobreak" in rend:
-      t.append("<div>")
-    else:
-      t.append("<div class='chapter'>") # will force file break
+    if not "nobreak" in rend:
+      t.append("<div class='chapter'></div>") # will force file break
       self.css.addcss("[1576] .chapter { clear:both; }")
     if pnum != "":
       if self.pnshow:
@@ -3354,7 +3351,6 @@ class Pph(Book):
       t.append("  <h2 id='{}' style='{}'>{}</h2>".format(id, hcss, s))
     else:
       t.append("  <h2 style='{}'>{}</h2>".format(hcss, s))
-    t.append("</div>")
 
     self.wb[self.cl:self.cl+1] = t
     self.cl += len(t)
@@ -3388,9 +3384,9 @@ class Pph(Book):
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
       self.pvs = 0
-    else: # default 4 before, 2 after
+    else: # default 2 before, 1 after
       hcss += "margin-top:2em;"
-      self.pvs = 1
+    self.pvs = 1
 
     del self.wb[self.cl] # the .h line
 
@@ -3912,6 +3908,8 @@ class Pph(Book):
       self.css.addcss("[1223] .linegroup .group { margin: 1em auto; }")
     self.css.addcss("[1224] .linegroup .line { text-indent: -3em; padding-left: 3em; }")
 
+    self.css.addcss("[1225] div.linegroup > :first-child { margin-top: 0; }")
+
     ssty = ""
     s = self.fetchStyle() # supplemental style
     if s:
@@ -3922,15 +3920,15 @@ class Pph(Book):
 
     closing = ""
     if 'b' == nft:
-      t.append("<div class='lg-container-b'>")
+      t.append("<div class='lg-container-b'{}>".format(ssty))
       closing = ".nf-"
     if 'l' == nft:
-      t.append("<div class='lg-container-l'>")
+      t.append("<div class='lg-container-l'{}>".format(ssty))
       closing = ".nf-"
     if 'r' == nft:
-      t.append("<div class='lg-container-r'>")
+      t.append("<div class='lg-container-r'{}>".format(ssty))
       closing = ".nf-"
-    t.append("  <div class='linegroup'{}>".format(ssty))
+    t.append("  <div class='linegroup'>")
     if mo:
       t.append("    <div class='group0'>")
     else:
