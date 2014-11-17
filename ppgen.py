@@ -3339,10 +3339,8 @@ class Pph(Book):
 
     # new in 1.79
     # I always want a div. If it's not a no-break, give it class='chapter'
-    if "nobreak" in rend:
-      t.append("<div>")
-    else:
-      t.append("<div class='chapter'>") # will force file break
+    if not "nobreak" in rend:
+      t.append("<div class='chapter'></div>") # will force file break
       self.css.addcss("[1576] .chapter { clear:both; }")
     if pnum != "":
       if self.pnshow:
@@ -3354,7 +3352,6 @@ class Pph(Book):
       t.append("  <h2 id='{}' style='{}'>{}</h2>".format(id, hcss, s))
     else:
       t.append("  <h2 style='{}'>{}</h2>".format(hcss, s))
-    t.append("</div>")
 
     self.wb[self.cl:self.cl+1] = t
     self.cl += len(t)
@@ -3912,6 +3909,8 @@ class Pph(Book):
       self.css.addcss("[1223] .linegroup .group { margin: 1em auto; }")
     self.css.addcss("[1224] .linegroup .line { text-indent: -3em; padding-left: 3em; }")
 
+    self.css.addcss("[1225] div.linegroup > :first-child { margin-top: 0; }")
+
     ssty = ""
     s = self.fetchStyle() # supplemental style
     if s:
@@ -3922,15 +3921,15 @@ class Pph(Book):
 
     closing = ""
     if 'b' == nft:
-      t.append("<div class='lg-container-b'>")
+      t.append("<div class='lg-container-b'{}>".format(ssty))
       closing = ".nf-"
     if 'l' == nft:
-      t.append("<div class='lg-container-l'>")
+      t.append("<div class='lg-container-l'{}>".format(ssty))
       closing = ".nf-"
     if 'r' == nft:
-      t.append("<div class='lg-container-r'>")
+      t.append("<div class='lg-container-r'{}>".format(ssty))
       closing = ".nf-"
-    t.append("  <div class='linegroup'{}>".format(ssty))
+    t.append("  <div class='linegroup'>")
     if mo:
       t.append("    <div class='group0'>")
     else:
