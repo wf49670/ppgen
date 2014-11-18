@@ -3603,21 +3603,22 @@ class Pph(Book):
       self.css.addcss("[1600] .figcenter { clear:both; max-width:100%; margin:2em auto; text-align:center; }")
       if caption_present:
           self.css.addcss("[1601] div.figcenter p { text-align:center; text-indent:0; }")
+      self.css.addcss("[1608] .figcenter img { max-width:100%; height:auto; }")
 
     if ia["align"] == "l":
       self.css.addcss("[1600] .figleft { clear:left; float:left; max-width:100%; margin:0.5em 1em 1em 0; text-align: left;}")
       if caption_present:
           self.css.addcss("[1601] div.figleft p { text-align:center; text-indent:0; }")
       self.css.addcss("[1602] @media handheld { .figleft { float:left; }}")
+      self.css.addcss("[1608] .figleft img { max-width:100%; height:auto; }")
 
     if ia["align"] == "r":
       self.css.addcss("[1600] .figright { clear:right; float:right; max-width:100%; margin:0.5em 0 1em 1em; text-align: right;}")
       if caption_present:
           self.css.addcss("[1601] div.figright p { text-align:center; text-indent:0; }")
       self.css.addcss("[1602] @media handheld { .figright { float:right; }}")
+      self.css.addcss("[1608] .figright img { max-width:100%; height:auto; }")
 
-    # if any image is in document
-    self.css.addcss("[1608] img { max-width:100%; height:auto; }")
 
     # make CSS names from igc counter
     idn = "id{:03d}".format(self.igc)
