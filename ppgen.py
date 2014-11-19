@@ -1163,6 +1163,18 @@ class Ppt(Book):
         i += 1
         continue
 
+      s = self.wb[i]
+      explicit = False
+      m = re.search("\[(\d+)\]", s) # explicit
+      while m:
+        explicit = True
+        fncr = int(m.group(1)) + 1
+        s = re.sub("\[(\d+)\]", "", s, 1)
+        m = re.search("\[(\d+)\]", s)
+      if explicit: # don't support mixing # and explicit in the same line
+        i += 1
+        continue
+
       m = re.search("\[#\]", self.wb[i])
       while m:
         self.wb[i] = re.sub("\[#\]", "[{}]".format(fncr), self.wb[i], 1)
@@ -1181,6 +1193,11 @@ class Ppt(Book):
         i += 1
         continue
 
+      m = re.match(r"\.fn (\d+)", self.wb[i]) # explicit
+      if m:
+        fncr = int(m.group(1)) + 1
+        i += 1
+        continue
 
       if ".fn #" == self.wb[i]:
         self.wb[i:i+1] = [".sp 1",".fn {}".format(fncr)]
@@ -2670,9 +2687,15 @@ class Pph(Book):
         i += 1
         continue
 
-      m = re.search("\[(\d+)\]", self.wb[i]) # explicit
-      if m:
+      s = self.wb[i]
+      explicit = False
+      m = re.search("\[(\d+)\]", s) # explicit
+      while m:
+        explicit = True
         fncr = int(m.group(1)) + 1
+        s = re.sub("\[(\d+)\]", "", s, 1)
+        m = re.search("\[(\d+)\]", s)
+      if explicit: # don't support mixing # and explicit in the same line
         i += 1
         continue
 
