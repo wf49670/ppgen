@@ -4443,8 +4443,13 @@ class Pph(Book):
   def doDropimageGuts(self, line, type="p"):
     di={}
     m = re.match(r"\.di (.*?) (\d+) (\d+) (.*)",self.wb[line])
+  # Drop Image
+  # two formats:
+  #   .di i_b_009.jpg 100 170 1.3 (height, width, adjust specified)
+  #   .di i_b_009.jpg 100 1.3 (height, adjust specified)
+  def doDropimage(self):
+    m = re.match(r"\.di (.*?) (\d+) (.*)$",self.wb[self.cl])
     if m:
-      self.warn("CSS3 drop-cap. Please note in upload.")
       di["d_image"] = m.group(1)
       di["d_width"] = m.group(2)
       di["d_height"] = m.group(3)
@@ -4456,6 +4461,17 @@ class Pph(Book):
         s0 = re.sub("em", "", self.nregs["psi"]) # drop the "em"
         s1 = int(float(s0)*100.0) # in tenths of ems
         s2 = (s1//2)/100 # forces one decimal place
+      d_image = m.group(1)
+      d_width = ""
+      d_height = m.group(2)
+      d_adj = m.group(3)
+    else:         
+      m = re.match(r"\.di (.*?) (\d+) (\d+) (.*)$",self.wb[self.cl])
+      if m:
+        d_image = m.group(1)
+        d_width = m.group(2)
+        d_height = m.group(3)
+        d_adj = m.group(4)
       else:
         s0 = re.sub("em", "", self.nregs["psb"]) # drop the "em"
         s1 = int(float(s0)*100.0) # in tenths of ems
@@ -4465,6 +4481,7 @@ class Pph(Book):
       if type == "p":
         self.css.addcss("[1921] p.drop-capi{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(di["s_adj"],mtop,mbot))
         self.css.addcss("[1922] p.drop-capi{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(di["s_adj"],d_adj))
+        self.crash_w_context("malformed drop image directive", self.cl)
 
         self.css.addcss("[1923] @media handheld {")
         self.css.addcss("[1924]   img.drop-capi { display:none; visibility:hidden; }")
@@ -4473,6 +4490,19 @@ class Pph(Book):
       else:
         self.css.addcss("[1941] div.drop-capi{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(di["s_adj"],mtop,mbot))
         self.css.addcss("[1942] div.drop-capi{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(di["s_adj"],d_adj))
+    self.warn("CSS3 drop-cap. Please note in upload.")
+    self.css.addcss("[1920] img.drop-capi { float:left;margin:0 0.5em 0 0;position:relative;z-index:1; }")
+    s_adj = re.sub(r"\.","_", str(d_adj))
+    if self.pindent:
+      s0 = re.sub("em", "", self.nregs["psi"]) # drop the "em"
+    else:
+      s0 = re.sub("em", "", self.nregs["psb"]) # drop the "em"
+    s1 = int(float(s0)*100.0) # in tenths of ems
+    s2 = (s1//2)/100 # forces one decimal place
+    mtop = s2
+    mbot = mtop
+    self.css.addcss("[1921] p.drop-capi{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(s_adj,mtop,mbot))
+    self.css.addcss("[1922] p.drop-capi{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(s_adj,d_adj))
 
         self.css.addcss("[1943] @media handheld {")
         self.css.addcss("[1944]   img.drop-capi { display:none; visibility:hidden; }")
@@ -4481,6 +4511,19 @@ class Pph(Book):
     else:
       self.crash_w_context("Incorrect .di command values", line)
     return(di)
+    self.css.addcss("[1923] @media handheld {")
+    self.css.addcss("[1924]   img.drop-capi { display:none; visibility:hidden; }")
+    self.css.addcss("[1925]   p.drop-capi{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(s_adj))
+    self.css.addcss("[1926] }")
+
+    t = []
+    t.append("<div>")
+    if d_width == "":
+      t.append("  <img class='drop-capi' src='images/{}' height='{}' alt='' />".format(d_image,d_height))
+    else:
+      t.append("  <img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(d_image,d_width,d_height))
+    t.append("</div><p class='drop-capi{}'>".format(s_adj))
+    self.wb[self.cl:self.cl+1] = t
 
   
   # Drop Image
