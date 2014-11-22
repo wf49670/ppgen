@@ -386,7 +386,7 @@ class Book(object):
     elif ".di" == dotcmd: # dropcap images
       self.doDropimage()
     elif ".dc" == dotcmd: # dropcap alpha
-      self.doDropcap()
+      self.doDropcap(self.cl)
     elif ".na" == dotcmd: # no adjust (ragged right)
       self.doNa()
     elif ".ad" == dotcmd: # adjust (justify l/r margins)
@@ -1757,6 +1757,10 @@ class Ppt(Book):
           t.append(self.wb[i])
           i += 1
           continue
+          
+      if self.wb[i].startswith(".dc") or self.wb[i].startswith(".di"):
+        del self.wb[i]
+        continue
 
       xt = self.regLL - self.regIN # width of centered line
       xs = "{:^" + str(xt) + "}"
@@ -1807,6 +1811,10 @@ class Ppt(Book):
     regBW = self.calculateBW(".nf-")
     i = self.cl + 1 # skip the .nf l line
     while self.wb[i] != ".nf-":
+
+      if self.wb[i].startswith(".dc") or self.wb[i].startswith(".di"):
+        del self.wb[i]
+        continue
 
       # special cases: .ce and .rj
       m = re.search(r"\.ce (\d+)", self.wb[i])
@@ -1878,6 +1886,10 @@ class Ppt(Book):
     lmar = (xt - regBW)//2
     bnInBlock = False                # no .bn info encountered in this block yet
     while self.wb[i] != ".nf-":
+
+      if self.wb[i].startswith(".dc") or self.wb[i].startswith(".di"):
+        del self.wb[i]
+        continue
 
       # special cases: .ce and .rj
       m = re.search(r"\.ce (\d+)", self.wb[i])
@@ -1953,6 +1965,10 @@ class Ppt(Book):
     fixed_indent = self.regIN + (self.regLL - regBW)
     i = self.cl + 1 # skip the .nf r line
     while self.wb[i] != ".nf-":
+
+      if self.wb[i].startswith(".dc") or self.wb[i].startswith(".di"):
+        del self.wb[i]
+        continue
 
       # special cases: .ce and .rj
       m = re.search(r"\.ce (\d+)", self.wb[i])
@@ -2256,8 +2272,8 @@ class Ppt(Book):
   def doDropimage(self):
     del self.wb[self.cl] # ignore the directive in text
 
-  def doDropcap(self):
-    del self.wb[self.cl] # ignore the directive in text
+  def doDropcap(self, line): # line is always self.cl in text version
+    del self.wb[line] # ignore the directive in text
 
   def doNa(self):
     del self.wb[self.cl] # ignore the directive in text
@@ -3855,6 +3871,8 @@ class Pph(Book):
     i = self.cl
     t = []
     t.append("")
+    nf_pdi = False
+    nf_pdc = False
 
     if self.pindent:
       t.append("<div class='nf-center-c0'>")
@@ -3882,17 +3900,45 @@ class Pph(Book):
         if m and m.group(1) == "":
           i += 1
           continue
-
+      
+      if self.wb[i].startswith(".dc"):
+        nf_pdc = True
+        self.doDropcap(i, type="nf")
+        del self.wb[i]
+        continue
+        
+      if self.wb[i].startswith(".di"):
+        nf_pdi = True
+        di = self.doDropimageGuts(i, type="nf")
+        del self.wb[i]
+        continue
+          
       if "" == self.wb[i]:
         pending_mt += 1
         i += 1
         continue
       if pending_mt > 0:
-        t.append("    <div style='margin-top:{}em'>".format(pending_mt) + self.wb[i].strip() + "</div>")
+        if nf_pdc:
+          nf_pdc = False
+          t.append("    <div  class='{}' style='margin-top:{}em'>".format(self.pdc, pending_mt) + self.wb[i].strip() + "</div>")
+        elif nf_pdi:
+          nf_pdi = False
+          s = "<img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"])
+          t.append("    <div class='drop-capi{}' style='margin-top:{}em'>".format(di["s_adj"], pending_mt) + s + self.wb[i].strip() + "</div>")
+        else:
+          t.append("    <div style='margin-top:{}em'>".format(pending_mt) + self.wb[i].strip() + "</div>")
         printable_lines_in_block += 1
         pending_mt = 0
       else:
-        t.append("    <div>" + self.wb[i].strip() + "</div>")
+        if nf_pdc:
+          nf_pdc = False
+          t.append("    <div  class='{}'>".format(self.pdc) + self.wb[i].strip() + "</div>")
+        elif nf_pdi:
+          nf_pdi = False
+          s = "<img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"])
+          t.append("    <div class='drop-capi{}'>".format(di["s_adj"]) + s + self.wb[i].strip() + "</div>")
+        else:
+          t.append("    <div>" + self.wb[i].strip() + "</div>")
         printable_lines_in_block += 1
       i += 1
     # at block end.
@@ -4392,19 +4438,20 @@ class Pph(Book):
     self.wb[startloc:self.cl+1] = t
     self.cl = startloc + len(t)
 
-  # Drop Image
-  # .di i_b_009.jpg 100 170 1.3
-  def doDropimage(self):
-    m = re.match(r"\.di (.*?) (\d+) (\d+) (.*)",self.wb[self.cl])
+  # Guts of doDropimage
+  # also needed in nf processing
+  def doDropimageGuts(self, line, type="p"):
+    di={}
+    m = re.match(r"\.di (.*?) (\d+) (\d+) (.*)",self.wb[line])
     if m:
       self.warn("CSS3 drop-cap. Please note in upload.")
-      d_image = m.group(1)
-      d_width = m.group(2)
-      d_height = m.group(3)
+      di["d_image"] = m.group(1)
+      di["d_width"] = m.group(2)
+      di["d_height"] = m.group(3)
       d_adj = m.group(4)
 
       self.css.addcss("[1920] img.drop-capi { float:left;margin:0 0.5em 0 0;position:relative;z-index:1; }")
-      s_adj = re.sub(r"\.","_", str(d_adj))
+      di["s_adj"] = re.sub(r"\.","_", str(d_adj))
       if self.pindent:
         s0 = re.sub("em", "", self.nregs["psi"]) # drop the "em"
         s1 = int(float(s0)*100.0) # in tenths of ems
@@ -4415,23 +4462,41 @@ class Pph(Book):
         s2 = (s1//2)/100 # forces one decimal place
       mtop = s2
       mbot = mtop
-      self.css.addcss("[1921] p.drop-capi{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(s_adj,mtop,mbot))
-      self.css.addcss("[1922] p.drop-capi{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(s_adj,d_adj))
+      if type == "p":
+        self.css.addcss("[1921] p.drop-capi{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(di["s_adj"],mtop,mbot))
+        self.css.addcss("[1922] p.drop-capi{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(di["s_adj"],d_adj))
 
-      self.css.addcss("[1923] @media handheld {")
-      self.css.addcss("[1924]   img.drop-capi { display:none; visibility:hidden; }")
-      self.css.addcss("[1925]   p.drop-capi{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(s_adj))
-      self.css.addcss("[1926] }")
+        self.css.addcss("[1923] @media handheld {")
+        self.css.addcss("[1924]   img.drop-capi { display:none; visibility:hidden; }")
+        self.css.addcss("[1925]   p.drop-capi{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(di["s_adj"]))
+        self.css.addcss("[1926] }")
+      else:
+        self.css.addcss("[1941] div.drop-capi{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(di["s_adj"],mtop,mbot))
+        self.css.addcss("[1942] div.drop-capi{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(di["s_adj"],d_adj))
 
-      t = []
-      t.append("<div>")
-      t.append("  <img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(d_image,d_width,d_height))
-      t.append("</div><p class='drop-capi{}'>".format(s_adj))
-      self.wb[self.cl:self.cl+1] = t
+        self.css.addcss("[1943] @media handheld {")
+        self.css.addcss("[1944]   img.drop-capi { display:none; visibility:hidden; }")
+        self.css.addcss("[1945]   div.drop-capi{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(di["s_adj"]))
+        self.css.addcss("[1946] }")
+    else:
+      self.crash_w_context("Incorrect .di command values", line)
+    return(di)
+
+  
+  # Drop Image
+  # .di i_b_009.jpg 100 170 1.3
+  def doDropimage(self):
+
+    di = self.doDropimageGuts(self.cl)
+    t = []
+    t.append("<div>")
+    t.append("  <img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"]))
+    t.append("</div><p class='drop-capi{}'>".format(di["s_adj"]))
+    self.wb[self.cl:self.cl+1] = t
 
   # Drop Cap. a single, capital letter
-  def doDropcap(self):
-    m = re.match(r"\.dc (.*?)\s(.*)", self.wb[self.cl]) # optional adjust
+  def doDropcap(self, line, type="p"):
+    m = re.match(r"\.dc (.*?)\s(.*)", self.wb[line]) # optional adjust
     dcadjs = ""
     dcadj = 0
     if m:
@@ -4442,15 +4507,24 @@ class Pph(Book):
       mt = (250.0 / float(re.sub("%","",self.nregs["dcs"]))) * 0.1
       mr = (250.0 / float(re.sub("%","",self.nregs["dcs"]))) * 0.1
     else:
-      self.fatal("incorrect format for .dc arg1 arg2 command")
-    self.css.addcss("[1930] p.drop-capa{} {{ text-indent:-{}em; }}".format(dcadjs,dcadj))
-    self.css.addcss("[1931] p.drop-capa{}:first-letter {{ float:left;margin:{:0.3f}em {:0.3f}em 0em 0em;font-size:{};line-height:{}em;text-indent:0 }}".format(dcadjs,mt,mr,self.nregs["dcs"],dclh))
-    self.css.addcss("[1933] @media handheld {")
-    self.css.addcss("[1935]   p.drop-capa{} {{ text-indent:0 }}".format(dcadjs))
-    self.css.addcss("[1936]   p.drop-capa{}:first-letter {{ float:none;margin:0;font-size:100%; }}".format(dcadjs))
-    self.css.addcss("[1937] }")
-    self.pdc = "drop-capa{}".format(dcadjs)
-    del self.wb[self.cl]
+      self.crash_w_context("incorrect format for .dc arg1 arg2 command", self.cl)
+    if type == "p":
+      self.css.addcss("[1930] p.drop-capa{} {{ text-indent:-{}em; }}".format(dcadjs,dcadj))
+      self.css.addcss("[1931] p.drop-capa{}:first-letter {{ float:left;margin:{:0.3f}em {:0.3f}em 0em 0em;font-size:{};line-height:{}em;text-indent:0 }}".format(dcadjs,mt,mr,self.nregs["dcs"],dclh))
+      self.css.addcss("[1933] @media handheld {")
+      self.css.addcss("[1935]   p.drop-capa{} {{ text-indent:0 }}".format(dcadjs))
+      self.css.addcss("[1936]   p.drop-capa{}:first-letter {{ float:none;margin:0;font-size:100%; }}".format(dcadjs))
+      self.css.addcss("[1937] }")
+      self.pdc = "drop-capa{}".format(dcadjs)
+    else:
+      self.css.addcss("[1950] div.drop-capa{} {{ text-indent:-{}em; }}".format(dcadjs,dcadj))
+      self.css.addcss("[1951] div.drop-capa{}:first-letter {{ float:left;margin:{:0.3f}em {:0.3f}em 0em 0em;font-size:{};line-height:{}em;text-indent:0 }}".format(dcadjs,mt,mr,self.nregs["dcs"],dclh))
+      self.css.addcss("[1953] @media handheld {")
+      self.css.addcss("[1955]   div.drop-capa{} {{ text-indent:0 }}".format(dcadjs))
+      self.css.addcss("[1956]   div.drop-capa{}:first-letter {{ float:none;margin:0;font-size:100%; }}".format(dcadjs))
+      self.css.addcss("[1957] }")
+      self.pdc = "drop-capa{}".format(dcadjs)
+    del self.wb[line]
 
   # no adjust
   def doNa(self):
