@@ -4417,11 +4417,9 @@ class Pph(Book):
     self.css.addcss("[1920] img.drop-capi { float:left;margin:0 0.5em 0 0;position:relative;z-index:1; }")
     s_adj = re.sub(r"\.","_", str(d_adj))
     if self.pindent:
-    s0 = re.sub("em", "", self.nregs["psi"]) # drop the "em"
-    s1 = int(float(s0)*100.0) # in tenths of ems
-    s2 = (s1//2)/100 # forces one decimal place
+      s0 = re.sub("em", "", self.nregs["psi"]) # drop the "em"
     else:
-    s0 = re.sub("em", "", self.nregs["psb"]) # drop the "em"
+      s0 = re.sub("em", "", self.nregs["psb"]) # drop the "em"
     s1 = int(float(s0)*100.0) # in tenths of ems
     s2 = (s1//2)/100 # forces one decimal place
     mtop = s2
