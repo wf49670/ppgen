@@ -1163,6 +1163,18 @@ class Ppt(Book):
         i += 1
         continue
 
+      s = self.wb[i]
+      explicit = False
+      m = re.search("\[(\d+)\]", s) # explicit
+      while m:
+        explicit = True
+        fncr = int(m.group(1)) + 1
+        s = re.sub("\[(\d+)\]", "", s, 1)
+        m = re.search("\[(\d+)\]", s)
+      if explicit: # don't support mixing # and explicit in the same line
+        i += 1
+        continue
+
       m = re.search("\[#\]", self.wb[i])
       while m:
         self.wb[i] = re.sub("\[#\]", "[{}]".format(fncr), self.wb[i], 1)
@@ -1181,6 +1193,11 @@ class Ppt(Book):
         i += 1
         continue
 
+      m = re.match(r"\.fn (\d+)", self.wb[i]) # explicit
+      if m:
+        fncr = int(m.group(1)) + 1
+        i += 1
+        continue
 
       if ".fn #" == self.wb[i]:
         self.wb[i:i+1] = [".sp 1",".fn {}".format(fncr)]
@@ -2669,9 +2686,15 @@ class Pph(Book):
         i += 1
         continue
 
-      m = re.search("\[(\d+)\]", self.wb[i]) # explicit
-      if m:
+      s = self.wb[i]
+      explicit = False
+      m = re.search("\[(\d+)\]", s) # explicit
+      while m:
+        explicit = True
         fncr = int(m.group(1)) + 1
+        s = re.sub("\[(\d+)\]", "", s, 1)
+        m = re.search("\[(\d+)\]", s)
+      if explicit: # don't support mixing # and explicit in the same line
         i += 1
         continue
 
@@ -4369,41 +4392,53 @@ class Pph(Book):
     self.cl = startloc + len(t)
 
   # Drop Image
-  # .di i_b_009.jpg 100 170 1.3
+  # two formats:
+  #   .di i_b_009.jpg 100 170 1.3 (height, width, adjust specified)
+  #   .di i_b_009.jpg 100 1.3 (height, adjust specified)
   def doDropimage(self):
-    m = re.match(r"\.di (.*?) (\d+) (\d+) (.*)",self.wb[self.cl])
+    m = re.match(r"\.di (.*?) (\d+) (.*)$",self.wb[self.cl])
     if m:
-      self.warn("CSS3 drop-cap. Please note in upload.")
       d_image = m.group(1)
-      d_width = m.group(2)
-      d_height = m.group(3)
-      d_adj = m.group(4)
-
-      self.css.addcss("[1920] img.drop-capi { float:left;margin:0 0.5em 0 0;position:relative;z-index:1; }")
-      s_adj = re.sub(r"\.","_", str(d_adj))
-      if self.pindent:
-        s0 = re.sub("em", "", self.nregs["psi"]) # drop the "em"
-        s1 = int(float(s0)*100.0) # in tenths of ems
-        s2 = (s1//2)/100 # forces one decimal place
+      d_width = ""
+      d_height = m.group(2)
+      d_adj = m.group(3)
+    else:         
+      m = re.match(r"\.di (.*?) (\d+) (\d+) (.*)$",self.wb[self.cl])
+      if m:
+        d_image = m.group(1)
+        d_width = m.group(2)
+        d_height = m.group(3)
+        d_adj = m.group(4)
       else:
-        s0 = re.sub("em", "", self.nregs["psb"]) # drop the "em"
-        s1 = int(float(s0)*100.0) # in tenths of ems
-        s2 = (s1//2)/100 # forces one decimal place
-      mtop = s2
-      mbot = mtop
-      self.css.addcss("[1921] p.drop-capi{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(s_adj,mtop,mbot))
-      self.css.addcss("[1922] p.drop-capi{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(s_adj,d_adj))
+        self.crash_w_context("malformed drop image directive", self.cl)
 
-      self.css.addcss("[1923] @media handheld {")
-      self.css.addcss("[1924]   img.drop-capi { display:none; visibility:hidden; }")
-      self.css.addcss("[1925]   p.drop-capi{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(s_adj))
-      self.css.addcss("[1926] }")
+    self.warn("CSS3 drop-cap. Please note in upload.")
+    self.css.addcss("[1920] img.drop-capi { float:left;margin:0 0.5em 0 0;position:relative;z-index:1; }")
+    s_adj = re.sub(r"\.","_", str(d_adj))
+    if self.pindent:
+      s0 = re.sub("em", "", self.nregs["psi"]) # drop the "em"
+    else:
+      s0 = re.sub("em", "", self.nregs["psb"]) # drop the "em"
+    s1 = int(float(s0)*100.0) # in tenths of ems
+    s2 = (s1//2)/100 # forces one decimal place
+    mtop = s2
+    mbot = mtop
+    self.css.addcss("[1921] p.drop-capi{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(s_adj,mtop,mbot))
+    self.css.addcss("[1922] p.drop-capi{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(s_adj,d_adj))
 
-      t = []
-      t.append("<div>")
+    self.css.addcss("[1923] @media handheld {")
+    self.css.addcss("[1924]   img.drop-capi { display:none; visibility:hidden; }")
+    self.css.addcss("[1925]   p.drop-capi{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(s_adj))
+    self.css.addcss("[1926] }")
+
+    t = []
+    t.append("<div>")
+    if d_width == "":
+      t.append("  <img class='drop-capi' src='images/{}' height='{}' alt='' />".format(d_image,d_height))
+    else:
       t.append("  <img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(d_image,d_width,d_height))
-      t.append("</div><p class='drop-capi{}'>".format(s_adj))
-      self.wb[self.cl:self.cl+1] = t
+    t.append("</div><p class='drop-capi{}'>".format(s_adj))
+    self.wb[self.cl:self.cl+1] = t
 
   # Drop Cap. a single, capital letter
   def doDropcap(self):
