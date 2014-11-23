@@ -4393,14 +4393,14 @@ class Pph(Book):
 
   # Drop Image
   # two formats:
-  #   .di i_b_009.jpg 100 170 1.3 (height, width, adjust specified)
-  #   .di i_b_009.jpg 100 1.3 (height, adjust specified)
+  #   .di i_b_009.jpg 100 170 1.3 (width, height, adjust specified)
+  #   .di i_b_009.jpg 100 1.3 (width, adjust specified)
   def doDropimage(self):
     m = re.match(r"\.di (.*?) (\d+) (.*)$",self.wb[self.cl])
     if m:
       d_image = m.group(1)
-      d_width = ""
-      d_height = m.group(2)
+      d_width = m.group(2)
+      d_height = ""
       d_adj = m.group(3)
     else:         
       m = re.match(r"\.di (.*?) (\d+) (\d+) (.*)$",self.wb[self.cl])
@@ -4433,8 +4433,8 @@ class Pph(Book):
 
     t = []
     t.append("<div>")
-    if d_width == "":
-      t.append("  <img class='drop-capi' src='images/{}' height='{}' alt='' />".format(d_image,d_height))
+    if d_height == "":
+      t.append("  <img class='drop-capi' src='images/{}' width='{}' alt='' />".format(d_image,d_width))
     else:
       t.append("  <img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(d_image,d_width,d_height))
     t.append("</div><p class='drop-capi{}'>".format(s_adj))
