@@ -4441,24 +4441,14 @@ class Pph(Book):
   # also needed in nf processing
   def doDropimageGuts(self, line, type="p"):
     di={}
-#   m = re.match(r"\.di (.*?) (\d+) (\d+) (.*)",self.wb[line])
-    m = re.match(r"\.di (.*?) (\d+) (.*)$",self.wb[line])
-  # Drop Image
-  # two formats:
-  #   .di i_b_009.jpg 100 170 1.3 (width, height, adjust specified)
-  #   .di i_b_009.jpg 100 1.3 (width, adjust specified)
-  def doDropimage(self):
-    m = re.match(r"\.di (.*?) (\d+) (.*)$",self.wb[self.cl])
+    m = re.match(r"\.di (.*?) (\d+) (.*)$",self.wb[line]) # 3 argument version: image, width, adjust
     if m:
       di["d_image"] = m.group(1)
-      di["d_width"] = ""
-      di["d_height"] = m.group(2)
-      d_image = m.group(1)
-      d_width = m.group(2)
-      d_height = ""
+      di["d_width"] = "m.group(2)"
+      di["d_height"] = ""
       d_adj = m.group(3)
     else:         
-      m = re.match(r"\.di (.*?) (\d+) (\d+) (.*)$",self.wb[line])
+      m = re.match(r"\.di (.*?) (\d+) (\d+) (.*)$",self.wb[line]) # 4 argument version: image, width, height, adjust
       if m:
         di["d_image"] = m.group(1)
         di["d_width"] = m.group(2)
@@ -4492,23 +4482,21 @@ class Pph(Book):
       self.css.addcss("[1946] }")
     self.warn("CSS3 drop-cap. Please note in upload.")
     return di
-  
+
   # Drop Image
   # two formats:
   #   .di i_b_009.jpg 100 170 1.3 (width, height, adjust specified)
-  #   .di i_b_009.jpg 100 1.3 (height, adjust specified)
-  def doDropimage(self):
+  #   .di i_b_009.jpg 100 1.3 (width, adjust specified)
+  def doDropimage(self):    
 
     di = self.doDropimageGuts(self.cl)
     t = []
     t.append("<div>")
-    t.append("  <img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"]))
-    t.append("</div><p class='drop-capi{}'>".format(di["s_adj"]))
     if d_height == "":
-      t.append("  <img class='drop-capi' src='images/{}' width='{}' alt='' />".format(d_image,d_width))
+      t.append("  <img class='drop-capi' src='images/{}' width='{}' alt='' />".format(di["d_image"],di["d_width"]))
     else:
-      t.append("  <img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(d_image,d_width,d_height))
-    t.append("</div><p class='drop-capi{}'>".format(s_adj))
+      t.append("  <img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"]))
+    t.append("</div><p class='drop-capi{}'>".format(di["s_adj"]))
     self.wb[self.cl:self.cl+1] = t
 
   # Drop Cap. a single, capital letter
