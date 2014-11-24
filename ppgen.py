@@ -1335,7 +1335,6 @@ class Ppt(Book):
           self.eb.insert(i,"")
           count -= 1
       i += 1
-
       # restore tokens
     for i, line in enumerate(self.eb):
       self.eb[i] = re.sub("ⓓ|Ⓓ", ".", self.eb[i])  # ellipsis dots
@@ -4444,10 +4443,19 @@ class Pph(Book):
     di={}
 #   m = re.match(r"\.di (.*?) (\d+) (\d+) (.*)",self.wb[line])
     m = re.match(r"\.di (.*?) (\d+) (.*)$",self.wb[line])
+  # Drop Image
+  # two formats:
+  #   .di i_b_009.jpg 100 170 1.3 (width, height, adjust specified)
+  #   .di i_b_009.jpg 100 1.3 (width, adjust specified)
+  def doDropimage(self):
+    m = re.match(r"\.di (.*?) (\d+) (.*)$",self.wb[self.cl])
     if m:
       di["d_image"] = m.group(1)
       di["d_width"] = ""
       di["d_height"] = m.group(2)
+      d_image = m.group(1)
+      d_width = m.group(2)
+      d_height = ""
       d_adj = m.group(3)
     else:         
       m = re.match(r"\.di (.*?) (\d+) (\d+) (.*)$",self.wb[line])
@@ -4496,6 +4504,11 @@ class Pph(Book):
     t.append("<div>")
     t.append("  <img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"]))
     t.append("</div><p class='drop-capi{}'>".format(di["s_adj"]))
+    if d_height == "":
+      t.append("  <img class='drop-capi' src='images/{}' width='{}' alt='' />".format(d_image,d_width))
+    else:
+      t.append("  <img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(d_image,d_width,d_height))
+    t.append("</div><p class='drop-capi{}'>".format(s_adj))
     self.wb[self.cl:self.cl+1] = t
 
   # Drop Cap. a single, capital letter
