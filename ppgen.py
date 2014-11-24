@@ -4013,8 +4013,6 @@ class Pph(Book):
       else:
         # need to calculate leading space for this line.
         # there may be some tags *before* the leading space
-        if self.wb[i].startswith("At break of day"):###
-          aaadbg = True###
         tmp = self.wb[i][:]
         ss = ""
         m = re.match(r"^(<[^>]+>|⑯\w+⑰)", tmp)
@@ -4511,8 +4509,7 @@ class Pph(Book):
       if "<p" in self.wb[i]: blvl += 1
       if "</div" in self.wb[i]: blvl -= 1
       if "</p" in self.wb[i]: blvl -= 1
-      # if blvl == 0 and re.match(r"<span class='pagenum'.*?<\/span>$", self.wb[i]):
-      if blvl == 0 and re.match(r"<span class='pageno'.*?<\/span>$", self.wb[i]):      # new 3.24M
+      if blvl == 0 and re.match(r"\s*<span class='pageno'.*?<\/span>$", self.wb[i]):
         self.wb[i] = "<div>{}</div>".format(self.wb[i])
 
     # remove double blank lines (must be done before creating .bin file)
