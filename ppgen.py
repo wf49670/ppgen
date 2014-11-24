@@ -4013,9 +4013,11 @@ class Pph(Book):
       else:
         # need to calculate leading space for this line.
         # there may be some tags *before* the leading space
+        if self.wb[i].startswith("At break of day"):###
+          aaadbg = True###
         tmp = self.wb[i][:]
         ss = ""
-        m = re.match(r"^<[^>]+>", tmp)
+        m = re.match(r"^(<[^>]+>|⑯\w+⑰)", tmp)
         while m:
           ss += m.group(0)
           tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp, 1)
