@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.42"  # 09-Nov-2014
+VERSION="3.43a"  # 25-Nov-2014
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3467,7 +3467,7 @@ class Pph(Book):
   def doSpace(self):
     m = re.match(r"\.sp (\d+)", self.wb[self.cl])
     if m:
-      self.pvs = int(m.group(1))
+      self.pvs = max(int(m.group(1), self.pvs))  # honor if larger than current pvs
       del self.wb[self.cl]
     else:
       self.fatal("malformed space directive: {}".format(self.wb[self.cl]))
@@ -4061,7 +4061,7 @@ class Pph(Book):
         # there may be some tags *before* the leading space
         tmp = self.wb[i][:]
         ss = ""
-        m = re.match(r"^<[^>]+>", tmp)
+        m = re.match(r"^(<[^>]+>|⑯\w+⑰)", tmp)
         while m:
           ss += m.group(0)
           tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp, 1)
@@ -4577,8 +4577,7 @@ class Pph(Book):
       if "<p" in self.wb[i]: blvl += 1
       if "</div" in self.wb[i]: blvl -= 1
       if "</p" in self.wb[i]: blvl -= 1
-      # if blvl == 0 and re.match(r"<span class='pagenum'.*?<\/span>$", self.wb[i]):
-      if blvl == 0 and re.match(r"<span class='pageno'.*?<\/span>$", self.wb[i]):      # new 3.24M
+      if blvl == 0 and re.match(r"\s*<span class='pageno'.*?<\/span>$", self.wb[i]):
         self.wb[i] = "<div>{}</div>".format(self.wb[i])
 
     # remove double blank lines (must be done before creating .bin file)
