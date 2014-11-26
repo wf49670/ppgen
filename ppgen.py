@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.42"  # 09-Nov-2014
+VERSION="3.43a"  # 25-Nov-2014
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1194,6 +1194,18 @@ class Ppt(Book):
         i += 1
         continue
 
+      s = self.wb[i]
+      explicit = False
+      m = re.search("\[(\d+)\]", s) # explicit
+      while m:
+        explicit = True
+        fncr = int(m.group(1)) + 1
+        s = re.sub("\[(\d+)\]", "", s, 1)
+        m = re.search("\[(\d+)\]", s)
+      if explicit: # don't support mixing # and explicit in the same line
+        i += 1
+        continue
+
       m = re.search("\[#\]", self.wb[i])
       while m:
         self.wb[i] = re.sub("\[#\]", "[{}]".format(fncr), self.wb[i], 1)
@@ -1212,6 +1224,11 @@ class Ppt(Book):
         i += 1
         continue
 
+      m = re.match(r"\.fn (\d+)", self.wb[i]) # explicit
+      if m:
+        fncr = int(m.group(1)) + 1
+        i += 1
+        continue
 
       if ".fn #" == self.wb[i]:
         self.wb[i:i+1] = [".sp 1",".fn {}".format(fncr)]
@@ -1349,7 +1366,6 @@ class Ppt(Book):
           self.eb.insert(i,"")
           count -= 1
       i += 1
-
       # restore tokens
     for i, line in enumerate(self.eb):
       self.eb[i] = re.sub("ⓓ|Ⓓ", ".", self.eb[i])  # ellipsis dots
@@ -1677,6 +1693,7 @@ class Ppt(Book):
     if m:
       # ignore the illustration line
       # is the .il line followed by a caption line?
+      self.eb.append(".RS 1") # request at least one space in text before illustration
       self.cl += 1 # the illo line
       caption = ""
       if self.cl < len(self.wb) and self.wb[self.cl].startswith(".ca"):
@@ -1705,11 +1722,11 @@ class Ppt(Book):
           t = self.wrap(s, 0, self.regLL, 0)
           self.eb += t
           self.cl += 1 # caption line
-
       else:
         # no caption, just illustration
         t = ["[{}]".format(self.nregs["Illustration"])]
         self.eb += t
+      self.eb.append(".RS 1") # request at least one space in text after illustration          
 
   # .in left margin indent
   def doIn(self):
@@ -2736,9 +2753,15 @@ class Pph(Book):
         i += 1
         continue
 
-      m = re.search("\[(\d+)\]", self.wb[i]) # explicit
-      if m:
+      s = self.wb[i]
+      explicit = False
+      m = re.search("\[(\d+)\]", s) # explicit
+      while m:
+        explicit = True
         fncr = int(m.group(1)) + 1
+        s = re.sub("\[(\d+)\]", "", s, 1)
+        m = re.search("\[(\d+)\]", s)
+      if explicit: # don't support mixing # and explicit in the same line
         i += 1
         continue
 
@@ -3239,7 +3262,7 @@ class Pph(Book):
     self.css.addcss("[1465] div.pbb { page-break-before:always; }")
     self.css.addcss("[1466] hr.pb { border:none;border-bottom:1px solid; margin-bottom:1em; }")
     self.css.addcss("[1467] @media handheld { hr.pb { display:none; }}")
-    self.wb[self.cl:self.cl+1] = ["<div class='pbb'></div>", "<hr class='pb' style='{}'/>".format(hcss)]
+    self.wb[self.cl:self.cl+1] = ["<div class='pbb'></div>", "<hr class='pb' style='{}' />".format(hcss)]
     self.cl += 2
 
   # extract any "class=" argument from string s
@@ -3357,7 +3380,7 @@ class Pph(Book):
       self.pvs = 0
     else: # default 1 before, 1 after
       hcss += "margin-top:1em;"
-      self.pvs = 1
+    self.pvs = 1
 
     del self.wb[self.cl] # the .h line
 
@@ -3422,7 +3445,7 @@ class Pph(Book):
       self.pvs = 0
     else: # default 4 before, 2 after
       hcss += "margin-top:4em;"
-      self.pvs = 2
+    self.pvs = 2
 
     del self.wb[self.cl] # the .h line
 
@@ -3440,10 +3463,8 @@ class Pph(Book):
 
     # new in 1.79
     # I always want a div. If it's not a no-break, give it class='chapter'
-    if "nobreak" in rend:
-      t.append("<div>")
-    else:
-      t.append("<div class='chapter'>") # will force file break
+    if not "nobreak" in rend:
+      t.append("<div class='chapter'></div>") # will force file break
       self.css.addcss("[1576] .chapter { clear:both; }")
     if pnum != "":
       if self.pnshow:
@@ -3455,7 +3476,6 @@ class Pph(Book):
       t.append("  <h2 id='{}' style='{}'>{}</h2>".format(id, hcss, s))
     else:
       t.append("  <h2 style='{}'>{}</h2>".format(hcss, s))
-    t.append("</div>")
 
     self.wb[self.cl:self.cl+1] = t
     self.cl += len(t)
@@ -3489,9 +3509,9 @@ class Pph(Book):
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
       self.pvs = 0
-    else: # default 4 before, 2 after
+    else: # default 2 before, 1 after
       hcss += "margin-top:2em;"
-      self.pvs = 1
+    self.pvs = 1
 
     del self.wb[self.cl] # the .h line
 
@@ -3533,7 +3553,7 @@ class Pph(Book):
   def doSpace(self):
     m = re.match(r"\.sp (\d+)", self.wb[self.cl])
     if m:
-      self.pvs = int(m.group(1))
+      self.pvs = max(int(m.group(1), self.pvs))  # honor if larger than current pvs
       del self.wb[self.cl]
     else:
       self.fatal("malformed space directive: {}".format(self.wb[self.cl]))
@@ -3708,21 +3728,22 @@ class Pph(Book):
       self.css.addcss("[1600] .figcenter { clear:both; max-width:100%; margin:2em auto; text-align:center; }")
       if caption_present:
           self.css.addcss("[1601] div.figcenter p { text-align:center; text-indent:0; }")
+      self.css.addcss("[1608] .figcenter img { max-width:100%; height:auto; }")
 
     if ia["align"] == "l":
       self.css.addcss("[1600] .figleft { clear:left; float:left; max-width:100%; margin:0.5em 1em 1em 0; text-align: left;}")
       if caption_present:
           self.css.addcss("[1601] div.figleft p { text-align:center; text-indent:0; }")
       self.css.addcss("[1602] @media handheld { .figleft { float:left; }}")
+      self.css.addcss("[1608] .figleft img { max-width:100%; height:auto; }")
 
     if ia["align"] == "r":
       self.css.addcss("[1600] .figright { clear:right; float:right; max-width:100%; margin:0.5em 0 1em 1em; text-align: right;}")
       if caption_present:
           self.css.addcss("[1601] div.figright p { text-align:center; text-indent:0; }")
       self.css.addcss("[1602] @media handheld { .figright { float:right; }}")
+      self.css.addcss("[1608] .figright img { max-width:100%; height:auto; }")
 
-    # if any image is in document
-    self.css.addcss("[1608] img { max-width:100%; height:auto; }")
 
     # make CSS names from igc counter
     idn = "id{:03d}".format(self.igc)
@@ -4013,6 +4034,8 @@ class Pph(Book):
       self.css.addcss("[1223] .linegroup .group { margin: 1em auto; }")
     self.css.addcss("[1224] .linegroup .line { text-indent: -3em; padding-left: 3em; }")
 
+    self.css.addcss("[1225] div.linegroup > :first-child { margin-top: 0; }")
+
     ssty = ""
     s = self.fetchStyle() # supplemental style
     if s:
@@ -4023,15 +4046,15 @@ class Pph(Book):
 
     closing = ""
     if 'b' == nft:
-      t.append("<div class='lg-container-b'>")
+      t.append("<div class='lg-container-b'{}>".format(ssty))
       closing = ".nf-"
     if 'l' == nft:
-      t.append("<div class='lg-container-l'>")
+      t.append("<div class='lg-container-l'{}>".format(ssty))
       closing = ".nf-"
     if 'r' == nft:
-      t.append("<div class='lg-container-r'>")
+      t.append("<div class='lg-container-r'{}>".format(ssty))
       closing = ".nf-"
-    t.append("  <div class='linegroup'{}>".format(ssty))
+    t.append("  <div class='linegroup'>")
     if mo:
       t.append("    <div class='group0'>")
     else:
@@ -4094,7 +4117,7 @@ class Pph(Book):
         # there may be some tags *before* the leading space
         tmp = self.wb[i][:]
         ss = ""
-        m = re.match(r"^<[^>]+>", tmp)
+        m = re.match(r"^(<[^>]+>|⑯\w+⑰)", tmp)
         while m:
           ss += m.group(0)
           tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp, 1)
@@ -4408,7 +4431,7 @@ class Pph(Book):
     # set relative widths of columns
     t.append("<colgroup>")
     for (i,w) in enumerate(widths):
-     t.append("<col width='{}%'/>".format(pwidths[i]))
+     t.append("<col width='{}%' />".format(pwidths[i]))
     t.append("</colgroup>")
 
     startloc = self.cl
@@ -4471,41 +4494,53 @@ class Pph(Book):
     self.cl = startloc + len(t)
 
   # Drop Image
-  # .di i_b_009.jpg 100 170 1.3
+  # two formats:
+  #   .di i_b_009.jpg 100 170 1.3 (width, height, adjust specified)
+  #   .di i_b_009.jpg 100 1.3 (width, adjust specified)
   def doDropimage(self):
-    m = re.match(r"\.di (.*?) (\d+) (\d+) (.*)",self.wb[self.cl])
+    m = re.match(r"\.di (.*?) (\d+) (.*)$",self.wb[self.cl])
     if m:
-      self.warn("CSS3 drop-cap. Please note in upload.")
       d_image = m.group(1)
       d_width = m.group(2)
-      d_height = m.group(3)
-      d_adj = m.group(4)
-
-      self.css.addcss("[1920] img.drop-capi { float:left;margin:0 0.5em 0 0;position:relative;z-index:1; }")
-      s_adj = re.sub(r"\.","_", str(d_adj))
-      if self.pindent:
-        s0 = re.sub("em", "", self.nregs["psi"]) # drop the "em"
-        s1 = int(float(s0)*100.0) # in tenths of ems
-        s2 = (s1//2)/100 # forces one decimal place
+      d_height = ""
+      d_adj = m.group(3)
+    else:         
+      m = re.match(r"\.di (.*?) (\d+) (\d+) (.*)$",self.wb[self.cl])
+      if m:
+        d_image = m.group(1)
+        d_width = m.group(2)
+        d_height = m.group(3)
+        d_adj = m.group(4)
       else:
-        s0 = re.sub("em", "", self.nregs["psb"]) # drop the "em"
-        s1 = int(float(s0)*100.0) # in tenths of ems
-        s2 = (s1//2)/100 # forces one decimal place
-      mtop = s2
-      mbot = mtop
-      self.css.addcss("[1921] p.drop-capi{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(s_adj,mtop,mbot))
-      self.css.addcss("[1922] p.drop-capi{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(s_adj,d_adj))
+        self.crash_w_context("malformed drop image directive", self.cl)
 
-      self.css.addcss("[1923] @media handheld {")
-      self.css.addcss("[1924]   img.drop-capi { display:none; visibility:hidden; }")
-      self.css.addcss("[1925]   p.drop-capi{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(s_adj))
-      self.css.addcss("[1926] }")
+    self.warn("CSS3 drop-cap. Please note in upload.")
+    self.css.addcss("[1920] img.drop-capi { float:left;margin:0 0.5em 0 0;position:relative;z-index:1; }")
+    s_adj = re.sub(r"\.","_", str(d_adj))
+    if self.pindent:
+      s0 = re.sub("em", "", self.nregs["psi"]) # drop the "em"
+    else:
+      s0 = re.sub("em", "", self.nregs["psb"]) # drop the "em"
+    s1 = int(float(s0)*100.0) # in tenths of ems
+    s2 = (s1//2)/100 # forces one decimal place
+    mtop = s2
+    mbot = mtop
+    self.css.addcss("[1921] p.drop-capi{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(s_adj,mtop,mbot))
+    self.css.addcss("[1922] p.drop-capi{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(s_adj,d_adj))
 
-      t = []
-      t.append("<div>")
+    self.css.addcss("[1923] @media handheld {")
+    self.css.addcss("[1924]   img.drop-capi { display:none; visibility:hidden; }")
+    self.css.addcss("[1925]   p.drop-capi{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(s_adj))
+    self.css.addcss("[1926] }")
+
+    t = []
+    t.append("<div>")
+    if d_height == "":
+      t.append("  <img class='drop-capi' src='images/{}' width='{}' alt='' />".format(d_image,d_width))
+    else:
       t.append("  <img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(d_image,d_width,d_height))
-      t.append("</div><p class='drop-capi{}'>".format(s_adj))
-      self.wb[self.cl:self.cl+1] = t
+    t.append("</div><p class='drop-capi{}'>".format(s_adj))
+    self.wb[self.cl:self.cl+1] = t
 
   # Drop Cap. a single, capital letter
   def doDropcap(self):
@@ -4576,8 +4611,7 @@ class Pph(Book):
       if "<p" in self.wb[i]: blvl += 1
       if "</div" in self.wb[i]: blvl -= 1
       if "</p" in self.wb[i]: blvl -= 1
-      # if blvl == 0 and re.match(r"<span class='pagenum'.*?<\/span>$", self.wb[i]):
-      if blvl == 0 and re.match(r"<span class='pageno'.*?<\/span>$", self.wb[i]):      # new 3.24M
+      if blvl == 0 and re.match(r"\s*<span class='pageno'.*?<\/span>$", self.wb[i]):
         self.wb[i] = "<div>{}</div>".format(self.wb[i])
 
     # remove double blank lines (must be done before creating .bin file)
