@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.43a"  # 25-Nov-2014
+VERSION="3.43d"  # 27-Nov-2014
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -630,9 +630,9 @@ class Book(object):
       # leave alone if in literal block (correct way, not yet implemented)
       # map &nbsp; to non-breaking space
       # 10-Sep-2014: I don't fully understand why I did this mapping
-      if not self.wb[i].startswith(".dt"):
-        self.wb[i] = self.wb[i].replace("&nbsp;", "ⓢ") # ampersand
-        self.wb[i] = self.wb[i].replace("&", "Ⓩ") # ampersand
+      self.wb[i] = self.wb[i].replace("&nbsp;", "ⓢ") # ampersand
+      self.wb[i] = self.wb[i].replace("&", "Ⓩ") # ampersand
+
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # define macro
@@ -1050,7 +1050,7 @@ class Ppt(Book):
         else:
           s = ""
         twidth = mywidth  
-    if len(s) > 0:
+    if len(t) == 0 or len(s) > 0: #ensure t has something in it, but don't add a zero length s (blank line) to t unless t is empty
       t.append(s)
 
     for i, line in enumerate(t):
@@ -2980,29 +2980,38 @@ class Pph(Book):
       self.wb[i] = re.sub("<\/fs>", "</span>", self.wb[i])
 
   # -------------------------------------------------------------------------------------
+  # restore tokens in HTML text
+
+  def htmlTokenRestore(self, text):
+    text = re.sub("ⓓ", ".", text)
+    text = re.sub("①", "{", text)
+    text = re.sub("②", "}", text)
+    text = re.sub("③", "[", text)
+    text = re.sub("④", "]", text)
+    text = re.sub("⑤", "&lt;", text)
+    # text space replacement
+    text = re.sub("ⓢ", "&nbsp;", text) # non-breaking space
+    text = re.sub("ⓣ", "&#8203;", text) # zero space
+    text = re.sub("ⓤ", "&thinsp;", text) # thin space
+    text = re.sub("ⓥ", "&#8196;", text) # thick space
+    # ampersand
+    text = re.sub("Ⓩ", "&amp;", text)
+    # protected
+    text = re.sub("⑪", "<", text)
+    text = re.sub("⑫", ">", text)
+    text = re.sub("⑬", "[", text)
+    text = re.sub("⑭", "]", text)
+    return text
+
+
+  # -------------------------------------------------------------------------------------
   # post-process working buffer
 
   def postprocess(self):
 
     for i, line in enumerate(self.wb):
-      self.wb[i] = re.sub("ⓓ", ".", self.wb[i])
-      self.wb[i] = re.sub("①", "{", self.wb[i])
-      self.wb[i] = re.sub("②", "}", self.wb[i])
-      self.wb[i] = re.sub("③", "[", self.wb[i])
-      self.wb[i] = re.sub("④", "]", self.wb[i])
-      self.wb[i] = re.sub("⑤", "&lt;", self.wb[i])
-      # text space replacement
-      self.wb[i] = re.sub("ⓢ", "&nbsp;", self.wb[i]) # non-breaking space
-      self.wb[i] = re.sub("ⓣ", "&#8203;", self.wb[i]) # zero space
-      self.wb[i] = re.sub("ⓤ", "&thinsp;", self.wb[i]) # thin space
-      self.wb[i] = re.sub("ⓥ", "&#8196;", self.wb[i]) # thick space
-      # ampersand
-      self.wb[i] = re.sub("Ⓩ", "&amp;", self.wb[i])
-      # protected
-      self.wb[i] = re.sub("⑪", "<", self.wb[i])
-      self.wb[i] = re.sub("⑫", ">", self.wb[i])
-      self.wb[i] = re.sub("⑬", "[", self.wb[i])
-      self.wb[i] = re.sub("⑭", "]", self.wb[i])
+      # basic tokens
+      self.wb[i] = self.htmlTokenRestore(self.wb[i])
 
       # superscripts, subscripts
       self.wb[i] = re.sub(r"◸(.*?)◹", r'<sup>\1</sup>', self.wb[i])
@@ -3075,7 +3084,7 @@ class Pph(Book):
       try:
         f1.write( "{:s}\r\n".format(t))
       except Exception as e:
-        print( "internal error:\n  cannot write line: {:s}".format(t) )
+        print( "internal error:\n  cannot write line: {:s}".format(self.umap(t)) )
         self.fatal("exiting")
     f1.close()
 
@@ -3118,7 +3127,7 @@ class Pph(Book):
       t.append("    <meta http-equiv=\"Content-Type\" content=\"text/html;charset=ISO-8859-1\" />")
 
     if self.dtitle != "":
-      t.append("    <title>{}</title>".format(self.dtitle))
+      t.append("    <title>{}</title>".format(self.htmlTokenRestore(self.dtitle)))
     else:
       t.append("    <title>{}</title>".format("Unknown"))
     t.append("    <link rel=\"coverpage\" href=\"images/{}\" />".format(self.cimage))
@@ -3467,7 +3476,7 @@ class Pph(Book):
   def doSpace(self):
     m = re.match(r"\.sp (\d+)", self.wb[self.cl])
     if m:
-      self.pvs = max(int(m.group(1), self.pvs))  # honor if larger than current pvs
+      self.pvs = max(int(m.group(1)), self.pvs)  # honor if larger than current pvs
       del self.wb[self.cl]
     else:
       self.fatal("malformed space directive: {}".format(self.wb[self.cl]))
