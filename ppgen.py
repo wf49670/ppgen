@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.43c"  # 27-Nov-2014
+VERSION="3.43d"  # 27-Nov-2014
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3068,7 +3068,7 @@ class Pph(Book):
       try:
         f1.write( "{:s}\r\n".format(t))
       except Exception as e:
-        print( "internal error:\n  cannot write line: {:s}".format(t) )
+        print( "internal error:\n  cannot write line: {:s}".format(self.umap(t)) )
         self.fatal("exiting")
     f1.close()
 
