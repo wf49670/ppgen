@@ -2881,11 +2881,16 @@ class Pph(Book):
       self.wb[i] = re.sub(r"<B", "<b", self.wb[i])
       self.wb[i] = re.sub(r"<\/B", "</b", self.wb[i])
 
+    inNF = False
     for i, line in enumerate(self.wb):
 
       # if everything inside <sc>...</sc> markup is uppercase, then
       # use font-size:smaller, else use font-variant:small-caps
 
+      if self.wb[i].startswith(".nf "):
+        inNF = True
+      elif self.wb[i].startswith(".nf-"):
+        inNF = False
       m = re.search("<sc>", self.wb[i]) # opening small cap tag
       if m:
         use_class = "sc" # unless changed
@@ -2899,7 +2904,11 @@ class Pph(Book):
         m = re.search(r"<sc>([^<]+?)</sc>", stmp)
         if m:
           scstring = m.group(1)
-          if scstring == scstring.lower(): # all lower case
+          # warn about all lower case, but not within .nf as
+          # we will have replicated the <sc> tags that cross lines
+          # of the .nf block, which could leave some all lower-case
+          # line alone within the <sc> </sc>, but it's not an error
+          if not inNF and scstring == scstring.lower():
             self.warn("all lower case inside small-caps markup: {}".format(self.wb[i]))
           if scstring == scstring.upper(): # all upper case
             use_class = "fss"
