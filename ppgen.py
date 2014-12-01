@@ -351,6 +351,12 @@ class Book(object):
       self.doH2()
     elif ".h3" == dotcmd:
       self.doH3()
+    elif ".h4" == dotcmd:
+      self.doH4()
+    elif ".h5" == dotcmd:
+      self.doH5()
+    elif ".h6" == dotcmd:
+      self.doH6()
     elif ".sp" == dotcmd:
       self.doSpace()
     elif ".fs" == dotcmd:
@@ -1547,62 +1553,53 @@ class Ppt(Book):
     self.eb.append((" "*18 + "*       "*5).rstrip())
     self.cl += 1
 
-  # h1
-  def doH1(self):
-    m = re.match(r"\.h1 (.*)", self.wb[self.cl])
+  #Guts of doH"n" for text
+  def doHnText(self, m):
     if m: # modifier
       rend = m.group(1)
       if "nobreak" in rend:
         rend = re.sub("nobreak","",rend)
     self.eb.append(".RS 1")
-    if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3
+    if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3/etc
       m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl+1])
       if m and m.group(1) == "":
         self.eb.append(self.wb[self.cl+1])    # append the .bn info to eb as-is
-        self.cl += 1                                           # and ignore it for handling this .h1/2/3
+        self.cl += 1                                           # and ignore it for handling this .h"n"
     h2a = self.wb[self.cl+1].split('|')
     for line in h2a:
       self.eb.append(("{:^72}".format(line)).rstrip())
     self.eb.append(".RS 1")
     self.cl += 2
+
+  # h1
+  def doH1(self):
+    m = re.match(r"\.h1 (.*)", self.wb[self.cl])
+    self.doHnText(m)
 
   # h2
   def doH2(self):
     m = re.match(r"\.h2 (.*)", self.wb[self.cl])
-    if m: # modifier
-      rend = m.group(1)
-      if "nobreak" in rend:
-        rend = re.sub("nobreak","",rend)
-    self.eb.append(".RS 1")
-    if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3
-      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl+1])
-      if m and m.group(1) == "":
-        self.eb.append(self.wb[self.cl+1])    # append the .bn info to eb as-is
-        self.cl += 1                                           # and ignore it for handling this .h1/2/3
-    h2a = self.wb[self.cl+1].split('|')
-    for line in h2a:
-      self.eb.append(("{:^72}".format(line)).rstrip())
-    self.eb.append(".RS 1")
-    self.cl += 2
+    self.doHnText(m)
 
   # h3
   def doH3(self):
     m = re.match(r"\.h3 (.*)", self.wb[self.cl])
-    if m: # modifier
-      rend = m.group(1)
-      if "nobreak" in rend:
-        rend = re.sub("nobreak","",rend)
-    self.eb.append(".RS 1")
-    if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3
-      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl+1])
-      if m and m.group(1) == "":
-        self.eb.append(self.wb[self.cl+1])    # append the .bn info to eb as-is
-        self.cl += 1                                           # and ignore it for handling this .h1/2/3
-    h2a = self.wb[self.cl+1].split('|')
-    for line in h2a:
-      self.eb.append(("{:^72}".format(line)).rstrip())
-    self.eb.append(".RS 1")
-    self.cl += 2
+    self.doHnText(m)
+
+  # h4
+  def doH4(self):
+    m = re.match(r"\.h4 (.*)", self.wb[self.cl])
+    self.doHnText(m)
+
+  # h5
+  def doH5(self):
+    m = re.match(r"\.h5 (.*)", self.wb[self.cl])
+    self.doHnText(m)
+
+  # h6
+  def doH6(self):
+    m = re.match(r"\.h6 (.*)", self.wb[self.cl])
+    self.doHnText(m)
 
   # .sp n
   def doSpace(self):
@@ -3462,6 +3459,201 @@ class Pph(Book):
     self.wb[self.cl:self.cl+1] = t
     self.cl += len(t)
 
+  # h4
+  def doH4(self):
+    pnum = ""
+    id = ""
+    hcss = ""
+    rend = "nobreak"
+
+    self.css.addcss("[1100] h4 { text-align:center;font-weight:normal;font-size:1.0em; }")  
+
+    m = re.match(r"\.h4( .*)", self.wb[self.cl])
+    if m: # modifier
+      rend = m.group(1)
+
+    if " break" in rend: # default .h4/5/6 to nobreak
+      hcss += "page-break-before:always;"
+    else:
+      hcss += "page-break-before:auto;"
+
+    if rend != "nobreak":
+      m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
+      if m:
+        pnum = m.group(1)
+
+      m = re.search(r"id=[\"']?(.+?)($|[\"' ])", rend)
+      if m:
+        id = m.group(1)
+        self.checkId(id)
+
+    if self.pvs > 0:
+      hcss += "margin-top:{}em;".format(self.pvs)
+      self.pvs = 0
+    else: # default 1 before, 1 after
+      hcss += "margin-top:1em;"
+    self.pvs = 1
+
+    del self.wb[self.cl] # the .h line
+
+    # if we have .bn info after the .h and before the header join them together
+    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
+      if m and m.group(1) == "":
+        i = self.cl
+        if i < len(self.wb) -1:
+          self.wb[i] = self.wb[i] + self.wb[i+1]
+          del self.wb[i+1]
+    s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
+    s = re.sub("\|", "<br />", s)
+    t = []
+
+    if pnum != "":
+      t.append("<div>")
+      if self.pnshow:
+        # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
+        t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+      elif self.pnlink:
+        t.append("  <a name='Page_{0}' id='Page_{0}'></a>".format(pnum))
+      t.append("</div>")
+    if id != "":
+      t.append("<h4 id='{}' style='{}'>{}</h4>".format(id, hcss, s))
+    else:
+      t.append("<h4 style='{}'>{}</h4>".format(hcss, s))
+
+    self.wb[self.cl:self.cl+1] = t
+    self.cl += len(t)
+
+  # h5
+  def doH5(self):
+    pnum = ""
+    id = ""
+    hcss = ""
+    rend = "nobreak"
+
+    self.css.addcss("[1100] h5 { text-align:center;font-weight:normal;font-size:1.0em; }")  
+
+    m = re.match(r"\.h5( .*)", self.wb[self.cl])
+    if m: # modifier
+      rend = m.group(1)
+
+    if " break" in rend: # default .h4/5/6 to nobreak
+      hcss += "page-break-before:always;"
+    else:
+      hcss += "page-break-before:auto;"
+
+    if rend != "nobreak":
+      m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
+      if m:
+        pnum = m.group(1)
+
+      m = re.search(r"id=[\"']?(.+?)($|[\"' ])", rend)
+      if m:
+        id = m.group(1)
+        self.checkId(id)
+
+    if self.pvs > 0:
+      hcss += "margin-top:{}em;".format(self.pvs)
+      self.pvs = 0
+    else: # default 1 before, 1 after
+      hcss += "margin-top:1em;"
+    self.pvs = 1
+
+    del self.wb[self.cl] # the .h line
+
+    # if we have .bn info after the .h and before the header join them together
+    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
+      if m and m.group(1) == "":
+        i = self.cl
+        if i < len(self.wb) -1:
+          self.wb[i] = self.wb[i] + self.wb[i+1]
+          del self.wb[i+1]
+    s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
+    s = re.sub("\|", "<br />", s)
+    t = []
+
+    if pnum != "":
+      t.append("<div>")
+      if self.pnshow:
+        # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
+        t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+      elif self.pnlink:
+        t.append("  <a name='Page_{0}' id='Page_{0}'></a>".format(pnum))
+      t.append("</div>")
+    if id != "":
+      t.append("<h5 id='{}' style='{}'>{}</h5>".format(id, hcss, s))
+    else:
+      t.append("<h5 style='{}'>{}</h5>".format(hcss, s))
+
+    self.wb[self.cl:self.cl+1] = t
+    self.cl += len(t)
+
+  # h6
+  def doH6(self):
+    pnum = ""
+    id = ""
+    hcss = ""
+    rend = "nobreak"
+
+    self.css.addcss("[1100] h6 { text-align:center;font-weight:normal;font-size:1.0em; }")  
+
+    m = re.match(r"\.h6( .*)", self.wb[self.cl])
+    if m: # modifier
+      rend = m.group(1)
+
+    if " break" in rend: # default .h4/5/6 to nobreak
+      hcss += "page-break-before:always;"
+    else:
+      hcss += "page-break-before:auto;"
+
+
+    if rend != "nobreak":
+      m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
+      if m:
+        pnum = m.group(1)
+
+      m = re.search(r"id=[\"']?(.+?)($|[\"' ])", rend)
+      if m:
+        id = m.group(1)
+        self.checkId(id)
+
+    if self.pvs > 0:
+      hcss += "margin-top:{}em;".format(self.pvs)
+      self.pvs = 0
+    else: # default 1 before, 1 after
+      hcss += "margin-top:1em;"
+    self.pvs = 1
+
+    del self.wb[self.cl] # the .h line
+
+    # if we have .bn info after the .h and before the header join them together
+    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
+      if m and m.group(1) == "":
+        i = self.cl
+        if i < len(self.wb) -1:
+          self.wb[i] = self.wb[i] + self.wb[i+1]
+          del self.wb[i+1]
+    s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
+    s = re.sub("\|", "<br />", s)
+    t = []
+
+    if pnum != "":
+      t.append("<div>")
+      if self.pnshow:
+        # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
+        t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+      elif self.pnlink:
+        t.append("  <a name='Page_{0}' id='Page_{0}'></a>".format(pnum))
+      t.append("</div>")
+    if id != "":
+      t.append("<h6 id='{}' style='{}'>{}</h6>".format(id, hcss, s))
+    else:
+      t.append("<h6 style='{}'>{}</h6>".format(hcss, s))
+
+    self.wb[self.cl:self.cl+1] = t
+    self.cl += len(t)
 
   # .sp n
   # if a space is encountered. for HTML drop it to the next
