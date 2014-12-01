@@ -3274,11 +3274,6 @@ class Pph(Book):
     if m: # modifier
       rend = m.group(1)
 
-      if "nobreak" in rend:
-        hcss += "page-break-before:auto;"
-      else:
-        hcss += "page-break-before:always;"
-
       m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
       if m:
         pnum = m.group(1)
@@ -3287,6 +3282,11 @@ class Pph(Book):
       if m:
         id = m.group(1)
         self.checkId(id)  # validate identifier name
+
+    if "nobreak" in rend:
+      hcss += "page-break-before:auto;"
+    else:
+      hcss += "page-break-before:always;"
 
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
@@ -3339,11 +3339,6 @@ class Pph(Book):
     if m: # modifier
       rend = m.group(1)
 
-      if "nobreak" in rend:
-        hcss += "page-break-before:auto;"
-      else:
-        hcss += "page-break-before:always;"
-
       m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
       if m:
         pnum = m.group(1)
@@ -3352,6 +3347,11 @@ class Pph(Book):
       if m:
         id = m.group(1)
         self.checkId(id)
+
+    if "nobreak" in rend:
+      hcss += "page-break-before:auto;"
+    else:
+      hcss += "page-break-before:always;"
 
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
@@ -3398,17 +3398,13 @@ class Pph(Book):
     pnum = ""
     id = ""
     hcss = ""
+    rend = ""
  
     self.css.addcss("[1100] h3 { text-align:center;font-weight:normal;font-size:1.2em; }")  
 
     m = re.match(r"\.h3 (.*)", self.wb[self.cl])
     if m: # modifier
       rend = m.group(1)
-
-      if "nobreak" in rend:
-        hcss += "page-break-before:auto;"
-      else:
-        hcss += "page-break-before:always;"
 
       m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
       if m:
@@ -3418,6 +3414,11 @@ class Pph(Book):
       if m:
         id = m.group(1)
         self.checkId(id)
+
+    if "nobreak" in rend: # default to "break" in .h3 (seems odd to me, change this?)
+        hcss += "page-break-before:auto;"
+      else:
+        hcss += "page-break-before:always;"
 
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
@@ -3472,12 +3473,6 @@ class Pph(Book):
     if m: # modifier
       rend = m.group(1)
 
-    if " break" in rend: # default .h4/5/6 to nobreak
-      hcss += "page-break-before:always;"
-    else:
-      hcss += "page-break-before:auto;"
-
-    if rend != "nobreak":
       m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
       if m:
         pnum = m.group(1)
@@ -3486,6 +3481,11 @@ class Pph(Book):
       if m:
         id = m.group(1)
         self.checkId(id)
+
+    if " break" in rend: # default .h4/5/6 to nobreak
+      hcss += "page-break-before:always;"
+    else:
+      hcss += "page-break-before:auto;"
 
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
@@ -3537,12 +3537,6 @@ class Pph(Book):
     if m: # modifier
       rend = m.group(1)
 
-    if " break" in rend: # default .h4/5/6 to nobreak
-      hcss += "page-break-before:always;"
-    else:
-      hcss += "page-break-before:auto;"
-
-    if rend != "nobreak":
       m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
       if m:
         pnum = m.group(1)
@@ -3551,6 +3545,11 @@ class Pph(Book):
       if m:
         id = m.group(1)
         self.checkId(id)
+
+    if " break" in rend: # default .h4/5/6 to nobreak
+      hcss += "page-break-before:always;"
+    else:
+      hcss += "page-break-before:auto;"
 
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
@@ -3602,13 +3601,6 @@ class Pph(Book):
     if m: # modifier
       rend = m.group(1)
 
-    if " break" in rend: # default .h4/5/6 to nobreak
-      hcss += "page-break-before:always;"
-    else:
-      hcss += "page-break-before:auto;"
-
-
-    if rend != "nobreak":
       m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
       if m:
         pnum = m.group(1)
@@ -3617,6 +3609,11 @@ class Pph(Book):
       if m:
         id = m.group(1)
         self.checkId(id)
+
+    if " break" in rend: # default .h4/5/6 to nobreak
+      hcss += "page-break-before:always;"
+    else:
+      hcss += "page-break-before:auto;"
 
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
