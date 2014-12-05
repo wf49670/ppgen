@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.43d"  # 27-Nov-2014
+VERSION="3.43e"  # 05-Dec-2014
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -4414,14 +4414,14 @@ class Pph(Book):
   #   .di i_b_009.jpg 100 170 1.3 (width, height, adjust specified)
   #   .di i_b_009.jpg 100 1.3 (width, adjust specified)
   def doDropimage(self):
-    m = re.match(r"\.di (.*?) (\d+) (.*)$",self.wb[self.cl])
+    m = re.match(r"\.di (\S+) (\d+) (\S+)$",self.wb[self.cl])
     if m:
       d_image = m.group(1)
       d_width = m.group(2)
       d_height = ""
       d_adj = m.group(3)
     else:         
-      m = re.match(r"\.di (.*?) (\d+) (\d+) (.*)$",self.wb[self.cl])
+      m = re.match(r"\.di (\S+) (\d+) (\d+) (\S+)$",self.wb[self.cl])
       if m:
         d_image = m.group(1)
         d_width = m.group(2)
