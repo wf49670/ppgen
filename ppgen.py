@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.43d"  # 27-Nov-2014
+VERSION="3.44"  # 05-Dec-2014
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2543,6 +2543,7 @@ class Pph(Book):
     i = 0
     while i < len(self.wb):
       m = re.search("(.*?)(<p class='drop-capa.*>)(<span class='pageno'.*?>.*?</span>)(.*)$", self.wb[i])  # look for drop-cap HTML before pageno HTML
+      ### replicate for div for .nf blocks?
       if m:
         t = []
         if m.group(1):
@@ -3940,8 +3941,8 @@ class Pph(Book):
           t.append("    <div  class='{}' style='margin-top:{}em'>".format(self.pdc, pending_mt) + self.wb[i].strip() + "</div>")
         elif nf_pdi:
           nf_pdi = False
-          s = "<img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"])
-          t.append("    <div class='drop-capi{}' style='margin-top:{}em'>".format(di["s_adj"], pending_mt) + s + self.wb[i].strip() + "</div>")
+          s = "<img class='drop-capinf' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"])
+          t.append("    <div class='drop-capinf{}' style='margin-top:{}em'>".format(di["s_adj"], pending_mt) + s + self.wb[i].strip() + "</div>")
         else:
           t.append("    <div style='margin-top:{}em'>".format(pending_mt) + self.wb[i].strip() + "</div>")
         printable_lines_in_block += 1
@@ -3952,8 +3953,8 @@ class Pph(Book):
           t.append("    <div  class='{}'>".format(self.pdc) + self.wb[i].strip() + "</div>")
         elif nf_pdi:
           nf_pdi = False
-          s = "<img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"])
-          t.append("    <div class='drop-capi{}'>".format(di["s_adj"]) + s + self.wb[i].strip() + "</div>")
+          s = "<img class='drop-capinf' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"])
+          t.append("    <div class='drop-capinf{}'>".format(di["s_adj"]) + s + self.wb[i].strip() + "</div>")
         else:
           t.append("    <div>" + self.wb[i].strip() + "</div>")
         printable_lines_in_block += 1
@@ -3978,6 +3979,8 @@ class Pph(Book):
   # in epub/mobi, the @media handheld ... (explain....)
   def doNfb(self, nft, mo):
     # any poetry triggers the same CSS
+    nf_pdc = False
+    nf_pdi = False
     if 'b' == nft:
       self.css.addcss("[1215] .lg-container-b { text-align: center; }")  # alignment of entire block
       self.css.addcss("[1216] @media handheld { .lg-container-b { clear: both; }}")
@@ -4006,16 +4009,12 @@ class Pph(Book):
     i = self.cl
     t = []
 
-    closing = ""
     if 'b' == nft:
       t.append("<div class='lg-container-b'{}>".format(ssty))
-      closing = ".nf-"
-    if 'l' == nft:
+    elif 'l' == nft:
       t.append("<div class='lg-container-l'{}>".format(ssty))
-      closing = ".nf-"
-    if 'r' == nft:
+    elif 'r' == nft:
       t.append("<div class='lg-container-r'{}>".format(ssty))
-      closing = ".nf-"
     t.append("  <div class='linegroup'>")
     if mo:
       t.append("    <div class='group0'>")
@@ -4025,7 +4024,7 @@ class Pph(Book):
     i += 1
     cpvs = 0
     printable_lines_in_block = 0
-    while self.wb[i] != closing:
+    while self.wb[i] != ".nf-":
 
       # if this line is just bn info then just leave it in the output as-is
       if self.bnPresent and self.wb[i].startswith("⑱"):
@@ -4034,7 +4033,7 @@ class Pph(Book):
           i += 1
           continue
 
-      # a centered line inside a no-fill block
+      # a centered line inside a no-fill block (Note: support for drop-cap not implemented here)
       m = re.match(r"\.ce (\d+)", self.wb[i])
       if m:
         count = int(m.group(1))
@@ -4051,7 +4050,7 @@ class Pph(Book):
           count -= 1
         continue
 
-      # a right-justified line inside a no-fill block
+      # a right-justified line inside a no-fill block (Note: support for drop-cap not implemented here)
       m = re.match(r"\.rj (\d+)", self.wb[i])
       if m:
         count = int(m.group(1))
@@ -4066,6 +4065,18 @@ class Pph(Book):
           t.append("    <div style='{}'>{}</div>".format(pst, self.wb[i]))
           i += 1
           count -= 1
+        continue
+
+      if self.wb[i].startswith(".dc"):
+        nf_pdc = True
+        self.doDropcap(i, type="nf")
+        del self.wb[i]
+        continue
+        
+      if self.wb[i].startswith(".di"):
+        nf_pdi = True
+        di = self.doDropimageGuts(i, type="nf")
+        del self.wb[i]
         continue
 
       if self.wb[i] == "":
@@ -4089,7 +4100,11 @@ class Pph(Book):
           spvs = " style='margin-top:{}em' ".format(cpvs)
         else:
           spvs = ""
-        if leadsp > 0:
+        if leadsp > 0: # (Note: support for drop-cap not implemented for indented lines)
+          if nf_pdc or nf_pdi:
+            self.warn("drop-cap or drop-image not supported on indented line in .nf block: {}".format(ss+tmp))
+            nf_pdc = False
+            nf_pdi = False
           # create an indent class
           iclass = "in{}".format(leadsp)
           iamt = str(-3 + leadsp/2) # calculate based on -3 base
@@ -4097,7 +4112,15 @@ class Pph(Book):
           t.append("      <div class='line {0}' {1}>{2}</div>".format(iclass, spvs, ss+tmp.lstrip()))
           printable_lines_in_block += 1
         else:
-          t.append("      <div class='line' {0}>{1}</div>".format(spvs, ss+tmp))
+          if nf_pdc:
+            nf_pdc = False
+            t.append("    <div  class='line {0}' {1}>{2}</div>".format(self.pdc, spvs, ss+tmp))
+          elif nf_pdi:
+            nf_pdi = False
+            simg = "<img class='drop-capinf' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"])
+            t.append("    <div  class='line' {0}>{1}{2}</div>".format(spvs, simg, ss+tmp))
+          else:
+            t.append("      <div class='line' {0}>{1}</div>".format(spvs, ss+tmp))
           printable_lines_in_block += 1
         cpvs = 0  # reset pending vertical space
       i += 1
@@ -4459,14 +4482,14 @@ class Pph(Book):
   # also needed in nf processing
   def doDropimageGuts(self, line, type="p"):
     di={}
-    m = re.match(r"\.di (.*?) (\d+) (.*)$",self.wb[line]) # 3 argument version: image, width, adjust
+    m = re.match(r"\.di (\S+) (\d+) (\S+)$",self.wb[line]) # 3 argument version: image, width, adjust
     if m:
       di["d_image"] = m.group(1)
-      di["d_width"] = "m.group(2)"
+      di["d_width"] = m.group(2)
       di["d_height"] = ""
       d_adj = m.group(3)
     else:         
-      m = re.match(r"\.di (.*?) (\d+) (\d+) (.*)$",self.wb[line]) # 4 argument version: image, width, height, adjust
+      m = re.match(r"\.di (\S+) (\d+) (\d+) (\S+)$",self.wb[line]) # 4 argument version: image, width, height, adjust
       if m:
         di["d_image"] = m.group(1)
         di["d_width"] = m.group(2)
@@ -4492,11 +4515,11 @@ class Pph(Book):
       self.css.addcss("[1925]   p.drop-capi{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(di["s_adj"]))
       self.css.addcss("[1926] }")
     else:
-      self.css.addcss("[1941] div.drop-capi{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(di["s_adj"],mtop,mbot))
-      self.css.addcss("[1942] div.drop-capi{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(di["s_adj"],d_adj))
+      self.css.addcss("[1941] div.drop-capinf{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(di["s_adj"],mtop,mbot))
+      self.css.addcss("[1942] div.drop-capinf{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(di["s_adj"],d_adj))
       self.css.addcss("[1943] @media handheld {")
-      self.css.addcss("[1944]   img.drop-capi { display:none; visibility:hidden; }")
-      self.css.addcss("[1945]   div.drop-capi{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(di["s_adj"]))
+      self.css.addcss("[1944]   img.drop-capinf { display:none; visibility:hidden; }")
+      self.css.addcss("[1945]   div.drop-capinf{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(di["s_adj"]))
       self.css.addcss("[1946] }")
     self.warn("CSS3 drop-cap. Please note in upload.")
     return di
@@ -4510,7 +4533,7 @@ class Pph(Book):
     di = self.doDropimageGuts(self.cl)
     t = []
     t.append("<div>")
-    if d_height == "":
+    if di["d_height"] == "":
       t.append("  <img class='drop-capi' src='images/{}' width='{}' alt='' />".format(di["d_image"],di["d_width"]))
     else:
       t.append("  <img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"]))
@@ -4540,13 +4563,13 @@ class Pph(Book):
       self.css.addcss("[1937] }")
       self.pdc = "drop-capa{}".format(dcadjs)
     else:
-      self.css.addcss("[1950] div.drop-capa{} {{ text-indent:-{}em; }}".format(dcadjs,dcadj))
-      self.css.addcss("[1951] div.drop-capa{}:first-letter {{ float:left;margin:{:0.3f}em {:0.3f}em 0em 0em;font-size:{};line-height:{}em;text-indent:0 }}".format(dcadjs,mt,mr,self.nregs["dcs"],dclh))
+      self.css.addcss("[1950] div.drop-capanf{} {{ text-indent:-{}em; }}".format(dcadjs,dcadj))
+      self.css.addcss("[1951] div.drop-capanf{}:first-letter {{ float:left;margin:{:0.3f}em {:0.3f}em 0em 0em;font-size:{};line-height:{}em;text-indent:0 }}".format(dcadjs,mt,mr,self.nregs["dcs"],dclh))
       self.css.addcss("[1953] @media handheld {")
-      self.css.addcss("[1955]   div.drop-capa{} {{ text-indent:0 }}".format(dcadjs))
-      self.css.addcss("[1956]   div.drop-capa{}:first-letter {{ float:none;margin:0;font-size:100%; }}".format(dcadjs))
+      self.css.addcss("[1955]   div.drop-capanf{} {{ text-indent:0 }}".format(dcadjs))
+      self.css.addcss("[1956]   div.drop-capanf{}:first-letter {{ float:none;margin:0;font-size:100%; }}".format(dcadjs))
       self.css.addcss("[1957] }")
-      self.pdc = "drop-capa{}".format(dcadjs)
+      self.pdc = "drop-capanf{}".format(dcadjs)
     del self.wb[line]
 
   # no adjust
