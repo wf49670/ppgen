@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.43e"  # 05-Dec-2014
+VERSION="3.44a"  # 07-Dec-2014
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2876,16 +2876,19 @@ class Pph(Book):
       elif self.wb[i].startswith(".nf-"):
         inNF = False
       m = re.search("<sc>", self.wb[i]) # opening small cap tag
-      if m:
+      while m:
         use_class = "sc" # unless changed
         # we have an opening small cap tag. need to examine all the text
         # up to the closing tag, which may be on a separate line.
         stmp = self.wb[i]
-        j = i
-        while not re.search(r"<\/sc>", stmp):
+        j = i + 1
+        # old version: m = re.search(r"<sc>([^<]+?)</sc>", stmp)
+        m = re.search(r"<sc>(.*?)</sc>", stmp)
+        while j < len(self.wb) and not m:
           stmp += self.wb[j]
           j += 1
-        m = re.search(r"<sc>([^<]+?)</sc>", stmp)
+          m = re.search(r"<sc>(.*)</sc>", stmp)
+        # old version: m = re.search(r"<sc>([^<]+?)</sc>", stmp)
         if m:
           scstring = m.group(1)
           # warn about all lower case, but not within .nf as
@@ -2896,12 +2899,16 @@ class Pph(Book):
             self.warn("all lower case inside small-caps markup: {}".format(self.wb[i]))
           if scstring == scstring.upper(): # all upper case
             use_class = "fss"
+        else:
+          self.warn("Unexpected problem interpreting <sc> string, assuming mixed-case.\nLine number:{}\nCurrent line: {}\nCurrent string:{}".format(i, self.wb[i],stmp))
         if use_class == "sc":
-          self.wb[i] = re.sub("<sc>", "<span class='sc'>", self.wb[i])
+          self.wb[i] = re.sub("<sc>", "<span class='sc'>", self.wb[i], 1)
           self.css.addcss("[1200] .sc { font-variant:small-caps; }")
         if use_class == "fss":
-          self.wb[i] = re.sub("<sc>", "<span class='fss'>", self.wb[i])
+          self.wb[i] = re.sub("<sc>", "<span class='fss'>", self.wb[i], 1)
           self.css.addcss("[1200] .fss { font-size:75%; }")
+        self.wb[i] = re.sub("<\/sc>", "</span>", self.wb[i], 1) # since we had a <sc> replace 1 </sc> if present on this line
+        m = re.search("<sc>", self.wb[i]) # look for another opening small cap tag
 
       # common closing, may be on separate line
       self.wb[i] = re.sub("<\/sc>", "</span>", self.wb[i])
