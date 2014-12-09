@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.44a"  # 07-Dec-2014
+VERSION="3.44b"  # 07-Dec-2014
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3423,9 +3423,9 @@ class Pph(Book):
         self.checkId(id)
 
     if "nobreak" in rend: # default to "break" in .h3 (seems odd to me, change this?)
-        hcss += "page-break-before:auto;"
-      else:
-        hcss += "page-break-before:always;"
+      hcss += "page-break-before:auto;"
+    else:
+      hcss += "page-break-before:always;"
 
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
@@ -3734,6 +3734,7 @@ class Pph(Book):
         s, ifn = self.get_id("fn", s)
       else:
         self.fatal("no display file specified in {}".format(s0))
+      checkIllo(ifn)
       ia["ifn"] = ifn
 
       # link to alternate (larger) image
