@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.44b"  # 07-Dec-2014
+VERSION="3.44c"  # 09-Dec-2014
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -86,6 +86,7 @@ class Book(object):
 
   nregs = {} # named registers
   macro = {} # user macro storage
+  caption_model = {} # storage for named caption models for multi-line captions in text output
 
   mau = [] # UTF-8
   mal = [] # user-defined Latin-1
@@ -639,6 +640,35 @@ class Book(object):
       self.wb[i] = self.wb[i].replace("&nbsp;", "ⓢ") # ampersand
       self.wb[i] = self.wb[i].replace("&", "Ⓩ") # ampersand
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # define caption models for multi-line captions in the text output
+    # .cm name
+    # first line
+    # second line
+    # ...
+    # .cm-
+
+    i = 0
+    while i < len(self.wb):
+      if self.wb[i].startswith(".cm"):
+        m = re.match(r"\.cm (.*)", self.wb[i])
+        if m:
+          model_name = m.group(1)
+        else:
+          self.crash_w_context("incorrect .cm command: model name missing.", i)
+        del self.wb[i]
+        t = []
+        while i < len(self.wb) and not self.wb[i].startswith(".cm"):  # accumulate statements into the model until we hit another .dm or a .dm-
+          t.append(self.wb[i])
+          del self.wb[i]
+        if i < len(self.wb) and self.wb[i] == ".cm-":       # if we hit a .cm- then delete it and finalize the model
+          del self.wb[i] # the closing .cm-
+        else:                                               # quit if we hit end-of-file or a .dm before finding the .dm- 
+          self.fatal("missing .cm- for model: " + model_name)
+        # model is stored in t[]
+        self.caption_model[model_name] = t
+        i -= 1
+      i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # define macro
@@ -1619,34 +1649,72 @@ class Ppt(Book):
 
   # .il illustrations (text)
   def doIllo(self):
+
+    def parse_illo(s):   # simplified parse_illo; supports only caption model (cm=) and ignores rest of .il line
+      s0 = s[:]  # original .il line
+      ia = {}
+
+      # caption model
+      cm = ""
+      if "cm=" in s:
+        s, cm = self.get_id("cm", s)
+      ia["cm"] = cm
+      return(ia)
+
     m = re.match(r"\.il (.*)", self.wb[self.cl])
     if m:
-      # ignore the illustration line
+      # ignore the illustration line except for any cm= info
+      ia = parse_illo(self.wb[self.cl]) # parse .il line
       # is the .il line followed by a caption line?
       self.eb.append(".RS 1") # request at least one space in text before illustration
       self.cl += 1 # the illo line
       caption = ""
       if self.cl < len(self.wb) and self.wb[self.cl].startswith(".ca"):
         # there is a caption. it may be on multiple lines
-        if ".ca" == self.wb[self.cl]:
-          # multiple line caption
-          self.cl += 1 # the starting .ca
-          s = "[{}: {}".format(self.nregs["Illustration"],self.wb[self.cl])
-          t = self.wrap(s, 0, self.regLL, 0)
-          self.eb += t
-          self.cl += 1
-          i = self.cl        # remember where we started
-          while (self.cl < len(self.wb)) and not (self.wb[self.cl]).startswith(".ca"):
-            s = self.wb[self.cl]
-            t = self.wrap(s, 0, self.regLL, 0)
-            self.eb += t
+        if ".ca" == self.wb[self.cl]: # multiple line caption
+          self.cl += 1 # skip the starting .ca
+          if ia["cm"] == "": # if no caption model specified
+            s = "[{}: ".format(self.nregs["Illustration"])
+            self.eb.append(s)
+            self.eb.append("")
+            i = self.cl        # remember where we started
+            while (self.cl < len(self.wb)) and not (self.wb[self.cl]).startswith(".ca-"):
+              s = self.wb[self.cl]
+              t = self.wrap(s, 4, self.regLL, -2)
+              self.eb += t
+              self.cl += 1
+            if self.cl == len(self.wb):
+              self.crash_w_context("Unclosed .ca directive(1).", i-1)
+            self.eb.append("]")
+            self.cl += 1 # skip the closing .ca-
+          else: # caption model specified
+            model = self.caption_model[ia["cm"]]
+            j = 0
+            k = 1
+            i = self.cl
+            while j < len(model) and self.cl < len(self.wb):
+              ss = "\${}".format(k)
+              s = model[j]
+              if re.search(ss,s):
+                if self.wb[self.cl].startswith(".ca-"):
+                  self.crash_w_context("End of caption before end of model(1).", i-1)
+                s = re.sub(ss,self.wb[self.cl], s)
+                k += 1
+                self.cl += 1
+              t = self.wrap(s, 0, self.regLL, 0)
+              self.eb += t
+              j += 1
+            if j < len(model):
+              self.crash_w_context("End of caption before end of model(2).", i-1)
+            if self.cl == len(self.wb):
+              self.crash_w_context("Unclosed .ca directive(2).", i-1)
+            if self.wb[self.cl] != ".ca-":
+              self.crash_w_context("Caption and model lengths do not match properly.", i-1)
             self.cl += 1
-          if self.cl == len(self.wb):
-            self.crash_w_context("Unclosed .ca directive.", i)
-          self.eb[-1] += "]"
-          self.cl += 1 # the closing .ca-
         else:
           # single line
+          if ia["cm"] != "": # if caption model specified
+            self.warn("Caption model specified for a single-line caption: {}".format(self.wb[self.cl-1]))
           caption = self.wb[self.cl][4:]
           s = "[{}: {}]".format(self.nregs["Illustration"],caption)
           t = self.wrap(s, 0, self.regLL, 0)
@@ -3812,6 +3880,10 @@ class Pph(Book):
       if "pn=" in s:
         s, pageno = self.get_id("pn",s)
       ia["pageno"] = pageno
+
+      # caption model (ignored in HTML)
+      if "cm=" in s:
+        s, cm = self.get_id("cm",s)
 
       # no "=" should remain in .il string
       if "=" in s:
