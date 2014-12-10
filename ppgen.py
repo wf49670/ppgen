@@ -1693,15 +1693,30 @@ class Ppt(Book):
             k = 1
             i = self.cl
             while j < len(model) and self.cl < len(self.wb):
+              t = []
               ss = "\${}".format(k)
               s = model[j]
-              if re.search(ss,s):
+              if re.search(ss,s): # if caption line has a $"n" marker in it, perform substitution
                 if self.wb[self.cl].startswith(".ca-"):
                   self.crash_w_context("End of caption before end of model(1).", i-1)
                 s = re.sub(ss,self.wb[self.cl], s)
                 k += 1
                 self.cl += 1
-              t = self.wrap(s, 0, self.regLL, 0)
+                if len(s) > self.regLL: # must wrap the string, and indent the leftover part
+                  m = re.match(r"(\s*)(.*)",s)
+                  if m:
+                    tempindent = len(m.group(1)) + 2
+                    s = m.group(2)
+                    t = self.wrap(s, tempindent, self.regLL, -2)
+                  else:
+                    self.crash_w_context("Oops. Unexpected problem with caption.", i-1)
+                else:
+                  t.append(s) # no need to wrap, as it's short enough already
+              else: # caption line does not have marker, so it's literal text, just wrap to LL if necessary and assume user knows what he's doing
+                if len(s) > self.regLL:
+                  t = self.wrap(s, 0, self.regLL, 0)
+                else: # no need to wrap if it's short enough
+                  t.append(s)
               self.eb += t
               j += 1
             if j < len(model):
