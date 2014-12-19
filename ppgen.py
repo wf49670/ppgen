@@ -2884,10 +2884,10 @@ class Pph(Book):
         while j < len(self.wb) and not m:
           stmp += self.wb[j]
           j += 1
-          m = re.search(r"<sc>(.*)</sc>", stmp)
+          m = re.search(r"<sc>(.*?)</sc>", stmp)
         # old version: m = re.search(r"<sc>([^<]+?)</sc>", stmp)
         if m:
-          scstring = m.group(1)
+          scstring = self.htmlTokenRestore(m.group(1)) # need to undo our remappings in order to properly check case of string
           # warn about all lower case, but not within .nf as
           # we will have replicated the <sc> tags that cross lines
           # of the .nf block, which could leave some all lower-case
