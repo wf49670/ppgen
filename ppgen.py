@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.44d"  # 19-Dec-2014
+VERSION="3.44e"  # 19-Dec-2014
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2633,6 +2633,16 @@ class Pph(Book):
 
     self.preProcessCommon()
 
+    # protect PPer-supplied internal link information
+    # two forms: #number# and #name:id-value#
+    # for either, replace the # symbols with ⑲ so they can be found uniquely later
+    # without interference from other HTML markup ppgen may have added
+    i = 0
+    while i < len(self.wb):
+      self.wb[i] = re.sub(r"#(\d+)#", r"⑲\1⑲", self.wb[i])
+      self.wb[i] = re.sub(r"#(.*?:.*?)#", r"⑲\1⑲", self.wb[i])
+      i += 1
+
     # HTML will always choose the UTF-8 Greek line
     i = 0
     while i < len(self.wb):
@@ -3129,19 +3139,20 @@ class Pph(Book):
 
     # internal page links
     # two forms: #17# and #The Encounter:ch01#
+    # which at this point are actually using ⑲ instead of the # signs
     for i in range(len(self.wb)):
 
-      m = re.search(r"#(\d+)#", self.wb[i])
+      m = re.search(r"⑲(\d+?)⑲", self.wb[i])
       while m: # page number reference
         s = "<a href='⫉Page_{0}'>{0}</a>".format(m.group(1)) # link to it
-        self.wb[i] = re.sub(r"#(\d+)#", s, self.wb[i], 1)
-        m = re.search(r"#(\d+)#", self.wb[i])
+        self.wb[i] = re.sub(r"⑲(\d+?)⑲", s, self.wb[i], 1)
+        m = re.search(r"⑲(\d+?)⑲", self.wb[i])
 
-      m = re.search(r"#([^'>]*?):(.*?)#", self.wb[i]) # named reference
+      m = re.search(r"⑲(.*?):(.*?)⑲", self.wb[i]) # named reference
       while m:
         s = "<a href='⫉{}'>{}</a>".format(m.group(2), m.group(1)) # link to that
-        self.wb[i] = re.sub(r"#([^'>]*?):(.*?)#", s, self.wb[i], 1)
-        m = re.search(r"#([^'>]*?):(.*?)#", self.wb[i])
+        self.wb[i] = re.sub(r"⑲(.*?):(.*?)⑲", s, self.wb[i], 1)
+        m = re.search(r"⑲(.*?):(.*?)⑲", self.wb[i])
 
       self.wb[i] = re.sub("⫉", '#', self.wb[i])
 
