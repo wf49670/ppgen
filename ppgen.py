@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.45"  # 20-Dec-2014
+VERSION="3.45a"  # 31-Dec-2014    Revise handling of <target id=...> so it doesn't use self-closing <a> tag in HTML.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2856,15 +2856,15 @@ class Pph(Book):
       if "<target id" in self.wb[i]:
         m = re.search("<target id='(.*?)'>", self.wb[i])
         while m:
-          self.wb[i] = re.sub("<target id='(.*?)'>", "<a id='{0}' name='{0}' />".format(m.group(1)), self.wb[i], 1)
+          self.wb[i] = re.sub("<target id='(.*?)'>", "<a id='{0}' name='{0}'></a>".format(m.group(1)), self.wb[i], 1)
           m = re.search("<target id='(.*?)'>", self.wb[i])
         m = re.search("<target id=\"(.*?)\">", self.wb[i])
         while m:
-          self.wb[i] = re.sub("<target id=\"(.*?)\">", "<a id='{0}' name='{}' />".format(m.group(1)), self.wb[i], 1)
+          self.wb[i] = re.sub("<target id=\"(.*?)\">", "<a id='{0}' name='{}'></a>".format(m.group(1)), self.wb[i], 1)
           m = re.search("<target id=\"(.*?)\">", self.wb[i])
         m = re.search("<target id=(.*?)>", self.wb[i])
         while m:
-          self.wb[i] = re.sub("<target id=(.*?)>", "<a id='{0}' name='{0}' />".format(m.group(1)), self.wb[i], 1)
+          self.wb[i] = re.sub("<target id=(.*?)>", "<a id='{0}' name='{0}'></a>".format(m.group(1)), self.wb[i], 1)
           m = re.search("<target id=(.*?)>", self.wb[i])
       i += 1
 
