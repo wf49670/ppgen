@@ -2887,7 +2887,7 @@ class Pph(Book):
                 i += 1
                 continue
             # find all tags on this line; ignore <a and </a tags completely for this purpose
-            t = re.findall("<\/?[^a][^>]*>", self.wb[i])
+            t = re.findall("<\/?[^a>]*>", self.wb[i])
             sstart = "" # what to prepend to the line
             for s in tagstack: # build the start string
               sstart += s
