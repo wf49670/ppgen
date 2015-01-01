@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.43a"  # 25-Nov-2014
+VERSION="3.44c"  # 09-Dec-2014
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -86,6 +86,7 @@ class Book(object):
 
   nregs = {} # named registers
   macro = {} # user macro storage
+  caption_model = {} # storage for named caption models for multi-line captions in text output
 
   mau = [] # UTF-8
   mal = [] # user-defined Latin-1
@@ -351,6 +352,12 @@ class Book(object):
       self.doH2()
     elif ".h3" == dotcmd:
       self.doH3()
+    elif ".h4" == dotcmd:
+      self.doH4()
+    elif ".h5" == dotcmd:
+      self.doH5()
+    elif ".h6" == dotcmd:
+      self.doH6()
     elif ".sp" == dotcmd:
       self.doSpace()
     elif ".fs" == dotcmd:
@@ -661,9 +668,38 @@ class Book(object):
       # leave alone if in literal block (correct way, not yet implemented)
       # map &nbsp; to non-breaking space
       # 10-Sep-2014: I don't fully understand why I did this mapping
-      if not self.wb[i].startswith(".dt"):
-        self.wb[i] = self.wb[i].replace("&nbsp;", "ⓢ") # ampersand
-        self.wb[i] = self.wb[i].replace("&", "Ⓩ") # ampersand
+      self.wb[i] = self.wb[i].replace("&nbsp;", "ⓢ") # ampersand
+      self.wb[i] = self.wb[i].replace("&", "Ⓩ") # ampersand
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # define caption models for multi-line captions in the text output
+    # .cm name
+    # first line
+    # second line
+    # ...
+    # .cm-
+
+    i = 0
+    while i < len(self.wb):
+      if self.wb[i].startswith(".cm"):
+        m = re.match(r"\.cm (.*)", self.wb[i])
+        if m:
+          model_name = m.group(1)
+        else:
+          self.crash_w_context("incorrect .cm command: model name missing.", i)
+        del self.wb[i]
+        t = []
+        while i < len(self.wb) and not self.wb[i].startswith(".cm"):  # accumulate statements into the model until we hit another .dm or a .dm-
+          t.append(self.wb[i])
+          del self.wb[i]
+        if i < len(self.wb) and self.wb[i] == ".cm-":       # if we hit a .cm- then delete it and finalize the model
+          del self.wb[i] # the closing .cm-
+        else:                                               # quit if we hit end-of-file or a .dm before finding the .dm- 
+          self.fatal("missing .cm- for model: " + model_name)
+        # model is stored in t[]
+        self.caption_model[model_name] = t
+        i -= 1
+      i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # define macro
@@ -1081,7 +1117,7 @@ class Ppt(Book):
         else:
           s = ""
         twidth = mywidth  
-    if len(s) > 0:
+    if len(t) == 0 or len(s) > 0: #ensure t has something in it, but don't add a zero length s (blank line) to t unless t is empty
       t.append(s)
 
     for i, line in enumerate(t):
@@ -1614,62 +1650,53 @@ class Ppt(Book):
     self.eb.append((" "*18 + "*       "*5).rstrip())
     self.cl += 1
 
-  # h1
-  def doH1(self):
-    m = re.match(r"\.h1 (.*)", self.wb[self.cl])
+  #Guts of doH"n" for text
+  def doHnText(self, m):
     if m: # modifier
       rend = m.group(1)
       if "nobreak" in rend:
         rend = re.sub("nobreak","",rend)
     self.eb.append(".RS 1")
-    if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3
+    if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3/etc
       m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl+1])
       if m and m.group(1) == "":
         self.eb.append(self.wb[self.cl+1])    # append the .bn info to eb as-is
-        self.cl += 1                                           # and ignore it for handling this .h1/2/3
+        self.cl += 1                                           # and ignore it for handling this .h"n"
     h2a = self.wb[self.cl+1].split('|')
     for line in h2a:
       self.eb.append(("{:^72}".format(line)).rstrip())
     self.eb.append(".RS 1")
     self.cl += 2
+
+  # h1
+  def doH1(self):
+    m = re.match(r"\.h1 (.*)", self.wb[self.cl])
+    self.doHnText(m)
 
   # h2
   def doH2(self):
     m = re.match(r"\.h2 (.*)", self.wb[self.cl])
-    if m: # modifier
-      rend = m.group(1)
-      if "nobreak" in rend:
-        rend = re.sub("nobreak","",rend)
-    self.eb.append(".RS 1")
-    if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3
-      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl+1])
-      if m and m.group(1) == "":
-        self.eb.append(self.wb[self.cl+1])    # append the .bn info to eb as-is
-        self.cl += 1                                           # and ignore it for handling this .h1/2/3
-    h2a = self.wb[self.cl+1].split('|')
-    for line in h2a:
-      self.eb.append(("{:^72}".format(line)).rstrip())
-    self.eb.append(".RS 1")
-    self.cl += 2
+    self.doHnText(m)
 
   # h3
   def doH3(self):
     m = re.match(r"\.h3 (.*)", self.wb[self.cl])
-    if m: # modifier
-      rend = m.group(1)
-      if "nobreak" in rend:
-        rend = re.sub("nobreak","",rend)
-    self.eb.append(".RS 1")
-    if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3
-      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl+1])
-      if m and m.group(1) == "":
-        self.eb.append(self.wb[self.cl+1])    # append the .bn info to eb as-is
-        self.cl += 1                                           # and ignore it for handling this .h1/2/3
-    h2a = self.wb[self.cl+1].split('|')
-    for line in h2a:
-      self.eb.append(("{:^72}".format(line)).rstrip())
-    self.eb.append(".RS 1")
-    self.cl += 2
+    self.doHnText(m)
+
+  # h4
+  def doH4(self):
+    m = re.match(r"\.h4 (.*)", self.wb[self.cl])
+    self.doHnText(m)
+
+  # h5
+  def doH5(self):
+    m = re.match(r"\.h5 (.*)", self.wb[self.cl])
+    self.doHnText(m)
+
+  # h6
+  def doH6(self):
+    m = re.match(r"\.h6 (.*)", self.wb[self.cl])
+    self.doHnText(m)
 
   # .sp n
   def doSpace(self):
@@ -1689,34 +1716,87 @@ class Ppt(Book):
 
   # .il illustrations (text)
   def doIllo(self):
+
+    def parse_illo(s):   # simplified parse_illo; supports only caption model (cm=) and ignores rest of .il line
+      s0 = s[:]  # original .il line
+      ia = {}
+
+      # caption model
+      cm = ""
+      if "cm=" in s:
+        s, cm = self.get_id("cm", s)
+      ia["cm"] = cm
+      return(ia)
+
     m = re.match(r"\.il (.*)", self.wb[self.cl])
     if m:
-      # ignore the illustration line
+      # ignore the illustration line except for any cm= info
+      ia = parse_illo(self.wb[self.cl]) # parse .il line
       # is the .il line followed by a caption line?
       self.eb.append(".RS 1") # request at least one space in text before illustration
       self.cl += 1 # the illo line
       caption = ""
       if self.cl < len(self.wb) and self.wb[self.cl].startswith(".ca"):
         # there is a caption. it may be on multiple lines
-        if ".ca" == self.wb[self.cl]:
-          # multiple line caption
-          self.cl += 1 # the starting .ca
-          s = "[{}: {}".format(self.nregs["Illustration"],self.wb[self.cl])
-          t = self.wrap(s, 0, self.regLL, 0)
-          self.eb += t
-          self.cl += 1
-          i = self.cl        # remember where we started
-          while (self.cl < len(self.wb)) and not (self.wb[self.cl]).startswith(".ca"):
-            s = self.wb[self.cl]
-            t = self.wrap(s, 0, self.regLL, 0)
-            self.eb += t
+        if ".ca" == self.wb[self.cl]: # multiple line caption
+          self.cl += 1 # skip the starting .ca
+          if ia["cm"] == "": # if no caption model specified
+            s = "[{}: ".format(self.nregs["Illustration"])
+            self.eb.append(s)
+            self.eb.append("")
+            i = self.cl        # remember where we started
+            while (self.cl < len(self.wb)) and not (self.wb[self.cl]).startswith(".ca-"):
+              s = self.wb[self.cl]
+              t = self.wrap(s, 4, self.regLL, -2)
+              self.eb += t
+              self.cl += 1
+            if self.cl == len(self.wb):
+              self.crash_w_context("Unclosed .ca directive(1).", i-1)
+            self.eb.append("]")
+            self.cl += 1 # skip the closing .ca-
+          else: # caption model specified
+            model = self.caption_model[ia["cm"]]
+            j = 0
+            k = 1
+            i = self.cl
+            while j < len(model) and self.cl < len(self.wb):
+              t = []
+              ss = "\${}".format(k)
+              s = model[j]
+              if re.search(ss,s): # if caption line has a $"n" marker in it, perform substitution
+                if self.wb[self.cl].startswith(".ca-"):
+                  self.crash_w_context("End of caption before end of model(1).", i-1)
+                s = re.sub(ss,self.wb[self.cl], s)
+                k += 1
+                self.cl += 1
+                if len(s) > self.regLL: # must wrap the string, and indent the leftover part
+                  m = re.match(r"(\s*)(.*)",s)
+                  if m:
+                    tempindent = len(m.group(1)) + 2
+                    s = m.group(2)
+                    t = self.wrap(s, tempindent, self.regLL, -2)
+                  else:
+                    self.crash_w_context("Oops. Unexpected problem with caption.", i-1)
+                else:
+                  t.append(s) # no need to wrap, as it's short enough already
+              else: # caption line does not have marker, so it's literal text, just wrap to LL if necessary and assume user knows what he's doing
+                if len(s) > self.regLL:
+                  t = self.wrap(s, 0, self.regLL, 0)
+                else: # no need to wrap if it's short enough
+                  t.append(s)
+              self.eb += t
+              j += 1
+            if j < len(model):
+              self.crash_w_context("End of caption before end of model(2).", i-1)
+            if self.cl == len(self.wb):
+              self.crash_w_context("Unclosed .ca directive(2).", i-1)
+            if self.wb[self.cl] != ".ca-":
+              self.crash_w_context("Caption and model lengths do not match properly.", i-1)
             self.cl += 1
-          if self.cl == len(self.wb):
-            self.crash_w_context("Unclosed .ca directive.", i)
-          self.eb[-1] += "]"
-          self.cl += 1 # the closing .ca-
         else:
           # single line
+          if ia["cm"] != "": # if caption model specified
+            self.warn("Caption model specified for a single-line caption: {}".format(self.wb[self.cl-1]))
           caption = self.wb[self.cl][4:]
           s = "[{}: {}]".format(self.nregs["Illustration"],caption)
           t = self.wrap(s, 0, self.regLL, 0)
@@ -2932,34 +3012,50 @@ class Pph(Book):
       self.wb[i] = re.sub(r"<B", "<b", self.wb[i])
       self.wb[i] = re.sub(r"<\/B", "</b", self.wb[i])
 
+    inNF = False
     for i, line in enumerate(self.wb):
 
       # if everything inside <sc>...</sc> markup is uppercase, then
       # use font-size:smaller, else use font-variant:small-caps
 
+      if self.wb[i].startswith(".nf "):
+        inNF = True
+      elif self.wb[i].startswith(".nf-"):
+        inNF = False
       m = re.search("<sc>", self.wb[i]) # opening small cap tag
-      if m:
+      while m:
         use_class = "sc" # unless changed
         # we have an opening small cap tag. need to examine all the text
         # up to the closing tag, which may be on a separate line.
         stmp = self.wb[i]
-        j = i
-        while not re.search(r"<\/sc>", stmp):
+        j = i + 1
+        # old version: m = re.search(r"<sc>([^<]+?)</sc>", stmp)
+        m = re.search(r"<sc>(.*?)</sc>", stmp)
+        while j < len(self.wb) and not m:
           stmp += self.wb[j]
           j += 1
-        m = re.search(r"<sc>([^<]+?)</sc>", stmp)
+          m = re.search(r"<sc>(.*)</sc>", stmp)
+        # old version: m = re.search(r"<sc>([^<]+?)</sc>", stmp)
         if m:
           scstring = m.group(1)
-          if scstring == scstring.lower(): # all lower case
+          # warn about all lower case, but not within .nf as
+          # we will have replicated the <sc> tags that cross lines
+          # of the .nf block, which could leave some all lower-case
+          # line alone within the <sc> </sc>, but it's not an error
+          if not inNF and scstring == scstring.lower():
             self.warn("all lower case inside small-caps markup: {}".format(self.wb[i]))
           if scstring == scstring.upper(): # all upper case
             use_class = "fss"
+        else:
+          self.warn("Unexpected problem interpreting <sc> string, assuming mixed-case.\nLine number:{}\nCurrent line: {}\nCurrent string:{}".format(i, self.wb[i],stmp))
         if use_class == "sc":
-          self.wb[i] = re.sub("<sc>", "<span class='sc'>", self.wb[i])
+          self.wb[i] = re.sub("<sc>", "<span class='sc'>", self.wb[i], 1)
           self.css.addcss("[1200] .sc { font-variant:small-caps; }")
         if use_class == "fss":
-          self.wb[i] = re.sub("<sc>", "<span class='fss'>", self.wb[i])
+          self.wb[i] = re.sub("<sc>", "<span class='fss'>", self.wb[i], 1)
           self.css.addcss("[1200] .fss { font-size:75%; }")
+        self.wb[i] = re.sub("<\/sc>", "</span>", self.wb[i], 1) # since we had a <sc> replace 1 </sc> if present on this line
+        m = re.search("<sc>", self.wb[i]) # look for another opening small cap tag
 
       # common closing, may be on separate line
       self.wb[i] = re.sub("<\/sc>", "</span>", self.wb[i])
@@ -3031,29 +3127,38 @@ class Pph(Book):
       self.wb[i] = re.sub("<\/fs>", "</span>", self.wb[i])
 
   # -------------------------------------------------------------------------------------
+  # restore tokens in HTML text
+
+  def htmlTokenRestore(self, text):
+    text = re.sub("ⓓ", ".", text)
+    text = re.sub("①", "{", text)
+    text = re.sub("②", "}", text)
+    text = re.sub("③", "[", text)
+    text = re.sub("④", "]", text)
+    text = re.sub("⑤", "&lt;", text)
+    # text space replacement
+    text = re.sub("ⓢ", "&nbsp;", text) # non-breaking space
+    text = re.sub("ⓣ", "&#8203;", text) # zero space
+    text = re.sub("ⓤ", "&thinsp;", text) # thin space
+    text = re.sub("ⓥ", "&#8196;", text) # thick space
+    # ampersand
+    text = re.sub("Ⓩ", "&amp;", text)
+    # protected
+    text = re.sub("⑪", "<", text)
+    text = re.sub("⑫", ">", text)
+    text = re.sub("⑬", "[", text)
+    text = re.sub("⑭", "]", text)
+    return text
+
+
+  # -------------------------------------------------------------------------------------
   # post-process working buffer
 
   def postprocess(self):
 
     for i, line in enumerate(self.wb):
-      self.wb[i] = re.sub("ⓓ", ".", self.wb[i])
-      self.wb[i] = re.sub("①", "{", self.wb[i])
-      self.wb[i] = re.sub("②", "}", self.wb[i])
-      self.wb[i] = re.sub("③", "[", self.wb[i])
-      self.wb[i] = re.sub("④", "]", self.wb[i])
-      self.wb[i] = re.sub("⑤", "&lt;", self.wb[i])
-      # text space replacement
-      self.wb[i] = re.sub("ⓢ", "&nbsp;", self.wb[i]) # non-breaking space
-      self.wb[i] = re.sub("ⓣ", "&#8203;", self.wb[i]) # zero space
-      self.wb[i] = re.sub("ⓤ", "&thinsp;", self.wb[i]) # thin space
-      self.wb[i] = re.sub("ⓥ", "&#8196;", self.wb[i]) # thick space
-      # ampersand
-      self.wb[i] = re.sub("Ⓩ", "&amp;", self.wb[i])
-      # protected
-      self.wb[i] = re.sub("⑪", "<", self.wb[i])
-      self.wb[i] = re.sub("⑫", ">", self.wb[i])
-      self.wb[i] = re.sub("⑬", "[", self.wb[i])
-      self.wb[i] = re.sub("⑭", "]", self.wb[i])
+      # basic tokens
+      self.wb[i] = self.htmlTokenRestore(self.wb[i])
 
       # superscripts, subscripts
       self.wb[i] = re.sub(r"◸(.*?)◹", r'<sup>\1</sup>', self.wb[i])
@@ -3161,7 +3266,7 @@ class Pph(Book):
       try:
         f1.write( "{:s}\r\n".format(t))
       except Exception as e:
-        print( "internal error:\n  cannot write line: {:s}".format(t) )
+        print( "internal error:\n  cannot write line: {:s}".format(self.umap(t)) )
         self.fatal("exiting")
     f1.close()
 
@@ -3204,7 +3309,7 @@ class Pph(Book):
       t.append("    <meta http-equiv=\"Content-Type\" content=\"text/html;charset=ISO-8859-1\" />")
 
     if self.dtitle != "":
-      t.append("    <title>{}</title>".format(self.dtitle))
+      t.append("    <title>{}</title>".format(self.htmlTokenRestore(self.dtitle)))
     else:
       t.append("    <title>{}</title>".format("Unknown"))
     t.append("    <link rel=\"coverpage\" href=\"images/{}\" />".format(self.cimage))
@@ -3361,11 +3466,6 @@ class Pph(Book):
     if m: # modifier
       rend = m.group(1)
 
-      if "nobreak" in rend:
-        hcss += "page-break-before:auto;"
-      else:
-        hcss += "page-break-before:always;"
-
       m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
       if m:
         pnum = m.group(1)
@@ -3374,6 +3474,11 @@ class Pph(Book):
       if m:
         id = m.group(1)
         self.checkId(id)  # validate identifier name
+
+    if "nobreak" in rend:
+      hcss += "page-break-before:auto;"
+    else:
+      hcss += "page-break-before:always;"
 
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
@@ -3426,11 +3531,6 @@ class Pph(Book):
     if m: # modifier
       rend = m.group(1)
 
-      if "nobreak" in rend:
-        hcss += "page-break-before:auto;"
-      else:
-        hcss += "page-break-before:always;"
-
       m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
       if m:
         pnum = m.group(1)
@@ -3439,6 +3539,11 @@ class Pph(Book):
       if m:
         id = m.group(1)
         self.checkId(id)
+
+    if "nobreak" in rend:
+      hcss += "page-break-before:auto;"
+    else:
+      hcss += "page-break-before:always;"
 
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
@@ -3485,17 +3590,13 @@ class Pph(Book):
     pnum = ""
     id = ""
     hcss = ""
+    rend = ""
  
     self.css.addcss("[1100] h3 { text-align:center;font-weight:normal;font-size:1.2em; }")  
 
     m = re.match(r"\.h3 (.*)", self.wb[self.cl])
     if m: # modifier
       rend = m.group(1)
-
-      if "nobreak" in rend:
-        hcss += "page-break-before:auto;"
-      else:
-        hcss += "page-break-before:always;"
 
       m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
       if m:
@@ -3505,6 +3606,11 @@ class Pph(Book):
       if m:
         id = m.group(1)
         self.checkId(id)
+
+    if "nobreak" in rend: # default to "break" in .h3 (seems odd to me, change this?)
+      hcss += "page-break-before:auto;"
+    else:
+      hcss += "page-break-before:always;"
 
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
@@ -3546,6 +3652,197 @@ class Pph(Book):
     self.wb[self.cl:self.cl+1] = t
     self.cl += len(t)
 
+  # h4
+  def doH4(self):
+    pnum = ""
+    id = ""
+    hcss = ""
+    rend = "nobreak"
+
+    self.css.addcss("[1100] h4 { text-align:center;font-weight:normal;font-size:1.0em; }")  
+
+    m = re.match(r"\.h4( .*)", self.wb[self.cl])
+    if m: # modifier
+      rend = m.group(1)
+
+      m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
+      if m:
+        pnum = m.group(1)
+
+      m = re.search(r"id=[\"']?(.+?)($|[\"' ])", rend)
+      if m:
+        id = m.group(1)
+        self.checkId(id)
+
+    if " break" in rend: # default .h4/5/6 to nobreak
+      hcss += "page-break-before:always;"
+    else:
+      hcss += "page-break-before:auto;"
+
+    if self.pvs > 0:
+      hcss += "margin-top:{}em;".format(self.pvs)
+      self.pvs = 0
+    else: # default 1 before, 1 after
+      hcss += "margin-top:1em;"
+    self.pvs = 1
+
+    del self.wb[self.cl] # the .h line
+
+    # if we have .bn info after the .h and before the header join them together
+    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
+      if m and m.group(1) == "":
+        i = self.cl
+        if i < len(self.wb) -1:
+          self.wb[i] = self.wb[i] + self.wb[i+1]
+          del self.wb[i+1]
+    s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
+    s = re.sub("\|", "<br />", s)
+    t = []
+
+    if pnum != "":
+      t.append("<div>")
+      if self.pnshow:
+        # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
+        t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+      elif self.pnlink:
+        t.append("  <a name='Page_{0}' id='Page_{0}'></a>".format(pnum))
+      t.append("</div>")
+    if id != "":
+      t.append("<h4 id='{}' style='{}'>{}</h4>".format(id, hcss, s))
+    else:
+      t.append("<h4 style='{}'>{}</h4>".format(hcss, s))
+
+    self.wb[self.cl:self.cl+1] = t
+    self.cl += len(t)
+
+  # h5
+  def doH5(self):
+    pnum = ""
+    id = ""
+    hcss = ""
+    rend = "nobreak"
+
+    self.css.addcss("[1100] h5 { text-align:center;font-weight:normal;font-size:1.0em; }")  
+
+    m = re.match(r"\.h5( .*)", self.wb[self.cl])
+    if m: # modifier
+      rend = m.group(1)
+
+      m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
+      if m:
+        pnum = m.group(1)
+
+      m = re.search(r"id=[\"']?(.+?)($|[\"' ])", rend)
+      if m:
+        id = m.group(1)
+        self.checkId(id)
+
+    if " break" in rend: # default .h4/5/6 to nobreak
+      hcss += "page-break-before:always;"
+    else:
+      hcss += "page-break-before:auto;"
+
+    if self.pvs > 0:
+      hcss += "margin-top:{}em;".format(self.pvs)
+      self.pvs = 0
+    else: # default 1 before, 1 after
+      hcss += "margin-top:1em;"
+    self.pvs = 1
+
+    del self.wb[self.cl] # the .h line
+
+    # if we have .bn info after the .h and before the header join them together
+    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
+      if m and m.group(1) == "":
+        i = self.cl
+        if i < len(self.wb) -1:
+          self.wb[i] = self.wb[i] + self.wb[i+1]
+          del self.wb[i+1]
+    s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
+    s = re.sub("\|", "<br />", s)
+    t = []
+
+    if pnum != "":
+      t.append("<div>")
+      if self.pnshow:
+        # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
+        t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+      elif self.pnlink:
+        t.append("  <a name='Page_{0}' id='Page_{0}'></a>".format(pnum))
+      t.append("</div>")
+    if id != "":
+      t.append("<h5 id='{}' style='{}'>{}</h5>".format(id, hcss, s))
+    else:
+      t.append("<h5 style='{}'>{}</h5>".format(hcss, s))
+
+    self.wb[self.cl:self.cl+1] = t
+    self.cl += len(t)
+
+  # h6
+  def doH6(self):
+    pnum = ""
+    id = ""
+    hcss = ""
+    rend = "nobreak"
+
+    self.css.addcss("[1100] h6 { text-align:center;font-weight:normal;font-size:1.0em; }")  
+
+    m = re.match(r"\.h6( .*)", self.wb[self.cl])
+    if m: # modifier
+      rend = m.group(1)
+
+      m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
+      if m:
+        pnum = m.group(1)
+
+      m = re.search(r"id=[\"']?(.+?)($|[\"' ])", rend)
+      if m:
+        id = m.group(1)
+        self.checkId(id)
+
+    if " break" in rend: # default .h4/5/6 to nobreak
+      hcss += "page-break-before:always;"
+    else:
+      hcss += "page-break-before:auto;"
+
+    if self.pvs > 0:
+      hcss += "margin-top:{}em;".format(self.pvs)
+      self.pvs = 0
+    else: # default 1 before, 1 after
+      hcss += "margin-top:1em;"
+    self.pvs = 1
+
+    del self.wb[self.cl] # the .h line
+
+    # if we have .bn info after the .h and before the header join them together
+    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
+      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
+      if m and m.group(1) == "":
+        i = self.cl
+        if i < len(self.wb) -1:
+          self.wb[i] = self.wb[i] + self.wb[i+1]
+          del self.wb[i+1]
+    s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
+    s = re.sub("\|", "<br />", s)
+    t = []
+
+    if pnum != "":
+      t.append("<div>")
+      if self.pnshow:
+        # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
+        t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+      elif self.pnlink:
+        t.append("  <a name='Page_{0}' id='Page_{0}'></a>".format(pnum))
+      t.append("</div>")
+    if id != "":
+      t.append("<h6 id='{}' style='{}'>{}</h6>".format(id, hcss, s))
+    else:
+      t.append("<h6 style='{}'>{}</h6>".format(hcss, s))
+
+    self.wb[self.cl:self.cl+1] = t
+    self.cl += len(t)
 
   # .sp n
   # if a space is encountered. for HTML drop it to the next
@@ -3553,7 +3850,7 @@ class Pph(Book):
   def doSpace(self):
     m = re.match(r"\.sp (\d+)", self.wb[self.cl])
     if m:
-      self.pvs = max(int(m.group(1), self.pvs))  # honor if larger than current pvs
+      self.pvs = max(int(m.group(1)), self.pvs)  # honor if larger than current pvs
       del self.wb[self.cl]
     else:
       self.fatal("malformed space directive: {}".format(self.wb[self.cl]))
@@ -3622,6 +3919,7 @@ class Pph(Book):
         s, ifn = self.get_id("fn", s)
       else:
         self.fatal("no display file specified in {}".format(s0))
+      checkIllo(ifn)
       ia["ifn"] = ifn
 
       # link to alternate (larger) image
@@ -3699,6 +3997,10 @@ class Pph(Book):
       if "pn=" in s:
         s, pageno = self.get_id("pn",s)
       ia["pageno"] = pageno
+
+      # caption model (ignored in HTML)
+      if "cm=" in s:
+        s, cm = self.get_id("cm",s)
 
       # no "=" should remain in .il string
       if "=" in s:
@@ -4498,14 +4800,14 @@ class Pph(Book):
   #   .di i_b_009.jpg 100 170 1.3 (width, height, adjust specified)
   #   .di i_b_009.jpg 100 1.3 (width, adjust specified)
   def doDropimage(self):
-    m = re.match(r"\.di (.*?) (\d+) (.*)$",self.wb[self.cl])
+    m = re.match(r"\.di (\S+) (\d+) (\S+)$",self.wb[self.cl])
     if m:
       d_image = m.group(1)
       d_width = m.group(2)
       d_height = ""
       d_adj = m.group(3)
     else:         
-      m = re.match(r"\.di (.*?) (\d+) (\d+) (.*)$",self.wb[self.cl])
+      m = re.match(r"\.di (\S+) (\d+) (\d+) (\S+)$",self.wb[self.cl])
       if m:
         d_image = m.group(1)
         d_width = m.group(2)
