@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.45a"  # 31-Dec-2014    Revise handling of <target id=...> so it doesn't use self-closing <a> tag in HTML.
+VERSION="3.45aSR"  # 31-Dec-2014    Revise handling of <target id=...> so it doesn't use self-closing <a> tag in HTML.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3234,40 +3234,6 @@ class Pph(Book):
         m = re.search(r"ᒪ'(.+?)'", self.wb[i])
       self.wb[i] = re.sub("ᒧ", "</span>", self.wb[i])
 
-    # process saved search/replace strings, if any
-    # but only if our output format matches something in the saved "which" value
-
-    for i in range(len(self.srw)):
-      if ('h' in self.srw[i]):       # if this one applies to HTML
-        k = 0
-        l = 0
-        ll = 0
-        for j in range(len(self.wb)):
-          try:
-            m = re.search(self.srs[i], self.wb[j])               # search for current search string
-          except:
-            if 'd' in self.debug:
-              traceback.print_exc()
-              self.fatal("Above error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.wb[j]))
-            else:
-              self.fatal("Error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.wb[j]))
-          if m:                                             # if found
-            k += 1
-            if 'd' in self.debug:
-              print("{} found in: {}".format(self.srs[i], self.wb[j]))
-            try:
-              self.wb[j], l = re.subn(self.srs[i], self.srr[i], self.wb[j])      # replace all occurrences in the line
-              ll += l
-            except:
-              if 'd' in self.debug:
-                traceback.print_exc()
-                self.fatal("Above error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.wb[j]))
-              else:
-                self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.wb[j]))
-            if 'd' in self.debug:
-              print("Replaced: {}".format(self.wb[j]))
-
-        print("Search string {}:{} matched in {} lines, replaced {} times.".format(i, self.srs[i], k, ll))
 
   # -------------------------------------------------------------------------------------
   # save buffer to specified dstfile (HTML output)
@@ -3346,6 +3312,45 @@ class Pph(Book):
         self.wb[i:i+1] = self.css.show()
         return
       i += 1
+
+  #----------------------------------------------------
+  # process saved search/replace strings, if any
+  # but only if our output format matches something in the saved "which" value
+  def doHTMLSr(self):
+    for i in range(len(self.srw)):
+      if ('h' in self.srw[i]):       # if this one applies to HTML
+        k = 0
+        l = 0
+        ll = 0
+        for j in range(len(self.wb)):
+          srdbg = self.wb[j]###
+          srsdbg = self.srs[i]###
+          srrdbg = self.srr[i]###
+          try:
+            m = re.search(self.srs[i], self.wb[j])               # search for current search string
+          except:
+            if 'd' in self.debug:
+              traceback.print_exc()
+              self.fatal("Above error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.wb[j]))
+            else:
+              self.fatal("Error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.wb[j]))
+          if m:                                             # if found
+            k += 1
+            if 'd' in self.debug:
+              print("{} found in: {}".format(self.srs[i], self.wb[j]))
+            try:
+              self.wb[j], l = re.subn(self.srs[i], self.srr[i], self.wb[j])      # replace all occurrences in the line
+              ll += l
+            except:
+              if 'd' in self.debug:
+                traceback.print_exc()
+                self.fatal("Above error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.wb[j]))
+              else:
+                self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.wb[j]))
+            if 'd' in self.debug:
+              print("Replaced: {}".format(self.wb[j]))
+        print("Search string {}:{} matched in {} lines, replaced {} times.".format(i, self.srs[i], k, ll))
+
 
   # ----- process method group -----
 
@@ -5172,6 +5177,7 @@ class Pph(Book):
     self.doFooter()
     self.placeCSS()
     self.cleanup()
+    self.doHTMLSr()
 
   def run(self): # HTML
     self.loadFile(self.srcfile)
