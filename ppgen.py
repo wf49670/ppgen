@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.44c"  # 09-Dec-2014
+VERSION="3.45a"  # 31-Dec-2014    Revise handling of <target id=...> so it doesn't use self-closing <a> tag in HTML.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2700,6 +2700,16 @@ class Pph(Book):
 
     self.preProcessCommon()
 
+    # protect PPer-supplied internal link information
+    # two forms: #number# and #name:id-value#
+    # for either, replace the # symbols with ⑲ so they can be found uniquely later
+    # without interference from other HTML markup ppgen may have added
+    i = 0
+    while i < len(self.wb):
+      self.wb[i] = re.sub(r"#(\d+)#", r"⑲\1⑲", self.wb[i])
+      self.wb[i] = re.sub(r"#(.*?:.*?)#", r"⑲\1⑲", self.wb[i])
+      i += 1
+
     # HTML will always choose the UTF-8 Greek line
     i = 0
     while i < len(self.wb):
@@ -2913,15 +2923,15 @@ class Pph(Book):
       if "<target id" in self.wb[i]:
         m = re.search("<target id='(.*?)'>", self.wb[i])
         while m:
-          self.wb[i] = re.sub("<target id='(.*?)'>", "<a id='{0}' name='{0}' />".format(m.group(1)), self.wb[i], 1)
+          self.wb[i] = re.sub("<target id='(.*?)'>", "<a id='{0}' name='{0}'></a>".format(m.group(1)), self.wb[i], 1)
           m = re.search("<target id='(.*?)'>", self.wb[i])
         m = re.search("<target id=\"(.*?)\">", self.wb[i])
         while m:
-          self.wb[i] = re.sub("<target id=\"(.*?)\">", "<a id='{0}' name='{}' />".format(m.group(1)), self.wb[i], 1)
+          self.wb[i] = re.sub("<target id=\"(.*?)\">", "<a id='{0}' name='{}'></a>".format(m.group(1)), self.wb[i], 1)
           m = re.search("<target id=\"(.*?)\">", self.wb[i])
         m = re.search("<target id=(.*?)>", self.wb[i])
         while m:
-          self.wb[i] = re.sub("<target id=(.*?)>", "<a id='{0}' name='{0}' />".format(m.group(1)), self.wb[i], 1)
+          self.wb[i] = re.sub("<target id=(.*?)>", "<a id='{0}' name='{0}'></a>".format(m.group(1)), self.wb[i], 1)
           m = re.search("<target id=(.*?)>", self.wb[i])
       i += 1
 
@@ -2944,7 +2954,7 @@ class Pph(Book):
                 i += 1
                 continue
             # find all tags on this line; ignore <a and </a tags completely for this purpose
-            t = re.findall("<\/?[^a][^>]*>", self.wb[i])
+            t = re.findall("<\/?[^a>]*>", self.wb[i])
             sstart = "" # what to prepend to the line
             for s in tagstack: # build the start string
               sstart += s
@@ -3034,10 +3044,10 @@ class Pph(Book):
         while j < len(self.wb) and not m:
           stmp += self.wb[j]
           j += 1
-          m = re.search(r"<sc>(.*)</sc>", stmp)
+          m = re.search(r"<sc>(.*?)</sc>", stmp)
         # old version: m = re.search(r"<sc>([^<]+?)</sc>", stmp)
         if m:
-          scstring = m.group(1)
+          scstring = self.htmlTokenRestore(m.group(1)) # need to undo our remappings in order to properly check case of string
           # warn about all lower case, but not within .nf as
           # we will have replicated the <sc> tags that cross lines
           # of the .nf block, which could leave some all lower-case
@@ -3196,19 +3206,20 @@ class Pph(Book):
 
     # internal page links
     # two forms: #17# and #The Encounter:ch01#
+    # which at this point are actually using ⑲ instead of the # signs
     for i in range(len(self.wb)):
 
-      m = re.search(r"#(\d+)#", self.wb[i])
+      m = re.search(r"⑲(\d+?)⑲", self.wb[i])
       while m: # page number reference
         s = "<a href='⫉Page_{0}'>{0}</a>".format(m.group(1)) # link to it
-        self.wb[i] = re.sub(r"#(\d+)#", s, self.wb[i], 1)
-        m = re.search(r"#(\d+)#", self.wb[i])
+        self.wb[i] = re.sub(r"⑲(\d+?)⑲", s, self.wb[i], 1)
+        m = re.search(r"⑲(\d+?)⑲", self.wb[i])
 
-      m = re.search(r"#([^'>]*?):(.*?)#", self.wb[i]) # named reference
+      m = re.search(r"⑲(.*?):(.*?)⑲", self.wb[i]) # named reference
       while m:
         s = "<a href='⫉{}'>{}</a>".format(m.group(2), m.group(1)) # link to that
-        self.wb[i] = re.sub(r"#([^'>]*?):(.*?)#", s, self.wb[i], 1)
-        m = re.search(r"#([^'>]*?):(.*?)#", self.wb[i])
+        self.wb[i] = re.sub(r"⑲(.*?):(.*?)⑲", s, self.wb[i], 1)
+        m = re.search(r"⑲(.*?):(.*?)⑲", self.wb[i])
 
       self.wb[i] = re.sub("⫉", '#', self.wb[i])
 
