@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.45a"  # 31-Dec-2014    Revise handling of <target id=...> so it doesn't use self-closing <a> tag in HTML.
+VERSION="3.45b"  # 05-Jan-2015    Fix .ti-related error with negative values and lines that begin with an em-dash
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1094,6 +1094,7 @@ class Ppt(Book):
         t[i] = t[i].replace("⑧", " ")  # leading spaces from .ti
         t[i] = " " * indent + t[i] # indent applies to all
     if hold != "":
+      hold = hold.replace("◠◠", "—") # restore dash
       leadstr = " " * (indent + ti) + hold
       t[0] = leadstr + t[0][indent:]
     return t
