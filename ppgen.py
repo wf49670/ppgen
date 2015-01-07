@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.45a"  # 31-Dec-2014    Revise handling of <target id=...> so it doesn't use self-closing <a> tag in HTML.
+VERSION="3.45b2"  # 06-Jan-2015    Fix .ti-related error with negative values and lines that begin with an em-dash
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1024,7 +1024,7 @@ class Ppt(Book):
 
   # wrap string into paragraph in t[]
   def wrap_para(self, s,  indent, ll, ti):
-    s = s.replace("—", "◠◠") # compensate long dash
+    #not really needed? s = s.replace("—", "◠◠") # compensate long dash
 
     # if ti < 0, strip off characters that will be in the hanging margin
     hold = ""
@@ -1090,10 +1090,11 @@ class Ppt(Book):
       t.append(s)
 
     for i, line in enumerate(t):
-        t[i] = t[i].replace("◠◠", "—") # restore dash
+        #not really needed? t[i] = t[i].replace("◠◠", "—") # restore dash
         t[i] = t[i].replace("⑧", " ")  # leading spaces from .ti
         t[i] = " " * indent + t[i] # indent applies to all
     if hold != "":
+      #not really needed? hold = hold.replace("◠◠", "—") # restore dash
       leadstr = " " * (indent + ti) + hold
       t[0] = leadstr + t[0][indent:]
     return t
