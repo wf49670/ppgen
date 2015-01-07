@@ -1024,8 +1024,6 @@ class Ppt(Book):
 
   # wrap string into paragraph in t[]
   def wrap_para(self, s,  indent, ll, ti):
-    #not really needed? s = s.replace("—", "◠◠") # compensate long dash
-
     # if ti < 0, strip off characters that will be in the hanging margin
     hold = ""
     if ti < 0:
@@ -1090,11 +1088,9 @@ class Ppt(Book):
       t.append(s)
 
     for i, line in enumerate(t):
-        #not really needed? t[i] = t[i].replace("◠◠", "—") # restore dash
         t[i] = t[i].replace("⑧", " ")  # leading spaces from .ti
         t[i] = " " * indent + t[i] # indent applies to all
     if hold != "":
-      #not really needed? hold = hold.replace("◠◠", "—") # restore dash
       leadstr = " " * (indent + ti) + hold
       t[0] = leadstr + t[0][indent:]
     return t
