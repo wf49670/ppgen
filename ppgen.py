@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.45b2"  # 06-Jan-2015    Fix .ti-related error with negative values and lines that begin with an em-dash
+VERSION="3.45b2SR"  # 06-Jan-2015    Fix .ti-related error with negative values and lines that begin with an em-dash
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1456,37 +1456,73 @@ class Ppt(Book):
     # process saved search/replace strings, if any
     # but only if our output format matches something in the saved "which" value
 
+    blobbed = False
     for i in range(len(self.srw)):
-      if ('t' in self.srw[i]) or (self.renc in self.srw[i]):       # if this one applies to the text form we're generating
+      if ('t' in self.srw[i]) or (self.renc in self.srw[i]): # if this one applies to the text form we're generating
         k = 0
         l = 0
         ll = 0
-        for j in range(len(self.eb)):
+        if "\\n" in self.srs[i]: # did user use a regex containing \n ? If so, process all lines in one blob
+          if not blobbed:
+            text = '\n'.join(self.eb) # form lines into a blob
+            blobbed = True
           try:
-            m = re.search(self.srs[i], self.eb[j])               # search for current search string
+            m = re.search(self.srs[i], text) # search for current search string
           except:
             if 'd' in self.debug:
               traceback.print_exc()
-              self.fatal("Above error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.eb[j]))
+              self.fatal("Above error occurred searching for {} in complete text blob".format(self.srs[i]))
             else:
-              self.fatal("Error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.eb[j]))
+              self.fatal("Error occurred searching for {} in complete text blob".format(self.srs[i]))
           if m:                                             # if found
-            k += 1
-            if 'd' in self.debug:
-              print("{} found in: {}".format(self.srs[i], self.eb[j]))
+            if 'r' in self.debug:
+              print("{} found in complete text blob".format(self.srs[i]))
             try:
-              self.eb[j], l = re.subn(self.srs[i], self.srr[i], self.eb[j])      # replace all occurrences in the line
+              text, l = re.subn(self.srs[i], self.srr[i], text) # replace all occurrences in the blob
               ll += l
             except:
               if 'd' in self.debug:
                 traceback.print_exc()
-                self.fatal("Above error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.eb[j]))
+                self.fatal("Above error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[i], self.srr[i]))
               else:
-                self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.eb[j]))
-            if 'd' in self.debug:
-              print("Replaced: {}".format(self.eb[j]))
+                self.fatal("Error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[i], self.srr[i]))
+            if 'r' in self.debug:
+              print("Replaced with {}".format(self.srr[i]))
+          print("Search string {}:{} matched in complete text and replaced {} times.".format(i+1, self.srs[i], ll))
 
-        print("Search string {}:{} matched in {} lines, replaced {} times.".format(i, self.srs[i], k, ll))
+        else:
+          if blobbed:
+            self.eb = text.splitlines() # break blob back into individual lines
+            blobbed = False
+          for j in range(len(self.eb)):
+            try:
+              m = re.search(self.srs[i], self.eb[j])               # search for current search string
+            except:
+              if 'd' in self.debug:
+                traceback.print_exc()
+                self.fatal("Above error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.eb[j]))
+              else:
+                self.fatal("Error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.eb[j]))
+            if m:                                             # if found
+              k += 1
+              if 'r' in self.debug:
+                print("{} found in: {}".format(self.srs[i], self.eb[j]))
+              try:
+                self.eb[j], l = re.subn(self.srs[i], self.srr[i], self.eb[j])      # replace all occurrences in the line
+                ll += l
+              except:
+                if 'd' in self.debug:
+                  traceback.print_exc()
+                  self.fatal("Above error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.eb[j]))
+                else:
+                  self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.eb[j]))
+              if 'r' in self.debug:
+                print("Replaced: {}".format(self.eb[j]))
+          print("Search string {}:{} matched in {} lines, replaced {} times.".format(i+1, self.srs[i], k, ll))
+
+    if blobbed:
+      self.eb = text.splitlines() # break blob back into individual lines
+      blobbed = False
 
     # build GG .bin info if needed
     if self.bnPresent:  # if any .bn were found
@@ -2184,7 +2220,7 @@ class Ppt(Book):
     m = re.match(r"\.fn (\d+)", self.wb[self.cl]) # expect numeric
     if m: # footnote start
       fnname = m.group(1)
-      self.eb.append("{} {}: ".format(self.nregs["Footnote"], fnname))
+      self.eb.append("{} {}:".format(self.nregs["Footnote"], fnname))
       self.wb[self.cl] = ".in +2"
       return
     else: # non-numeric footnote
@@ -3318,40 +3354,73 @@ class Pph(Book):
   # process saved search/replace strings, if any
   # but only if our output format matches something in the saved "which" value
   def doHTMLSr(self):
+    blobbed = False
     for i in range(len(self.srw)):
       if ('h' in self.srw[i]):       # if this one applies to HTML
         k = 0
         l = 0
         ll = 0
-        for j in range(len(self.wb)):
-          srdbg = self.wb[j]###
-          srsdbg = self.srs[i]###
-          srrdbg = self.srr[i]###
+        if "\\n" in self.srs[i]: # did user use a regex containing \n ? If so, process all lines in one blob
+          if not blobbed:
+            text = '\n'.join(self.wb) # form lines into a blob of text
+            blobbed = True
           try:
-            m = re.search(self.srs[i], self.wb[j])               # search for current search string
+            m = re.search(self.srs[i], text)   # search for current search string
           except:
             if 'd' in self.debug:
               traceback.print_exc()
-              self.fatal("Above error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.wb[j]))
+              self.fatal("Above error occurred searching for {} in complete text blob".format(self.srs[i]))
             else:
-              self.fatal("Error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.wb[j]))
+              self.fatal("Error occurred searching for {} in complete text blob".format(self.srs[i]))
           if m:                                             # if found
-            k += 1
-            if 'd' in self.debug:
-              print("{} found in: {}".format(self.srs[i], self.wb[j]))
+            if 'r' in self.debug:
+              print("{} found in complete text blob".format(self.srs[i]))
             try:
-              self.wb[j], l = re.subn(self.srs[i], self.srr[i], self.wb[j])      # replace all occurrences in the line
+              text, l = re.subn(self.srs[i], self.srr[i], text) # replace all occurrences in the blob of text
               ll += l
             except:
               if 'd' in self.debug:
                 traceback.print_exc()
-                self.fatal("Above error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.wb[j]))
+                self.fatal("Above error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[i], self.srr[i]))
               else:
-                self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.wb[j]))
-            if 'd' in self.debug:
-              print("Replaced: {}".format(self.wb[j]))
-        print("Search string {}:{} matched in {} lines, replaced {} times.".format(i, self.srs[i], k, ll))
+                self.fatal("Error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[i], self.srr[i]))
+            if 'r' in self.debug:
+              print("Replaced with: {}".format(self.srr[i]))
+          print("Search string {}:{} matched and replaced {} times in complete text blob.".format(i+1, self.srs[i], ll))
 
+        else:
+          if blobbed:
+            self.wb = text.splitlines() # restore individual lines from the blob
+            blobbed = False
+          for j in range(len(self.wb)):
+            try:
+              m = re.search(self.srs[i], self.wb[j])               # search for current search string
+            except:
+              if 'd' in self.debug:
+                traceback.print_exc()
+                self.fatal("Above error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.wb[j]))
+              else:
+                self.fatal("Error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.wb[j]))
+            if m:                                             # if found
+              k += 1
+              if 'r' in self.debug:
+                print("{} found in: {}".format(self.srs[i], self.wb[j]))
+              try:
+                self.wb[j], l = re.subn(self.srs[i], self.srr[i], self.wb[j])      # replace all occurrences in the line
+                ll += l
+              except:
+                if 'd' in self.debug:
+                  traceback.print_exc()
+                  self.fatal("Above error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.wb[j]))
+                else:
+                  self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.wb[j]))
+              if 'r' in self.debug:
+                print("Replaced: {}".format(self.wb[j]))
+          print("Search string {}:{} matched in {} lines, replaced {} times.".format(i+1, self.srs[i], k, ll))
+
+    if blobbed:
+      self.wb = text.splitlines() # restore individual lines from the blob
+      blobbed = False
 
   # ----- process method group -----
 
@@ -5206,7 +5275,7 @@ def main():
   parser = argparse.ArgumentParser(description='ppgen generator')
   parser.add_argument('-i', '--infile', help='UTF-8 or Latin-1 input file')
   parser.add_argument('-l', '--log', help="display Latin-1 conversion log", action="store_true")
-  parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p)')
+  parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r)') # r = report regex results
   parser.add_argument('-o', '--output_format', default="ht", help='output format (HTML:h, text:t, u or l)')
   parser.add_argument('-a', '--anonymous', action='store_true', help='do not identify version/timestamp in HTML')
   parser.add_argument("-v", "--version", help="display version and exit", action="store_true")
