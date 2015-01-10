@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.45b2SR2"  # 06-Jan-2015    Fix .ti-related error with negative values and lines that begin with an em-dash
+VERSION="3.45cSR2"  # 10-Jan-2015    Allow specification of align= for .h1-.h6 commands
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1055,8 +1055,6 @@ class Ppt(Book):
 
   # wrap string into paragraph in t[]
   def wrap_para(self, s,  indent, ll, ti):
-    #not really needed? s = s.replace("—", "◠◠") # compensate long dash
-
     # if ti < 0, strip off characters that will be in the hanging margin
     hold = ""
     if ti < 0:
@@ -1121,11 +1119,9 @@ class Ppt(Book):
       t.append(s)
 
     for i, line in enumerate(t):
-        #not really needed? t[i] = t[i].replace("◠◠", "—") # restore dash
         t[i] = t[i].replace("⑧", " ")  # leading spaces from .ti
         t[i] = " " * indent + t[i] # indent applies to all
     if hold != "":
-      #not really needed? hold = hold.replace("◠◠", "—") # restore dash
       leadstr = " " * (indent + ti) + hold
       t[0] = leadstr + t[0][indent:]
     return t
@@ -1689,10 +1685,20 @@ class Ppt(Book):
 
   #Guts of doH"n" for text
   def doHnText(self, m):
+    align = "c" # default all to centered
     if m: # modifier
-      rend = m.group(1)
-      if "nobreak" in rend:
-        rend = re.sub("nobreak","",rend)
+      rend = m.group(1) # for text we'll ignore everything except a possible align= operand
+      if "align=" in rend:
+        rend, align = self.get_id("align", rend)
+        align = align.lower()
+    if align == "c":
+      fmt = "{:^72}"
+    elif align == "l":
+      fmt = "{:<72}"
+    elif align == "r":
+      fmt = "{:>72}"
+    else:
+      self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
     self.eb.append(".RS 1")
     if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3/etc
       m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl+1])
@@ -1701,7 +1707,7 @@ class Ppt(Book):
         self.cl += 1                                           # and ignore it for handling this .h"n"
     h2a = self.wb[self.cl+1].split('|')
     for line in h2a:
-      self.eb.append(("{:^72}".format(line)).rstrip())
+      self.eb.append((fmt.format(line)).rstrip())
     self.eb.append(".RS 1")
     self.cl += 2
 
@@ -3545,6 +3551,7 @@ class Pph(Book):
     id = ""
     rend = "" # default no rend
     hcss = ""
+    align = "c" # default to centered heading
 
     self.css.addcss("[1100] h1 { text-align:center;font-weight:normal;font-size:1.4em; }")  
 
@@ -3552,14 +3559,21 @@ class Pph(Book):
     if m: # modifier
       rend = m.group(1)
 
-      m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
-      if m:
-        pnum = m.group(1)
+      if "pn=" in rend:
+        rend, pnum = self.get_id("pn", rend)
 
-      m = re.search(r"id=[\"']?(.+?)($|[\"' ])", rend)
-      if m:
-        id = m.group(1)
-        self.checkId(id)  # validate identifier name
+      if "id=" in rend:
+        rend, id = self.get_id("id", rend)
+
+      if "align=" in rend:
+        rend, align = self.get_id("align", rend)
+
+    if align == "l":
+      hcss += "text-align:left;"
+    elif align == "r":
+      hcss += "text-align:right;"
+    elif align != "c":
+      self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
 
     if "nobreak" in rend:
       hcss += "page-break-before:auto;"
@@ -3609,22 +3623,30 @@ class Pph(Book):
     pnum = ""
     id = ""
     hcss = ""
+    rend = "" # default no rend
+    align = "c" # default to centered heading
     
     self.css.addcss("[1100] h2 { text-align:center;font-weight:normal;font-size:1.2em; }")  
     
     m = re.match(r"\.h2 (.*)", self.wb[self.cl])
-    rend = "" # default no rend
     if m: # modifier
       rend = m.group(1)
 
-      m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
-      if m:
-        pnum = m.group(1)
+      if "pn=" in rend:
+        rend, pnum = self.get_id("pn", rend)
 
-      m = re.search(r"id=[\"']?(.+?)($|[\"' ])", rend)
-      if m:
-        id = m.group(1)
-        self.checkId(id)
+      if "id=" in rend:
+        rend, id = self.get_id("id", rend)
+
+      if "align=" in rend:
+        rend, align = self.get_id("align", rend)
+
+    if align == "l":
+      hcss += "text-align:left;"
+    elif align == "r":
+      hcss += "text-align:right;"
+    elif align != "c":
+      self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
 
     if "nobreak" in rend:
       hcss += "page-break-before:auto;"
@@ -3676,7 +3698,8 @@ class Pph(Book):
     pnum = ""
     id = ""
     hcss = ""
-    rend = ""
+    rend = "" # default no rend
+    align = "c" # default to centered heading
  
     self.css.addcss("[1100] h3 { text-align:center;font-weight:normal;font-size:1.2em; }")  
 
@@ -3684,14 +3707,21 @@ class Pph(Book):
     if m: # modifier
       rend = m.group(1)
 
-      m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
-      if m:
-        pnum = m.group(1)
+      if "pn=" in rend:
+        rend, pnum = self.get_id("pn", rend)
 
-      m = re.search(r"id=[\"']?(.+?)($|[\"' ])", rend)
-      if m:
-        id = m.group(1)
-        self.checkId(id)
+      if "id=" in rend:
+        rend, id = self.get_id("id", rend)
+
+      if "align=" in rend:
+        rend, align = self.get_id("align", rend)
+
+    if align == "l":
+      hcss += "text-align:left;"
+    elif align == "r":
+      hcss += "text-align:right;"
+    elif align != "c":
+      self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
 
     if "nobreak" in rend: # default to "break" in .h3 (seems odd to me, change this?)
       hcss += "page-break-before:auto;"
@@ -3744,23 +3774,31 @@ class Pph(Book):
     id = ""
     hcss = ""
     rend = "nobreak"
+    align = "c" # default to centered heading
 
     self.css.addcss("[1100] h4 { text-align:center;font-weight:normal;font-size:1.0em; }")  
 
     m = re.match(r"\.h4( .*)", self.wb[self.cl])
     if m: # modifier
-      rend = m.group(1)
+      rend += m.group(1) # add user-supplied values to default rend value of nobreak
 
-      m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
-      if m:
-        pnum = m.group(1)
+      if "pn=" in rend:
+        rend, pnum = self.get_id("pn", rend)
 
-      m = re.search(r"id=[\"']?(.+?)($|[\"' ])", rend)
-      if m:
-        id = m.group(1)
-        self.checkId(id)
+      if "id=" in rend:
+        rend, id = self.get_id("id", rend)
 
-    if " break" in rend: # default .h4/5/6 to nobreak
+      if "align=" in rend:
+        rend, align = self.get_id("align", rend)
+
+    if align == "l":
+      hcss += "text-align:left;"
+    elif align == "r":
+      hcss += "text-align:right;"
+    elif align != "c":
+      self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
+
+    if " break" in rend: # .h4/5/6 default to nobreak, so look for break (preceded by space) that user may have supplied
       hcss += "page-break-before:always;"
     else:
       hcss += "page-break-before:auto;"
@@ -3808,23 +3846,31 @@ class Pph(Book):
     id = ""
     hcss = ""
     rend = "nobreak"
+    align = "c" # default to centered heading
 
     self.css.addcss("[1100] h5 { text-align:center;font-weight:normal;font-size:1.0em; }")  
 
     m = re.match(r"\.h5( .*)", self.wb[self.cl])
     if m: # modifier
-      rend = m.group(1)
+      rend += m.group(1) # add user-supplied values to default rend value of nobreak
 
-      m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
-      if m:
-        pnum = m.group(1)
+      if "pn=" in rend:
+        rend, pnum = self.get_id("pn", rend)
 
-      m = re.search(r"id=[\"']?(.+?)($|[\"' ])", rend)
-      if m:
-        id = m.group(1)
-        self.checkId(id)
+      if "id=" in rend:
+        rend, id = self.get_id("id", rend)
 
-    if " break" in rend: # default .h4/5/6 to nobreak
+      if "align=" in rend:
+        rend, align = self.get_id("align", rend)
+
+    if align == "l":
+      hcss += "text-align:left;"
+    elif align == "r":
+      hcss += "text-align:right;"
+    elif align != "c":
+      self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
+
+    if " break" in rend: # .h4/5/6 default to nobreak, so look for break (preceded by space) that user may have supplied
       hcss += "page-break-before:always;"
     else:
       hcss += "page-break-before:auto;"
@@ -3872,23 +3918,31 @@ class Pph(Book):
     id = ""
     hcss = ""
     rend = "nobreak"
+    align = "c" # default to centered heading
 
     self.css.addcss("[1100] h6 { text-align:center;font-weight:normal;font-size:1.0em; }")  
 
     m = re.match(r"\.h6( .*)", self.wb[self.cl])
     if m: # modifier
-      rend = m.group(1)
+      rend += m.group(1) # add user-supplied values to default rend value of nobreak
 
-      m = re.search(r"pn=[\"']?(.+?)($|[\"' ])", rend)
-      if m:
-        pnum = m.group(1)
+      if "pn=" in rend:
+        rend, pnum = self.get_id("pn", rend)
 
-      m = re.search(r"id=[\"']?(.+?)($|[\"' ])", rend)
-      if m:
-        id = m.group(1)
-        self.checkId(id)
+      if "id=" in rend:
+        rend, id = self.get_id("id", rend)
 
-    if " break" in rend: # default .h4/5/6 to nobreak
+      if "align=" in rend:
+        rend, align = self.get_id("align", rend)
+
+    if align == "l":
+      hcss += "text-align:left;"
+    elif align == "r":
+      hcss += "text-align:right;"
+    elif align != "c":
+      self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
+
+    if " break" in rend: # .h4/5/6 default to nobreak, so look for break (preceded by space) that user may have supplied
       hcss += "page-break-before:always;"
     else:
       hcss += "page-break-before:auto;"
