@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.45e"  # 18-Jan-2015    Improve Roman numbered page number handling (links, upper-case)
+VERSION="3.45e2"  # 18-Jan-2015    Improve Roman numbered page number handling (links, upper-case)
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3997,9 +3997,10 @@ class Pph(Book):
       if "pn=" in s:
         s, pageno = self.get_id("pn",s)
       ia["pageno"] = pageno
-      m = re.match(r"\d+|[iIvVxXlLcCdDmM]+$", pageno)
-      if not m:
-        self.warn("Non-numeric, non-Roman page number {} specified: {}".format(pageno, s0))
+      if pageno:
+        m = re.match(r"\d+|[iIvVxXlLcCdDmM]+$", pageno)
+        if not m:
+          self.warn("Non-numeric, non-Roman page number {} specified: {}".format(pageno, s0))
 
       # caption model (ignored in HTML)
       if "cm=" in s:
