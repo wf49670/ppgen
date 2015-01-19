@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.45dSR2"  # 17-Jan-2015    Better detection of unmatched tags within .nf blocks
+VERSION="3.45e"  # 18-Jan-2015    Improve Roman numbered page number handling (links, upper-case)
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1198,6 +1198,7 @@ class Ppt(Book):
     # two forms: #17# and #The Encounter:ch01#
     text = "\n".join(self.wb)
     text = re.sub(r"#(\d+)#", r"\1", text)
+    text = re.sub(r"#([iIvVxXlLcCdDmM]+)#", r"\1", text) # don't forget about Roman numerals as page numbers
     text = re.sub(r"#(.*?):.*?#", r"\1", text)
     # if there is a named target, then somewhere there
     # is a <target id...> to remove in the text version
@@ -2745,11 +2746,13 @@ class Pph(Book):
 
     # protect PPer-supplied internal link information
     # two forms: #number# and #name:id-value#
+    # also #RomanNumerals#
     # for either, replace the # symbols with ⑲ so they can be found uniquely later
     # without interference from other HTML markup ppgen may have added
     i = 0
     while i < len(self.wb):
       self.wb[i] = re.sub(r"#(\d+)#", r"⑲\1⑲", self.wb[i])
+      self.wb[i] = re.sub(r"#([iIvVxXlLcCdDmM]+)#", r"⑲\1⑲", self.wb[i])
       self.wb[i] = re.sub(r"#(.*?:.*?)#", r"⑲\1⑲", self.wb[i])
       i += 1
 
@@ -2775,9 +2778,15 @@ class Pph(Book):
         if (self.pageno).isnumeric():
           self.pageno = "{}".format(int(self.pageno) + increment_amount)
         else: # Roman
+          ucRoman = False
+          if not (self.pageno).islower():
+            ucRoman = True # page number has at least 1 upper-case Roman numeral
+            self.pageno = (self.pageno).lower()
           n = self.fromRoman(self.pageno)
           n += increment_amount
           self.pageno = self.toRoman(n)
+          if ucRoman:
+            self.pageno = (self.pageno).upper()
         if self.pnshow or self.pnlink:
           self.wb[i] = "⑯{}⑰".format(self.pageno)
         else:
@@ -2788,6 +2797,9 @@ class Pph(Book):
       m = re.match(r"\.pn [\"']?(.+?)($|[\"'])", self.wb[i])
       if m:
         self.pageno = m.group(1)
+        m = re.match(r"\d+|[iIvVxXlLcCdDmM]+$", self.pageno)
+        if not m:
+          self.warn("Non-numeric, non-Roman page number {} specified: {}".format(self.pageno, self.wb[i]))
         if self.pnshow or self.pnlink:
           self.wb[i] = "⑯{}⑰".format(self.pageno)
         else:
@@ -2801,9 +2813,15 @@ class Pph(Book):
         if (self.pageno).isnumeric():
           self.pageno = "{}".format(int(self.pageno) + increment_amount)
         else: # Roman
+          ucRoman = False
+          if not (self.pageno).islower():
+            ucRoman = True # page number has at least 1 upper-case Roman numeral
+            self.pageno = (self.pageno).lower()
           n = self.fromRoman(self.pageno)
           n += increment_amount
           self.pageno = self.toRoman(n)
+          if ucRoman:
+            self.pageno = (self.pageno).upper()
         if self.pnshow or self.pnlink:
           self.wb[i] = re.sub(r"pn=\+\d+", "pn={}".format(self.pageno), self.wb[i])
         else:
@@ -2815,6 +2833,9 @@ class Pph(Book):
       m = re.match(r"\.h.*?pn=[\"']?(.+?)[\"']?($|/s)", self.wb[i])
       if m:
         self.pageno = m.group(1)
+        m = re.match(r"\d+|[iIvVxXlLcCdDmM]+$", self.pageno)
+        if not m:
+          self.warn("Non-numeric, non-Roman page number {} specified: {}".format(self.pageno, self.wb[i]))
         if not self.pnshow and not self.pnlink:
           self.wb[i] = re.sub(r"pn=[\"']?(.+?)[\"']?($|/s)", "", self.wb[i])
         i += 1
@@ -3256,6 +3277,7 @@ class Pph(Book):
 
     # internal page links
     # two forms: #17# and #The Encounter:ch01#
+    # also allow Roman numbered pages
     # which at this point are actually using ⑲ instead of the # signs
     for i in range(len(self.wb)):
 
@@ -3264,6 +3286,12 @@ class Pph(Book):
         s = "<a href='⫉Page_{0}'>{0}</a>".format(m.group(1)) # link to it
         self.wb[i] = re.sub(r"⑲(\d+?)⑲", s, self.wb[i], 1)
         m = re.search(r"⑲(\d+?)⑲", self.wb[i])
+
+      m = re.search(r"⑲([iIvVxXlLcCdDmM]+)⑲", self.wb[i]) # Roman numeral reference
+      while m:
+        s = "<a href='⫉Page_{0}'>{0}</a>".format(m.group(1)) # link to that
+        self.wb[i] = re.sub(r"⑲[iIvVxXlLcCdDmM]+⑲", s, self.wb[i], 1)
+        m = re.search(r"⑲([iIvVxXlLcCdDmM]+)⑲", self.wb[i])
 
       m = re.search(r"⑲(.*?):(.*?)⑲", self.wb[i]) # named reference
       while m:
@@ -4055,6 +4083,7 @@ class Pph(Book):
     #    "cj"     caption justification
     #    "id"     user-supplied id for image
     #    "alt"    alternate text for image
+    #    "pageno" page number
     #
     def parse_illo(s):
       s0 = s[:]  # original .il line
@@ -4144,6 +4173,9 @@ class Pph(Book):
       if "pn=" in s:
         s, pageno = self.get_id("pn",s)
       ia["pageno"] = pageno
+      m = re.match(r"\d+|[iIvVxXlLcCdDmM]+$", pageno)
+      if not m:
+        self.warn("Non-numeric, non-Roman page number {} specified: {}".format(pageno, s0))
 
       # caption model (ignored in HTML)
       if "cm=" in s:
