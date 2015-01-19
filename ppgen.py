@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.45cSR2"  # 10-Jan-2015    Allow specification of align= for .h1-.h6 commands
+VERSION="3.45dSR2"  # 17-Jan-2015    Better detection of unmatched tags within .nf blocks
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2988,6 +2988,7 @@ class Pph(Book):
           tagstack = []
           i += 1 # step inside the .nf block
           while i < len(self.wb) and not self.wb[i].startswith(".nf-"): # as long as we are in a .nf
+            tmpline = self.wb[i]
             if self.wb[i].startswith(".nf "):
               self.crash_w_context("nested no-fill block:", i)
             # ignore .bn lines; just pass them through
@@ -3004,6 +3005,8 @@ class Pph(Book):
             self.wb[i] = sstart + self.wb[i] # rewrite the line with new start
             for s in t: # we may have more tags on this line
               if not s.startswith("</"): # it is of form <..> an opening tag
+                if s in tagstack:
+                  self.warn("Nested {} tags in .nf block: {}".format(s, tmpline))
                 tagstack.append(s) # save it on the stack
               else:  # it is of form </..> a closing tag
                 tmp = re.sub("<\/", "<", s) # decide what its opening tag would be
@@ -3025,6 +3028,10 @@ class Pph(Book):
               send += closetag
             self.wb[i] = self.wb[i] + send
             i += 1
+          if len(tagstack):
+            self.warn("Unclosed tags in .nf block: {}".format(tagstack))
+            if 'd' in self.debug:
+              self.crash_w_context("Error context:", i)
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
