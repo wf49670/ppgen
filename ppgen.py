@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.45e"  # 18-Jan-2015    Improve Roman numbered page number handling (links, upper-case)
+VERSION="3.45eSR2"  # 18-Jan-2015    Improve Roman numbered page number handling (links, upper-case)
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
