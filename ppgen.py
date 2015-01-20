@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.45f"  # 20-Jan-2015    Error detection for .pm with too few arguments; also allow up to 99 arguments
+VERSION="3.46"  # 20-Jan-2015    Error detection for .pm with too few arguments; also allow up to 99 arguments
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -507,6 +507,7 @@ class Book(object):
       if keep:
         text.append(line)
     self.wb = text
+    text = []
 
     # suspense: mark for deletion Feb 2015
     say_bye = False
@@ -5240,6 +5241,8 @@ def main():
     print("creating HTML version")
     pph = Pph(args, "h")
     pph.run()
+
+  print("done.")
 
 if __name__ == '__main__':
     main()
