@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.45e2SR2"  # 18-Jan-2015    Improve Roman numbered page number handling (links, upper-case)
+VERSION="3.45fSR2"  # 20-Jan-2015    Error detection for .pm with too few arguments; also allow up to 99 arguments
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -689,12 +689,12 @@ class Book(object):
           self.crash_w_context("incorrect .cm command: model name missing.", i)
         del self.wb[i]
         t = []
-        while i < len(self.wb) and not self.wb[i].startswith(".cm"):  # accumulate statements into the model until we hit another .dm or a .dm-
+        while i < len(self.wb) and not self.wb[i].startswith(".cm"):  # accumulate statements into the model until we hit another .cm or a .cm-
           t.append(self.wb[i])
           del self.wb[i]
         if i < len(self.wb) and self.wb[i] == ".cm-":       # if we hit a .cm- then delete it and finalize the model
           del self.wb[i] # the closing .cm-
-        else:                                               # quit if we hit end-of-file or a .dm before finding the .dm- 
+        else:                                               # quit if we hit end-of-file or a .cm before finding the .cm-
           self.fatal("missing .cm- for model: " + model_name)
         # model is stored in t[]
         self.caption_model[model_name] = t
@@ -753,13 +753,19 @@ class Book(object):
         # t = self.macro[macroid].copy() # after 3.3 only
         # t = self.macro[macroid][:] # another way
         if not macroid in self.macro:
-          self.fatal("undefined macro: {}".format(macroid))
+          self.fatal("undefined macro {}: ".format(macroid, self.wb[i]))
         t = list(self.macro[macroid]) # all the lines in this macro as previously defined
         for j,line in enumerate(t): # for each line
-          m = re.search(r'\$(\d)', t[j]) # is there a substitution?
+          m = re.search(r'\$(\d{1,2})', t[j]) # is there a substitution?
           while m:
-            t[j] = re.sub(r'\$\d', tlex[int(m.group(1))+1], t[j], 1)
-            m = re.search(r'\$(\d)', t[j]) # another substitution on same line
+            pnum = int(m.group(1))
+            subst = r"\${}".format(pnum)
+            if pnum < len(tlex) - 1:
+              t[j] = re.sub(subst, tlex[pnum+1], t[j], 1)
+            else:
+              self.warn("Incorrect macro invocation (argument ${} missing): {}".format(pnum, self.wb[i]))
+              t[j] = re.sub(subst, "***missing***", t[j], 1)
+            m = re.search(r'\$(\d{1,2})', t[j]) # another substitution on same line
         self.wb[i:i+1] = t
         i -= 1
       i += 1
