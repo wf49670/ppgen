@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46"  # 20-Jan-2015    Error detection for .pm with too few arguments; also allow up to 99 arguments
+VERSION="3.46a"  # 21-Jan-2015    Don't let page numbers sink down into a .dv (treat as for .li)
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2765,6 +2765,12 @@ class Pph(Book):
             self.warn(".li encountered while placing page number: {}".format(pnum))
             self.wb.insert(i,"⑯{}⑰".format(pnum)) # insert page number before the .li
             i += 2 # bump past new page number line and the .li
+            found = True
+            continue
+          if self.wb[i].startswith(".dv"):
+            self.warn(".dv encountered while placing page number: {}".format(pnum))
+            self.wb.insert(i,"⑯{}⑰".format(pnum)) # insert page number before the .dv
+            i += 2 # bump past new page number line and the .dv
             found = True
             continue
           # it is possible to hit another pn match before finding a suitable home
