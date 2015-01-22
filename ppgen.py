@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.45f"  # 20-Jan-2015    Error detection for .pm with too few arguments; also allow up to 99 arguments
+VERSION="3.46aGreek1"  # 22-Jan-2015    Greek conversion
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -192,6 +192,359 @@ class Book(object):
      '\uFF5C':'|', '\uFF5D':'}', '\uFF5E':'~',
      '\u2042':'***'
     }
+
+  gk = [   
+     ('s($|\\W)', '\u03C2\\1'),  # final s.  Initial set of beta greek transformations
+     ('th', '\u03B8'),
+     ('ph', '\u03C6'),
+     ('T[Hh]', '\u0398'),
+     ('P[Hh]', '\u03A6'),
+     (r'u\\\+', '\u1FE2'),
+     ('u/\+', '\u1FE3'),
+     ('u~\+', '\u1FE7'),
+     ('u/\+', '\u03B0'),    # u/+ has two values?
+     (r'u\)\\', '\u1F52'),
+     (r'u\(\\', '\u1F53'),
+     ('u\)\/', '\u1F54'),
+     ('u\(\/', '\u1F55'),
+     ('u~\)', '\u1F56'),
+     ('u~\(', '\u1F57'),
+     (r'U\(\\', '\u1F5B'),
+     ('U\(\/', '\u1F5D'),
+     ('U~\(', '\u1F5F'),
+     ('u\+', '\u03CB'),
+     ('U\+', '\u03AB'),
+     ('u=', '\u1FE0'),
+     ('u_', '\u1FE1'),
+     ('r\)', '\u1FE4'),
+     ('r\(', '\u1FE5'),
+     ('u~', '\u1FE6'),
+     ('U=', '\u1FE8'),
+     ('U_', '\u1FE9'),
+     (r'U\\', '\u1FEA'),
+     ('U\/', '\u1FEB'),
+     (r'u\\', '\u1F7A'),
+     ('u\/', '\u1F7B'),
+     ('u\)', '\u1F50'),
+     ('u\(', '\u1F51'),
+     ('U\(', '\u1F59'),
+     ('\?', '\u037E'),
+     (';', '\u0387'),
+     (r'a\)\\\|', '\u1F82'), # grkbeta3
+     (r'a\(\\\|', '\u1F83'),
+     ('a\)/\|', '\u1F84'),
+     ('a\(/\|', '\u1F85'),
+     ('a~\)\|', '\u1F86'),
+     ('a~\(\|', '\u1F87'),
+     (r'A\)\\\|', '\u1F8A'),
+     (r'A\(\\\|', '\u1F8B'),
+     ('A\)/\|', '\u1F8C'),
+     ('A\(/\|', '\u1F8D'),
+     ('A~\)\|', '\u1F8E'),
+     ('A~\(\|', '\u1F8F'),
+     (r'ê\)\\\|', '\u1F92'),
+     (r'ê\(\\\|', '\u1F93'),
+     (r'ê\)/\|', '\u1F94'),
+     (r'ê\(/\|', '\u1F95'),
+     ('ê~\)\|', '\u1F96'),
+     ('ê~\(\|', '\u1F97'), 
+     (r'Ê\)\\\|', '\u1F9A'), 
+     (r'Ê\(\\\|', '\u1F9B'), 
+     ('Ê\)/\|', '\u1F9C'), 
+     ('Ê\(/\|', '\u1F9D'), 
+     ('Ê~\)\|', '\u1F9E'), 
+     ('Ê~\(\|', '\u1F9F'),
+     (r'ô\)\\\|', '\u1FA2'),
+     (r'ô\(\\\|', '\u1FA3'),
+     ('ô\)/\|', '\u1FA4'),
+     ('ô\(/\|', '\u1FA5'),
+     ('ô~\)\|', '\u1FA6'),
+     ('ô~\(\|', '\u1FA7'), 
+     (r'Ô\)\\\|', '\u1FAA'), 
+     (r'Ô\(\\\|', '\u1FAB'), 
+     ('Ô\)/\|', '\u1FAC'), 
+     ('Ô\(/\|', '\u1FAD'), 
+     ('Ô~\)\|', '\u1FAE'), 
+     ('Ô~\(\|', '\u1FAF'),
+     (r'a\)\\', '\u1F02'),  #grkbeta2
+     (r'a\(\\', '\u1F03'), 
+     ('a\)/', '\u1F04'),
+     ('a\(/', '\u1F05'),
+     ('a~\)', '\u1F06'),
+     ('a~\(', '\u1F07'),
+     (r'A\)\\', '\u1F0A'),
+     (r'A\(\\', '\u1F0B'),
+     ('A\)/', '\u1F0C'),
+     ('A\(/', '\u1F0D'),
+     ('A~\)', '\u1F0E'),
+     ('A~\(', '\u1F0F'),
+     (r'e\)\\', '\u1F12'),
+     (r'e\(\\', '\u1F13'),
+     ('e\)/', '\u1F14'),
+     ('e\(/', '\u1F15'),
+     (r'E\)\\', '\u1F1A'),
+     (r'E\(\\', '\u1F1B'),
+     ('E\)/', '\u1F1C'),
+     ('E\(/', '\u1F1D'),
+     (r'ê\)\\', '\u1F22'),
+     (r'ê\(\\', '\u1F23'),
+     ('ê\)/', '\u1F24'),
+     ('ê\(/', '\u1F25'),
+     ('ê~\)', '\u1F26'),
+     ('ê~\(', '\u1F27'), 
+     (r'Ê\)\\', '\u1F2A'), 
+     (r'Ê\(\\', '\u1F2B'), 
+     ('Ê\)/', '\u1F2C'), 
+     ('Ê\(/', '\u1F2D'), 
+     ('Ê~\)', '\u1F2E'), 
+     ('Ê~\(', '\u1F2F'),
+     (r'i\)\\', '\u1F32'),
+     (r'i\(\\', '\u1F33'),
+     ('i\)/', '\u1F34'),
+     ('i\(/', '\u1F35'),
+     ('i~\)', '\u1F36'),
+     ('i~\(', '\u1F37'),
+     (r'I\)\\', '\u1F3A'),
+     (r'I\(\\', '\u1F3B'),
+     ('I\)/', '\u1F3C'),
+     ('I\(/', '\u1F3D'),
+     ('I~\)', '\u1F3E'),
+     ('I~\(', '\u1F3F'),
+     (r'o\)\\', '\u1F42'),
+     (r'o\(\\', '\u1F43'),
+     ('o\)/', '\u1F44'),
+     ('o\(/', '\u1F45'),
+     (r'O\)\\', '\u1F4A'),
+     (r'O\(\\', '\u1F4B'),
+     ('O\)/', '\u1F4C'),
+     ('O\(/', '\u1F4D'),
+     (r'y\)\\', '\u1F52'),
+     (r'y\(\\', '\u1F53'),
+     ('y\)/', '\u1F54'),
+     ('y\(/', '\u1F55'),
+     ('y~\)', '\u1F56'),
+     ('y~\(', '\u1F57'),
+     (r'Y\(\\', '\u1F5B'),
+     ('Y\(/', '\u1F5D'),
+     ('Y~\(', '\u1F5F'),
+     (r'ô\)\\', '\u1F62'),
+     (r'ô\(\\', '\u1F63'),
+     ('ô\)/', '\u1F64'),
+     ('ô\(/', '\u1F65'),
+     ('ô~\)', '\u1F66'),
+     ('ô~\(', '\u1F67'), 
+     (r'Ô\)\\', '\u1F6A'), 
+     (r'Ô\(\\', '\u1F6B'), 
+     ('Ô\)/', '\u1F6C'), 
+     ('Ô\(/', '\u1F6D'), 
+     ('Ô~\)', '\u1F6E'), 
+     ('Ô~\(', '\u1F6F'),
+     ('a\)\|', '\u1F80'),
+     ('a\(\|', '\u1F81'),
+     ('A\)\|', '\u1F88'),
+     ('A\(\|', '\u1F89'),
+     ('ê\)\|', '\u1F90'),
+     ('ê\(\|', '\u1F91'), 
+     ('Ê\)\|', '\u1F98'), 
+     ('Ê\(\|', '\u1F99'),
+     ('ô\)\|', '\u1FA0'),
+     ('ô\(\|', '\u1FA1'), 
+     ('Ô\)\|', '\u1FA8'), 
+     ('Ô\(\|', '\u1FA9'),
+     (r'a\\\|', '\u1FB2'),
+     ('a/\|', '\u1FB4'),
+     ('a~\|', '\u1FB7'),
+     (r'ê\\\|', '\u1FC2'),
+     ('ê/\|', '\u1FC4'),
+     ('ê~\|', '\u1FC7'),
+     (r'i\\\+', '\u1FD2'),
+     ('i/\+', '\u1FD3'),
+     ('i~\+', '\u1FD7'),
+     (r'y\\\+', '\u1FE2'),
+     ('y/\+', '\u1FE3'),
+     ('y~\+', '\u1FE7'),
+     (r'ô\\\|', '\u1FF2'),
+     ('ô/\|', '\u1FF4'),
+     ('ô~\|', '\u1FF7'),
+     ('i/\+', '\u0390'),
+     ('y/\+', '\u03B0'),
+     ('a\)', '\u1F00'),  #grkbeta1
+     ('a\(', '\u1F01'),
+     ('A\)', '\u1F08'),
+     ('A\(', '\u1F09'),
+     (r'O\\', '\u1FF8'),
+     ('O/', '\u1FF9'), 
+     (r'Ô\\', '\u1FFA'), 
+     ('Ô/', '\u1FFB'), 
+     ('Ô\|', '\u1FFC'),
+     ('e\)', '\u1F10'),
+     ('e\(', '\u1F11'),
+     ('E\)', '\u1F18'),
+     ('E\(', '\u1F19'),
+     ('ê\)', '\u1F20'),
+     ('ê\(', '\u1F21'), 
+     ('Ê\)', '\u1F28'), 
+     ('Ê\(', '\u1F29'),
+     ('i\)', '\u1F30'),
+     ('i\(', '\u1F31'),
+     ('I\)', '\u1F38'),
+     ('I\(', '\u1F39'),
+     ('o\)', '\u1F40'),
+     ('o\(', '\u1F41'),
+     ('O\)', '\u1F48'),
+     ('O\(', '\u1F49'),
+     ('y\)', '\u1F50'),
+     ('y\(', '\u1F51'),
+     ('Y\(', '\u1F59'),
+     ('ô\)', '\u1F60'),
+     ('ô\(', '\u1F61'), 
+     ('Ô\)', '\u1F68'), 
+     ('Ô\(', '\u1F69'),
+     (r'a\\', '\u1F70'),
+     ('a/', '\u1F71'),
+     (r'e\\', '\u1F72'),
+     ('e/', '\u1F73'),
+     (r'ê\\', '\u1F74'),
+     ('ê/', '\u1F75'),
+     (r'i\\', '\u1F76'),
+     ('i/', '\u1F77'),
+     (r'o\\', '\u1F78'),
+     ('o/', '\u1F79'),
+     (r'y\\', '\u1F7A'),
+     ('y/', '\u1F7B'),
+     (r'ô\\', '\u1F7C'),
+     ('ô/', '\u1F7D'),
+     ('a=', '\u1FB0'),
+     ('a_', '\u1FB1'),
+     ('a\|', '\u1FB3'),
+     ('a~', '\u1FB6'),
+     ('A=', '\u1FB8'),
+     ('A_', '\u1FB9'),
+     (r'A\\', '\u1FBA'),
+     ('A/', '\u1FBB'),
+     ('A\|', '\u1FBC'),
+     ('ê\|', '\u1FC3'),
+     ('ê~', '\u1FC6'),
+     (r'E\\', '\u1FC8'),
+     ('E/', '\u1FC9'), 
+     (r'Ê\\', '\u1FCA'), 
+     ('Ê/', '\u1FCB'), 
+     ('Ê\|', '\u1FCC'),
+     ('i=', '\u1FD0'),
+     ('i_', '\u1FD1'),
+     ('i~', '\u1FD6'),
+     ('I=', '\u1FD8'),
+     ('I_', '\u1FD9'),
+     (r'I\\', '\u1FDA'),
+     ('I/', '\u1FDB'),
+     ('y=', '\u1FE0'),
+     ('y_', '\u1FE1'),
+     ('r\)', '\u1FE4'),
+     ('r\(', '\u1FE5'),
+     ('y~', '\u1FE6'),
+     ('Y=', '\u1FE8'),
+     ('Y_', '\u1FE9'),
+     (r'Y\\', '\u1FEA'),
+     ('Y/', '\u1FEB'),
+     ('R\(', '\u1FEC'),
+     ('ô~', '\u1FF6'),
+     ('ô\|', '\u1FF3'),
+     ('I\+', '\u03AA'),
+     ('Y\+', '\u03AB'),
+     ('i\+', '\u03CA'),
+     ('y\+', '\u03CB'),
+     ('\*#1', '\u03DE'),
+     ('#1', '\u03DE'),
+     ('\*#2', '\u03DA'),
+     ('#2', '\u03DB'),
+     ('\*#3', '\u03D8'),
+     ('#3', '\u03D9'),
+     ('\*#5', '\u03E0'),
+     ('#5', '\u03E1'),
+     ('#6', '\u20EF'),
+     ('#10', '\u03FD'),
+     ('#11', '\u03FF'),
+     ('#13', '\u203B'),
+     ('#14', '\u2E16'),
+     ('#16', '\u03FE'),
+     ('#55', '\u0259'),
+     ('#73', '\u205A'),
+     ('#74', '\u205D'),
+     ('th', '\u03B8'),  # basic Greek transformations
+     ('nch', '\u03B3\u03C7'),
+     ('ch', '\u03C7'),
+     ('ph', '\u03C6'),
+     ('C[Hh]', '\u03A7'),
+     ('T[Hh]', '\u0398'),
+     ('P[Hh]', '\u03A6'),
+     ('ng', '\u03B3'),
+     ('nk', '\u03B3'),
+     ('nx', '\u03B3'),
+     ('rh', '\u1FE5'),
+     ('ps', '\u03C8'),
+     ('ha', '\u1F01'),
+     ('he', '\u1F11'),
+     ('hê', '\u1F21'),
+     ('hi', '\u1F31'),
+     ('ho', '\u1F41'),
+     ('hy', '\u1F51'),
+     ('hô', '\u1F61'),
+     ('ou', '\u03BF\u03C5'),
+     ('P[Ss]', '\u03A8'),
+     ('H[Aa]', '\u1F09'),
+     ('H[Ee]', '\u1F19'), 
+     ('HÊ|Hê', '\u1F29'),
+     ('H[Ii]', '\u1F39'),
+     ('H[Oo]', '\u1F49'),
+     ('H[Yy]', '\u1F59'), 
+     ('HÔ|Hô', '\u1F69'),
+     ('A', '\u0391'),
+     ('a', '\u03B1'),
+     ('B', '\u0392'),
+     ('b', '\u03B2'),
+     ('G', '\u0393'),
+     ('g', '\u03B3'),
+     ('D', '\u0394'),
+     ('d', '\u03B4'),
+     ('E', '\u0395'),
+     ('e', '\u03B5'),
+     ('Z', '\u0396'),
+     ('z', '\u03B6'), 
+     ('Ê', '\u0397'),
+     ('ê', '\u03B7'),
+     ('I', '\u0399'),
+     ('i', '\u03B9'),
+     ('K', '\u039A'),
+     ('k', '\u03BA'),
+     ('L', '\u039B'),
+     ('l', '\u03BB'),
+     ('M', '\u039C'),
+     ('m', '\u03BC'),
+     ('N', '\u039D'),
+     ('n', '\u03BD'),
+     ('X', '\u039E'),
+     ('x', '\u03BE'),
+     ('O', '\u039F'),
+     ('o', '\u03BF'),
+     ('P', '\u03A0'),
+     ('p', '\u03C0'),
+     ('R', '\u03A1'),
+     ('r', '\u03C1'),
+     ('S', '\u03A3'),
+     ('s', '\u03C3'),
+     ('T', '\u03A4'),
+     ('t', '\u03C4'),
+     ('Y', '\u03A5'),
+     ('y', '\u03C5'),
+     ('U', '\u03A5'),
+     ('u', '\u03C5'), 
+     ('Ô', '\u03A9'),
+     ('ô', '\u03C9'),
+     ('\?', '\u037E'),
+     (';', '\u0387'),
+     ('w', '\u03DD'),
+     ('W', '\u03DC'),
+    ]
     
   def __init__(self, args, renc):
     del self.wb[:]
@@ -236,21 +589,21 @@ class Book(object):
     m = re.search(r"{}='(.*?)'".format(tgt), attr)  # single quotes
     if m:
       the_id = m.group(1)
-      attr = re.sub(m.group(0), "", attr)
+      attr = re.sub(re.escape(m.group(0)), "", attr)
       done = True
 
     if not done:
       m = re.search(r"{}=\"(.*?)\"".format(tgt), attr)  # double quotes
       if m:
         the_id = m.group(1)
-        attr = re.sub(m.group(0), "", attr)
+        attr = re.sub(re.escape(m.group(0)), "", attr)
         done = True
 
     if not done:
       m = re.search(r"{}=(.*?)($|[ >])".format(tgt), attr)  # no quotes
       if m:
         the_id = m.group(1)
-        attr = re.sub(m.group(0), "", attr)
+        attr = re.sub(re.escape(m.group(0)), "", attr)
         done = True
 
     # if the user was looking for an "id-", then check it.
@@ -523,6 +876,37 @@ class Book(object):
         say_bye = True
     if say_bye:
         self.fatal("misformatted closing tags")
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # process [Greek: ...] in UTF-8 output if requested to via .gk command
+    # character mappings are from the UTF-8 representation to Latin-1
+    i = 0
+    gk_requested = False
+    while i < len(self.wb) and not gk_requested:
+      if self.wb[i].startswith(".gk"):###
+        pre=""
+        suf=""
+        if "pre=" in self.wb[i]:
+          self.wb[i], pre = self.get_id("pre", self.wb[i])
+        if "suf=" in self.wb[i]:
+          self.wb[i], suf = self.get_id("suf", self.wb[i])
+        del self.wb[i]
+        gk_requested = True
+      i += 1
+    if gk_requested and (self.renc == "u" or self.renc == "h"):
+      text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
+      gksearch = re.compile(r"(.*?)\[Greek: (.*?)](.*)", re.DOTALL)
+      m = gksearch.search(text)
+      while m:
+        text1 = m.group(1)
+        gkstring = m.group(2)
+        text3 = m.group(3)
+        for s in self.gk:
+          gkstring = re.sub(s[0], s[1], gkstring)
+        text = text1 + pre + gkstring + suf + text3
+        m = gksearch.search(text)
+
+      self.wb = text.splitlines()
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # process character mappings
@@ -2764,6 +3148,12 @@ class Pph(Book):
             self.warn(".li encountered while placing page number: {}".format(pnum))
             self.wb.insert(i,"⑯{}⑰".format(pnum)) # insert page number before the .li
             i += 2 # bump past new page number line and the .li
+            found = True
+            continue
+          if self.wb[i].startswith(".dv"):
+            self.warn(".dv encountered while placing page number: {}".format(pnum))
+            self.wb.insert(i,"⑯{}⑰".format(pnum)) # insert page number before the .dv
+            i += 2 # bump past new page number line and the .dv
             found = True
             continue
           # it is possible to hit another pn match before finding a suitable home
