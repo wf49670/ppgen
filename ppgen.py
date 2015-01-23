@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46aGreek1"  # 22-Jan-2015    Greek conversion
+VERSION="3.46aGreek2"  # 22-Jan-2015    Greek conversion
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -822,6 +822,18 @@ class Book(object):
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
       del(self.wb[self.cl])
 
+  def gkrepl(self, gkmatch):
+    gkstring = gkmatch.group(1)
+    for s in self.gk:
+      gkstring = re.sub(s[0], s[1], gkstring)
+    gkorigb = ""
+    gkoriga = ""
+    if self.gkkeep.lower().startswith("b"): # original before?
+      gkorigb = gkmatch.group(0) + " "
+    elif self.gkkeep.lower().startswith("a"): # original after?
+      gkoriga = " " + gkmatch.group(0)
+    return gkorigb + self.gkpre + gkstring + self.gksuf + gkoriga
+
   def preProcessCommon(self):
 
     def pushk(s, i):
@@ -884,27 +896,21 @@ class Book(object):
     gk_requested = False
     while i < len(self.wb) and not gk_requested:
       if self.wb[i].startswith(".gk"):###
-        pre=""
-        suf=""
+        self.gkpre = ""
+        self.gksuf = ""
+        self.gkkeep = "n"
         if "pre=" in self.wb[i]:
-          self.wb[i], pre = self.get_id("pre", self.wb[i])
+          self.wb[i], self.gkpre = self.get_id("pre", self.wb[i])
         if "suf=" in self.wb[i]:
-          self.wb[i], suf = self.get_id("suf", self.wb[i])
+          self.wb[i], self.gksuf = self.get_id("suf", self.wb[i])
+        if "keep=" in self.wb[i]:
+          self.wb[i], self.gkkeep = self.get_id("keep", self.wb[i])
         del self.wb[i]
         gk_requested = True
       i += 1
     if gk_requested and (self.renc == "u" or self.renc == "h"):
       text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
-      gksearch = re.compile(r"(.*?)\[Greek: (.*?)](.*)", re.DOTALL)
-      m = gksearch.search(text)
-      while m:
-        text1 = m.group(1)
-        gkstring = m.group(2)
-        text3 = m.group(3)
-        for s in self.gk:
-          gkstring = re.sub(s[0], s[1], gkstring)
-        text = text1 + pre + gkstring + suf + text3
-        m = gksearch.search(text)
+      text = re.sub(r"\[Greek: (.*?)]", self.gkrepl, text, flags=re.DOTALL)
 
       self.wb = text.splitlines()
 
