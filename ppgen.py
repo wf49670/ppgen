@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46aGreek2"  # 22-Jan-2015    Greek conversion
+VERSION="3.46aGreek3"  # 23-Jan-2015    Greek conversion
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -193,8 +193,12 @@ class Book(object):
      '\u2042':'***'
     }
 
-  gk = [   
-     ('s($|\\W)', '\u03C2\\1'),  # final s.  Initial set of beta greek transformations
+  gk = [
+     ('^s\'', '\u03C3\''),             # handle s' as regular sigma as the first characters of the string
+     ('([^Pp])s\'', '\\1\u03C3\''),    # handle s' as regular sigma elsewhere in string
+     ('^s($|\\W)', '\u03C2\\1'),       # handle solo s at start of string as final sigma
+     ('([^Pp])s($|\\W)', '\\1\u03C2\\2'),  # handle ending s elsewhere in string as final sigma
+     #('s($|\\W)', '\u03C2\\1'),  # final s
      ('th', '\u03B8'),
      ('ph', '\u03C6'),
      ('T[Hh]', '\u0398'),
@@ -477,9 +481,9 @@ class Book(object):
      ('C[Hh]', '\u03A7'),
      ('T[Hh]', '\u0398'),
      ('P[Hh]', '\u03A6'),
-     ('ng', '\u03B3'),
-     ('nk', '\u03B3'),
-     ('nx', '\u03B3'),
+     ('ng', '\u03B3\u03B3'),
+     ('nk', '\u03B3\u03BA'),
+     ('nx', '\u03B3\u03BE'),
      ('rh', '\u1FE5'),
      ('ps', '\u03C8'),
      ('ha', '\u1F01'),
@@ -822,18 +826,6 @@ class Book(object):
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
       del(self.wb[self.cl])
 
-  def gkrepl(self, gkmatch):
-    gkstring = gkmatch.group(1)
-    for s in self.gk:
-      gkstring = re.sub(s[0], s[1], gkstring)
-    gkorigb = ""
-    gkoriga = ""
-    if self.gkkeep.lower().startswith("b"): # original before?
-      gkorigb = gkmatch.group(0) + " "
-    elif self.gkkeep.lower().startswith("a"): # original after?
-      gkoriga = " " + gkmatch.group(0)
-    return gkorigb + self.gkpre + gkstring + self.gksuf + gkoriga
-
   def preProcessCommon(self):
 
     def pushk(s, i):
@@ -842,6 +834,21 @@ class Book(object):
     def popk():
       t = self.nfstack.pop() # pops a tuple
       return t
+
+    def gkrepl(gkmatch):
+      gkstring = gkmatch.group(1)
+      for s in self.gk:
+        gkstring = re.sub(s[0], s[1], gkstring)
+      gkorigb = ""
+      gkoriga = ""
+      if self.gkkeep.lower().startswith("b"): # original before?
+        gkorigb = gkmatch.group(0) + " "
+      elif self.gkkeep.lower().startswith("a"): # original after?
+        gkoriga = " " + gkmatch.group(0)
+      gkfull = gkorigb + self.gkpre + gkstring + self.gksuf + gkoriga
+      gkfull = gkfull.replace(r"\|", "⑩") # temporarily protect \| and \(space)
+      gkfull = gkfull.replace(r"\ ", "⑮")
+      return gkfull
 
     # if source file is UTF-8 and requested encoding is Latin-1, down-convert
     if self.encoding == "utf_8" and self.renc == "l":
@@ -901,8 +908,10 @@ class Book(object):
         self.gkkeep = "n"
         if "pre=" in self.wb[i]:
           self.wb[i], self.gkpre = self.get_id("pre", self.wb[i])
+          self.gkpre = re.sub(r"\\n", "\n", self.gkpre)
         if "suf=" in self.wb[i]:
           self.wb[i], self.gksuf = self.get_id("suf", self.wb[i])
+          self.gksuf = re.sub(r"\\n", "\n", self.gksuf)
         if "keep=" in self.wb[i]:
           self.wb[i], self.gkkeep = self.get_id("keep", self.wb[i])
         del self.wb[i]
@@ -910,7 +919,7 @@ class Book(object):
       i += 1
     if gk_requested and (self.renc == "u" or self.renc == "h"):
       text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
-      text = re.sub(r"\[Greek: (.*?)]", self.gkrepl, text, flags=re.DOTALL)
+      text = re.sub(r"\[Greek: (.*?)]", gkrepl, text, flags=re.DOTALL)
 
       self.wb = text.splitlines()
 
@@ -1023,6 +1032,11 @@ class Book(object):
       self.wb[i] = self.wb[i].replace(r"\&", "ⓣ") # zero space
       self.wb[i] = self.wb[i].replace(r"\^", "ⓤ") # thin space (after italics)
       self.wb[i] = self.wb[i].replace(r"\|", "ⓥ") # thick space (between ellipsis dots)
+
+      # unprotect temporarily protected characters from Greek strings
+      self.wb[i] = self.wb[i].replace("⑩", r"\|") # restore temporarily protected \| and \(space)
+      self.wb[i] = self.wb[i].replace("⑮", r"\ ")
+
       # special characters
       # leave alone if in literal block (correct way, not yet implemented)
       # map &nbsp; to non-breaking space
