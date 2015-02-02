@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46bGreeke"  # 1-Feb-2015    Greek conversion + diacritic conversion
+VERSION="3.46cGreeke"  # 2-Feb-2015    Greek conversion + diacritic conversion
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1937,6 +1937,7 @@ class Book(object):
       self.wb[i] = self.wb[i].replace(r"\[", "③")
       self.wb[i] = self.wb[i].replace(r"\]", "④")
       self.wb[i] = self.wb[i].replace(r"\<", "⑤")
+      self.wb[i] = self.wb[i].replace(r"\>", "⑳")
       self.wb[i] = self.wb[i].replace(r"\:", "⑥")
       self.wb[i] = self.wb[i].replace(r"\-", "⑨")
       # spacing
@@ -2702,6 +2703,7 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("③", "[")
       self.eb[i] = self.eb[i].replace("④", "]")
       self.eb[i] = self.eb[i].replace("⑤", "<")
+      self.eb[i] = self.eb[i].replace("⑳", ">")
       self.eb[i] = self.eb[i].replace("⑥", ":")
       self.eb[i] = self.eb[i].replace("⑨", "-")
       # text space replacement
@@ -4032,7 +4034,7 @@ class Pph(Book):
   # of letters, digits ([0-9]), hyphens ("-"), underscores ("_"), colons (":"), and periods (".").
   def checkId(self, s):
     if not re.match(r"[A-Za-z][A-Za-z0-9\-_\:\.]*", s):
-      self.fatal("illegal identifier: {}".format(s))
+      self.warn("illegal identifier: {}".format(s))
 
   # -------------------------------------------------------------------------------------
   # preprocess working buffer (HTML)
@@ -4290,14 +4292,17 @@ class Pph(Book):
         m = re.search("<target id='(.*?)'>", self.wb[i])
         while m:
           self.wb[i] = re.sub("<target id='(.*?)'>", "<a id='{0}' name='{0}'></a>".format(m.group(1)), self.wb[i], 1)
+          self.checkId(m.group(1))
           m = re.search("<target id='(.*?)'>", self.wb[i])
         m = re.search("<target id=\"(.*?)\">", self.wb[i])
         while m:
           self.wb[i] = re.sub("<target id=\"(.*?)\">", "<a id='{0}' name='{}'></a>".format(m.group(1)), self.wb[i], 1)
+          self.checkId(m.group(1))
           m = re.search("<target id=\"(.*?)\">", self.wb[i])
         m = re.search("<target id=(.*?)>", self.wb[i])
         while m:
           self.wb[i] = re.sub("<target id=(.*?)>", "<a id='{0}' name='{0}'></a>".format(m.group(1)), self.wb[i], 1)
+          self.checkId(m.group(1))
           m = re.search("<target id=(.*?)>", self.wb[i])
       i += 1
 
@@ -4519,6 +4524,7 @@ class Pph(Book):
     text = re.sub("③", "[", text)
     text = re.sub("④", "]", text)
     text = re.sub("⑤", "&lt;", text)
+    text = re.sub("⑳", "&gt;", text)
     # text space replacement
     text = re.sub("ⓢ", "&nbsp;", text) # non-breaking space
     text = re.sub("ⓣ", "&#8203;", text) # zero space
@@ -4598,6 +4604,7 @@ class Pph(Book):
       m = re.search(r"⑲(.*?):(.*?)⑲", self.wb[i]) # named reference
       while m:
         s = "<a href='⫉{}'>{}</a>".format(m.group(2), m.group(1)) # link to that
+        self.checkId(m.group(2))
         self.wb[i] = re.sub(r"⑲(.*?):(.*?)⑲", s, self.wb[i], 1)
         m = re.search(r"⑲(.*?):(.*?)⑲", self.wb[i])
 
@@ -6603,10 +6610,10 @@ class Pph(Book):
     if misscount > 0:
       self.warn("missing link target(s):")
       for w in rb:
-        print(w)
+        print(self.umap(w))
 
-  def doUdiv(self):
-    print(self.wb[self.cl])
+  #def doUdiv(self):
+  #  print(self.wb[self.cl])
 
   def process(self):
 
