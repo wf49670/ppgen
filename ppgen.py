@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46c"  # 2-Feb-2015    Syntax check more ID= values entered by the user; allow escaped > (\>)
+VERSION="3.46d"  # 2-Feb-2015    Improve link checking, and link checking messages
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -5286,7 +5286,7 @@ class Pph(Book):
         t = m.group(1)
         if t in links:
           if not "Page" in t:
-            rb.append("duplicate link: {}".format(t))
+            rb.append("  Warning: duplicate link: {}".format(t))
         else:
           links[t] = 1
     # rb.append("{} links".format(len(links)))
@@ -5298,7 +5298,7 @@ class Pph(Book):
       while m:
         t = m.group(1)
         if t in targets:
-          rb.append("ERROR duplicate target: {}".format(t))
+          rb.append("  Error: duplicate target: {}".format(t))
         else:
           targets[t] = 1
         line = re.sub(r"id=[\"'](.+?)[\"']","",line,1)
@@ -5311,15 +5311,15 @@ class Pph(Book):
     for key in links:
       if key not in targets:
         misscount += 1
-        rb.append("Error: missing target: {}".format(key))
+        rb.append("  Error: missing target: {}".format(key))
 
-    # for key in targets:
-    #  if key not in links:
-    #    if not "Page" in key:
-    #      rb.append("warning: {} unused".format(key))
+    for key in targets:
+     if key not in links:
+       if not "Page" in key:
+         rb.append("  Warning: unused target: {} ".format(key))
 
-    if misscount > 0:
-      self.warn("missing link target(s):")
+    if len(rb):
+      self.warn("Link and Target problems:")
       for w in rb:
         print(self.umap(w))
 
