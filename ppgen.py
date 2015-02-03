@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46dGreeke"  # 2-Feb-2015    Greek conversion + diacritic conversion
+VERSION="3.46dGreekf"  # 3-Feb-2015    Greek conversion + diacritic conversion
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1534,7 +1534,7 @@ class Book(object):
       gkstring = gkmatch.group(1)
       if len(self.gk_user) > 0:   # if PPer provided any additional Greek mappings apply them first
         for s in self.gk_user:
-          gkstring = re.sub(re.escape(s[0]), s[1], gkstring)
+          gkstring = re.sub(re.escape(s[0]), re.escape(s[1]), gkstring)
       for s in self.gk:
         gkstring = re.sub(s[0], s[1], gkstring)
       gkorigb = ""
@@ -1743,7 +1743,17 @@ class Book(object):
             rep = bytes(m.group(0),"utf-8").decode('unicode-escape')
             diaout = re.sub(re.escape(found), rep, diaout)
             m = re.search(r"\\u[0-9a-fA-F]{4}", diaout)
-          self.diacritics_user.append((diain, diaout))
+          if diaout != "ignore":
+            self.diacritics_user.append((diain, diaout))
+          else:
+            ignored = False
+            for s in self.diacritics:
+              if s[0] == diain:
+                self.diacritics.remove(s)
+                ignored = True
+                break
+            if not ignored:
+              self.warn("No builtin diacritic {} to ignore: {}".format(diain, orig))
         continue
       i += 1
     if dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
@@ -1751,10 +1761,10 @@ class Book(object):
       if not diatest:
         if len(self.diacritics_user) > 0:
           for s in self.diacritics_user:
-            text, count = re.subn(re.escape(s[0]), s[1], text)
+            text, count = re.subn(re.escape(s[0]), re.escape(s[1]), text)
             print(self.umap("Replaced PPer-provided diacritic {} {} times.".format(s[0], count)))
         for s in self.diacritics:
-          text, count = re.subn(re.escape(s[0]), s[1], text)
+          text, count = re.subn(re.escape(s[0]), re.escape(s[1]), text)
           if count > 0:
             print("Replaced {} {} times.".format(s[0], count))
       else:
@@ -1767,7 +1777,7 @@ class Book(object):
               diaoriga = s[0]
               diaorigb = ""
             repl = diaorigb + diapre + s[1] + diasuf + diaoriga
-            text, count = re.subn(re.escape(s[0]), repl, text)
+            text, count = re.subn(re.escape(s[0]), re.escape(repl), text)
             print(self.umap("Replaced PPer-provided diacritic {} {} times.".format(s[0], count)))
         for s in self.diacritics:
           if diakeep.lower().startswith("b"): # original before?
@@ -1777,7 +1787,7 @@ class Book(object):
             diaoriga = s[0]
             diaorigb = ""
           repl = diaorigb + diapre + s[1] + diasuf + diaoriga
-          text, count = re.subn(re.escape(s[0]), repl, text)
+          text, count = re.subn(re.escape(s[0]), re.escape(repl), text)
           if count > 0:
             print("Replaced {} {} times.".format(s[0], count))
       if self.log:
@@ -1785,7 +1795,7 @@ class Book(object):
         text2 = text
         m = re.search(r"\[([^*\]].{1,7}?)]", text2)
         while m:
-          matched = m.group(0)###
+          matched = m.group(0)
           inner = m.group(1)
           text2, count = re.subn(re.escape(m.group(0)), "", text2)
           if count > 0 and not inner.isdigit():
