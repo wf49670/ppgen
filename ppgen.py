@@ -15,7 +15,8 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46dGreekf"  # 3-Feb-2015    Greek conversion + diacritic conversion
+VERSION="3.46eGreekf"  # 3-Feb-2015    Greek conversion + diacritic conversion
+
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1602,23 +1603,35 @@ class Book(object):
       keep = True
       for line in self.wb:
 
-        m = re.match(r"\.if (\w)", line)  # start of conditional
-        if m:
-          keep = False
-          if m.group(1) == 't' and self.renc in "lut":
-            keep = True
-          if m.group(1) == 'h' and self.renc == "h":
-            keep = True
-          continue
-
-        if line == ".if-":
+      m = re.match(r"\.if (\w)", line)  # start of conditional
+      if m:
+        keep = False
+        keepType = m.group(1)
+        if m.group(1) == 't' and self.renc in "lut":
           keep = True
-          continue
+        elif m.group(1) == 'h' and self.renc == "h":
+          keep = True
+        continue
 
-        if keep:
-          text.append(line)
-      self.wb = text
-      text = []
+      if line == ".if-":
+        keep = True
+        keepType = None
+        continue
+
+      if keep:
+        text.append(line)
+      elif line.startswith(".sr"):
+        m2 = re.match(r"\.sr (\w+)", line)
+        if m2:
+          if keepType == 't' and "h" in m2.group(1):
+            self.warn(".sr command for HTML skipped by .if t: {}".format(self.umap(line)))
+          elif keepType == 'h':
+            m3 = re.match(r"h*[ult]", m2.group(1))
+            if m3:
+              self.warn(".sr command for text skipped by .if h: {}".format(self.umap(line)))
+
+    self.wb = text
+    text = []
 
     # suspense: mark for deletion Feb 2015
     say_bye = False
@@ -3904,6 +3917,7 @@ class Pph(Book):
       self.cvglist()
     self.dstfile = re.sub("-src", "", self.srcfile.split('.')[0]) + ".html"
     self.css = self.userCSS()
+    self.linkinfo = self.linkMsgs()
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # internal class to manage CSS as it is added at runtime
@@ -3923,6 +3937,26 @@ class Pph(Book):
       keys.sort()
       for s in keys:
         t.append("      " + s[6:])
+      return t
+
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  # internal class to manage link-check error/warning messages
+  class linkMsgs(object):
+    def __init__(self):
+      self.linkmsg = {}
+
+    def add(self, s):
+      if s in self.linkmsg:
+        self.linkmsg[s] += 1
+      else:
+        self.linkmsg[s] = 1
+
+    def show(self):
+      t = []
+      keys = list(self.linkmsg.keys())
+      keys.sort()
+      for s in keys:
+        t.append("  " + s[3:])
       return t
 
   # -------------------------------------------------------------------------------------
@@ -6581,14 +6615,25 @@ class Pph(Book):
     # build links
     for i,line in enumerate(self.wb):
       m = re.search(r"href=[\"']#(.*?)[\"']", line)
-      if m:
+      while m:            # could have more than one in a line
         t = m.group(1)
         if t in links:
           if not "Page" in t:
-            rb.append("  Warning: duplicate link: {}".format(t))
+            self.linkinfo.add("[6] ")
+            self.linkinfo.add("[6]Note: duplicate link: {}".format(t))
         else:
           links[t] = 1
-    # rb.append("{} links".format(len(links)))
+        line = re.sub(re.escape(m.group(0)), "", line, 1) # remove the one we found
+        m = re.search(r"href=[\"']#(.*?)[\"']", line)  # look for another one
+
+      m = re.search(r"href=[\"']([^#].*?)[\"']", line) # now look for external links that we can't check
+      while m:            # could have more than one in a line
+        t = m.group(1)
+        if not t.startswith("images/"):    # don't worry about links to our image files
+          self.linkinfo.add("[4] ")
+          self.linkinfo.add("[4]Warning: cannot validate external link: {}".format(t))
+        line = re.sub(re.escape(m.group(0)), "", line, 1) # remove the one we found
+        m = re.search(r"href=[\"']([^#].*?)[\"']", line)  # look for another one
 
     # build targets
     for i,line in enumerate(self.wb):
@@ -6597,28 +6642,28 @@ class Pph(Book):
       while m:
         t = m.group(1)
         if t in targets:
-          rb.append("  Error: duplicate target: {}".format(t))
+          self.linkinfo.add("[3] ")
+          self.linkinfo.add("[3]Error: duplicate target: {}".format(t))
         else:
           targets[t] = 1
-        line = re.sub(r"id=[\"'](.+?)[\"']","",line,1)
+        line = re.sub(re.escape(m.group(0)), "", line, 1)
         m = re.search(r"id=[\"'](.+?)[\"']", line)
 
-    # rb.append("{} targets".format(len(targets)))
-
     # match links to targets
-    misscount = 0
     for key in links:
       if key not in targets:
-        misscount += 1
-        rb.append("  Error: missing target: {}".format(key))
+        self.linkinfo.add("[2] ")
+        self.linkinfo.add("[2]Error: missing target: {}".format(key))
 
     for key in targets:
      if key not in links:
        if not "Page" in key:
-         rb.append("  Warning: unused target: {} ".format(key))
+         self.linkinfo.add("[5] ")
+         self.linkinfo.add("[5]Warning: unused target: {} ".format(key))
 
+    rb = self.linkinfo.show()
     if len(rb):
-      self.warn("Link and Target problems:")
+      self.warn("Possible link and target problems:")
       for w in rb:
         print(self.umap(w))
 
