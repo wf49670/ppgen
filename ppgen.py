@@ -1535,9 +1535,12 @@ class Book(object):
       gkstring = gkmatch.group(1)
       if len(self.gk_user) > 0:   # if PPer provided any additional Greek mappings apply them first
         for s in self.gk_user:
-          gkstring = re.sub(re.escape(s[0]), re.escape(s[1]), gkstring)
+          gkstring, count = re.subn(re.escape(s[0]), re.escape(s[1]), gkstring)
+          print(self.umap("Replaced PPer-provided Greek character {} {} times.".format(s[0], count)))
       for s in self.gk:
-        gkstring = re.sub(s[0], s[1], gkstring)
+        gkstring, count = re.subn(s[0], s[1], gkstring)
+        if count > 0:
+          print("Replaced Greek {} {} times.".format(s[0], count))
       gkorigb = ""
       gkoriga = ""
       if self.gkkeep.lower().startswith("b"): # original before?
@@ -1603,51 +1606,35 @@ class Book(object):
       keep = True
       for line in self.wb:
 
-      m = re.match(r"\.if (\w)", line)  # start of conditional
-      if m:
-        keep = False
-        keepType = m.group(1)
-        if m.group(1) == 't' and self.renc in "lut":
-          keep = True
-        elif m.group(1) == 'h' and self.renc == "h":
-          keep = True
-        continue
+        m = re.match(r"\.if (\w)", line)  # start of conditional
+        if m:
+          keep = False
+          keepType = m.group(1)
+          if m.group(1) == 't' and self.renc in "lut":
+            keep = True
+          elif m.group(1) == 'h' and self.renc == "h":
+            keep = True
+          continue
 
-      if line == ".if-":
-        keep = True
-        keepType = None
-        continue
+        if line == ".if-":
+          keep = True
+          keepType = None
+          continue
 
-      if keep:
-        text.append(line)
-      elif line.startswith(".sr"):
-        m2 = re.match(r"\.sr (\w+)", line)
-        if m2:
-          if keepType == 't' and "h" in m2.group(1):
-            self.warn(".sr command for HTML skipped by .if t: {}".format(self.umap(line)))
-          elif keepType == 'h':
-            m3 = re.match(r"h*[ult]", m2.group(1))
-            if m3:
-              self.warn(".sr command for text skipped by .if h: {}".format(self.umap(line)))
+        if keep:
+          text.append(line)
+        elif line.startswith(".sr"):
+          m2 = re.match(r"\.sr (\w+)", line)
+          if m2:
+            if keepType == 't' and "h" in m2.group(1):
+              self.warn(".sr command for HTML skipped by .if t: {}".format(self.umap(line)))
+            elif keepType == 'h':
+              m3 = re.match(r"h*[ult]", m2.group(1))
+              if m3:
+                self.warn(".sr command for text skipped by .if h: {}".format(self.umap(line)))
 
     self.wb = text
     text = []
-
-    # suspense: mark for deletion Feb 2015
-    say_bye = False
-    for i,line in enumerate(self.wb):
-      if ".." == line:
-        self.warn("'..' tag line {}".format(i))
-        say_bye = True
-    if say_bye:
-        self.fatal("'..' tags must be replaced with explicit forms.")
-
-    for i,line in enumerate(self.wb):
-      if re.match(".nf [clrb]-", line):
-        self.warn("misformatted closing tag {} line {}".format(line, i))
-        say_bye = True
-    if say_bye:
-        self.fatal("misformatted closing tags")
 
     # load cvg filter file if specified
     if self.cvgfilter:
@@ -6659,7 +6646,7 @@ class Pph(Book):
      if key not in links:
        if not "Page" in key:
          self.linkinfo.add("[5] ")
-         self.linkinfo.add("[5]Warning: unused target: {} ".format(key))
+         self.linkinfo.add("[5]Note: unused target: {} ".format(key))
 
     rb = self.linkinfo.show()
     if len(rb):
@@ -6737,7 +6724,7 @@ def main():
   parser.add_argument('-o', '--output_format', default="ht", help='output format (HTML:h, text:t, u or l)')
   parser.add_argument('-a', '--anonymous', action='store_true', help='do not identify version/timestamp in HTML')
   parser.add_argument("-v", "--version", help="display version and exit", action="store_true")
-  parser.add_argument("-cvg", "--listcvg", help="list Greek and diacritic table to file ppgen-cvglist.txt exit", action="store_true")
+  parser.add_argument("-cvg", "--listcvg", help="list Greek and diacritic table to file ppgen-cvglist.txt and exit", action="store_true")
   parser.add_argument("-f", "--filter", help="UTF-8 filter file for .cv/.gk commands (also terminates after .cv and .gk processing)")
   args = parser.parse_args()
 
