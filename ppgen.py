@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46e"  # 3-Feb-2015    More link checking improvements; warn about important skipped .sr commands
+VERSION="3.46f"  # 4-Feb-2015    Non-numeric footnote labels
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1270,25 +1270,41 @@ class Ppt(Book):
     # must do separately
     fncr = 1
     i = 0
+    fnlevel = 0
     while i < len(self.wb):
 
     # skip literal sections
       if ".li" == self.wb[i]:
         while not ".li-" == self.wb[i]:
           i += 1
-        i += 1
+        i += 1 # skip the .li-
         continue
 
-      m = re.match(r"\.fn (\d+)", self.wb[i]) # explicit
-      if m:
-        fncr = int(m.group(1)) + 1
-        i += 1
-        continue
+      if self.wb[i].startswith(".fn "):
+        if fnlevel == 0:
+          fn0 = i
+        fnlevel += 1  # track footnote depth
+        m = re.match(r"\.fn (\d+)", self.wb[i]) # explicit
+        if m:
+          fncr = int(m.group(1)) + 1### why don't we add a .sp 1 as we do below?
 
-      if ".fn #" == self.wb[i]:
-        self.wb[i:i+1] = [".sp 1",".fn {}".format(fncr)]
-        fncr += 1
+        elif ".fn #" == self.wb[i]:### test this spacing, and whether we need an additional i += 1
+          self.wb[i:i+1] = [".sp 1",".fn {}".format(fncr)]
+          fncr += 1
+
+        else:
+          m=re.match(r"\.fn ([A-Za-z][A-Za-z0-9\-_\:\.]*)", self.wb[i])
+          if not m:
+            self.warn("Invalid footnote name/number: {}".format(self.wb[i]))
+
+      elif self.wb[i] == ".fn-":
+        if fnlevel == 0:
+          self.crash_w_context("Error: .fn- has no opening .fn command", i)
+        fnlevel -= 1
+
       i += 1
+    if fnlevel != 0:
+      self.crash_w_context("Error: Unclosed .fn block", fn0)
 
     # -------------------------------------------------------------------------------------
     # inline markup processing (text)
@@ -2238,7 +2254,8 @@ class Ppt(Book):
 
   # footnotes
   # here on footnote start or end
-  # note in text do not check for duplicate footnotes. they occur in the wild
+  # note: in text do not check for duplicate footnotes. they occur in the wild
+  # note: invalid footnote names generated warning messages earlier during pre-processing
   def doFnote(self):
 
     m = re.match(r"\.fn-", self.wb[self.cl])
@@ -2246,14 +2263,19 @@ class Ppt(Book):
       self.wb[self.cl] = ".in -2"
       return
 
-    m = re.match(r"\.fn (\d+)", self.wb[self.cl]) # expect numeric
+    fnname = ""
+    m = re.match(r"\.fn (\d+)", self.wb[self.cl]) # First look for numeric
     if m: # footnote start
       fnname = m.group(1)
-      self.eb.append("{} {}:".format(self.nregs["Footnote"], fnname))
-      self.wb[self.cl] = ".in +2"
-      return
-    else: # non-numeric footnote
-     self.fatal("non-numeric footnote: {}".format(self.wb[self.cl]))
+    else:                       # then check for named footnote
+      m = re.match(r"\.fn ([A-Za-z][A-Za-z0-9\-_\:\.]*)", self.wb[self.cl])
+      if m:
+        fnname = m.group(1)
+      else:
+        fnname = "<<Invalid footnote name; see messages>>"
+    self.eb.append("{} {}:".format(self.nregs["Footnote"], fnname))
+    self.wb[self.cl] = ".in +2"
+
 
   # footnote mark
   def doFmark(self):
@@ -2785,6 +2807,21 @@ class Pph(Book):
   # preprocess working buffer (HTML)
   def preprocess(self):
 
+    def fnDupCheck(name):
+      string = r"\[{}\]".format(name)
+      if name in fnlist:
+        # it's a duplicate forward reference
+        self.warn("duplicate footnote reference: [{}]".format(name))
+        self.wb[i] = re.sub(string, \
+        "⑪a href='⑦f{0}' style='text-decoration:none'⑫⑪sup⑫⑬{0}⑭⑪/sup⑫⑪/a⑫".format(name), \
+        self.wb[i], 1)
+      else:
+        # it's the first reference
+        fnlist.append(name)
+        self.wb[i] = re.sub(string, \
+        "⑪a id='r{0}' /⑫⑪a href='⑦f{0}' style='text-decoration:none'⑫⑪sup⑫⑬{0}⑭⑪/sup⑫⑪/a⑫".format(name), \
+        self.wb[i], 1)
+
     self.preProcessCommon()
 
     # protect PPer-supplied internal link information
@@ -2978,6 +3015,9 @@ class Pph(Book):
     # must do separately
     fncr = 1
     i = 0
+    fnlevel = 0
+    self.fn_name_length = 0
+    fnlist2 = defaultdict(int)  # list of non-numeric footnotes encountered in the file
     while i < len(self.wb):
 
       # skip literal sections
@@ -2987,16 +3027,37 @@ class Pph(Book):
         i += 1
         continue
 
+      if self.wb[i].startswith(".fn "):
+        if fnlevel == 0: # remember most recent outermost .fn
+          fn0 = i
+        fnlevel += 1  # track footnote depth
+        m = re.match(r"\.fn (\d+)", self.wb[i]) # explicit
+        if m:
+          fncr = int(m.group(1)) + 1
+          fnname = m.group(1)
 
-      m = re.match(r"\.fn (\d+)", self.wb[i]) # explicit
-      if m:
-        fncr = int(m.group(1)) + 1
-        i += 1
-        continue
-      if ".fn #" == self.wb[i]: # auto-assigned
-        self.wb[i] = ".fn {}".format(fncr)
-        fncr += 1
+        elif ".fn #" == self.wb[i]: # auto-assigned
+          self.wb[i] = ".fn {}".format(fncr)
+          fnname = "{}".format(fncr)
+          fncr += 1
+
+        else:
+          m=re.match(r"\.fn ([A-Za-z][A-Za-z0-9\-_\:\.]*)", self.wb[i])
+          if m:
+            fnlist2[m.group(1)] += 1 # Remember this non-numeric footnote name
+            fnname = m.group(1)
+          else:
+            self.warn("Invalid footnote name/number: {}".format(self.wb[i]))
+        self.fn_name_length = max(len(fnname), self.fn_name_length)
+
+      elif self.wb[i] == ".fn-":
+        if fnlevel == 0:
+          self.crash_w_context("Error: .fn- has no opening .fn command", i)
+        fnlevel -= 1
+
       i += 1
+    if fnlevel != 0:
+      self.crash_w_context("Error: Unclosed .fn block", fn0)
 
     # footnote references
     # in HTML, check for duplicate forward references and do not duplicate the backlink target
@@ -3012,23 +3073,35 @@ class Pph(Book):
 
       # this is a reference in the text to a footnote, like this[14].
       # footnote references can be repeated. Back-link is to the first one only
-      m = re.search(r"\[(\d+)\]", self.wb[i])
+      #
+      # non-numeric footnote references can only be recognized if we found a .fn 
+      # for them in the earlier pass through the text
+      m = re.search(r"\[(\d+)\]", self.wb[i])  # look for standard numeric footnote references
       while m:
         fnname = m.group(1)
-        if fnname in fnlist:
-          # it's a duplicate forward reference
-          self.warn("duplicate footnote reference: [{}]".format(fnname))
-          self.wb[i] = re.sub(r"\[\d+\]", \
-          "⑪a href='⑦f{0}' style='text-decoration:none'⑫⑪sup⑫⑬{0}⑭⑪/sup⑫⑪/a⑫".format(fnname), \
-          self.wb[i], 1)
-        else:
-          # it's the first reference
-          fnlist.append(fnname)
-          self.wb[i] = re.sub(r"\[\d+\]", \
-          "⑪a id='r{0}' /⑫⑪a href='⑦f{0}' style='text-decoration:none'⑫⑪sup⑫⑬{0}⑭⑪/sup⑫⑪/a⑫".format(fnname), \
-          self.wb[i], 1)
+        fnDupCheck(fnname)
         m = re.search(r"\[(\d+)\]", self.wb[i])
+
+      line = self.wb[i]  # now look for named footnote references
+      m2 = re.search(r"\[([A-Za-z][A-Za-z0-9\-_\:\.]*)\]", line)
+      while m2:
+        name = m2.group(1)
+        if name in fnlist2:  # if it's there, we have a reference to a footnote
+          fnlist2[name] += 1 # remember we saw a reference to it
+          fnDupCheck(name)
+        line = re.sub(re.escape(name), "", line, 1) # remove the hit so we can look for another
+        m2 = re.search(r"\[([A-Za-z][A-Za-z0-9\-_\:\.]*)\]", line)
+
       i += 1
+
+    # now check to see if all non-numeric footnotes were referenced so we can give a good message
+    for name in fnlist2:
+      header_needed = True
+      if fnlist2[name] < 2:  # value is 1 when defined, +1 for each reference
+        if header_needed:
+          self.warn("No references found for these named footnotes:")
+          header_needed = False
+        print("               {}".format(name))
 
     # target references
     i = 0
@@ -4724,64 +4797,67 @@ class Pph(Book):
   # .fn footnote
   # here on footnote start or end
   # handle completely different for paragraph indent or block style
+  # Note: messages for invalid footnote names were issued during pre-processing
   def doFnote(self):
 
     self.css.addcss("[1199] sup { vertical-align: top; font-size: 0.6em; }")
 
+    m = re.match(r"\.fn-", self.wb[self.cl])
+    if m: # footnote ends
+      self.wb[self.cl] = "</div>"
+      self.cl += 1
+      return
+
+    m = re.match(r"\.fn (\d+)", self.wb[self.cl]) # First try numeric footnote
+    if m: # footnote start
+      fnname = m.group(1)
+    else:
+      m = re.match(r"\.fn ([A-Za-z][A-Za-z0-9\-_\:\.]*)", self.wb[self.cl]) # then named
+      if m:
+        fnname = m.group(1)
+      else:
+        fnname = "<<Invalid footnote name; see messages>>"
+
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     if self.pindent: # indented paragraphs
 
-      m = re.match(r"\.fn-", self.wb[self.cl])
-      if m: # footnote ends
-        self.wb[self.cl] = "</div>"
-        self.cl += 1
-        return
+      # Calculate top/bottom margins for paragraphs in footnote
+      s0 = re.sub("em", "", self.nregs["psi"]) # drop the "em"
+      s1 = int(float(s0)*100.0) # in tenths of ems
+      s2 = (s1//2)/100 # forces one decimal place
 
-      m = re.match(r"\.fn (\d+)", self.wb[self.cl]) # expect numeric footnote
-      if m: # footnote start
-        self.css.addcss("[1430] div.footnote {}")
-        self.css.addcss("[1431] div.footnote>:first-child { margin-top:1em; }")
-        self.css.addcss("[1432] div.footnote p { text-indent:1em;margin-top:0.0em;margin-bottom:0; }")
-        fnname = m.group(1)
-        self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
-        self.cl += 1
-        # self.wb[self.cl] = "<a href='#r{0}'>[{0}]</a> {1}".format(fnname, self.wb[self.cl])
-        self.wb[self.cl] = "<a href='#r{0}'>{0}</a>. {1}".format(fnname, self.wb[self.cl])
-        return
-      else: # non-numeric footnote
-        self.fatal("non-numeric footnote: {}".format(self.wb[self.cl]))
+      self.css.addcss("[1430] div.footnote {}")
+      self.css.addcss("[1431] div.footnote>:first-child { margin-top:1em; }")
+      self.css.addcss("[1432] div.footnote p {{ text-indent:1em;margin-top:{0}em;margin-bottom:{1}; }}".format(s2,s2))
+      self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
+      self.cl += 1
+      # self.wb[self.cl] = "<a href='#r{0}'>[{0}]</a> {1}".format(fnname, self.wb[self.cl])
+      self.wb[self.cl] = "<a href='#r{0}'>{0}</a>. {1}".format(fnname, self.wb[self.cl])
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    if not self.pindent: # block paragraphs
-        m = re.match(r"\.fn-", self.wb[self.cl])
-        if m: # footnote ends
-          self.wb[self.cl] = "</div>"
-          self.cl += 1
-          return
+    else: # block paragraphs
 
-        m = re.match(r"\.fn (\d+)", self.wb[self.cl]) # expect numeric footnote
-        if m: # footnote start
-          self.css.addcss("[1430] div.footnote {margin-left: 2.5em; }")
-          self.css.addcss("[1431] div.footnote>:first-child { margin-top:1em; }")
-          self.css.addcss("[1432] div.footnote .label { display: inline-block; width: 0em; text-indent: -2.5em; text-align: right;}")
-          fnname = m.group(1)
-          
-          # if there is a pending vertical space, include it in style
-          hcss = ""
-          if self.pvs > 0:
-            hcss = " margin-top:{}em; ".format(self.pvs)
-            self.pvs = 0
-            
-          if hcss != "":
-            self.wb[self.cl] = "<div class='footnote' id='f{}' style='{}'>".format(fnname, hcss)
-          else:
-            self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
-          s = "<span class='label'><a href='#r{0}'>{0}</a>.&nbsp;&nbsp;</span>".format(fnname)
-          self.cl += 1
-          self.wb[self.cl] = s + self.wb[self.cl]
-          return
-        else: # non-numeric footnote
-         self.fatal("non-numeric footnote: {}".format(self.wb[self.cl]))
+      half_length = int(self.fn_name_length/2) + 1
+      margin = "{}em".format(half_length)
+      indent = "-" + margin
+      self.css.addcss("[1430] div.footnote {{margin-left: {0}; }}".format(margin))
+      self.css.addcss("[1431] div.footnote>:first-child { margin-top:1em; }")
+      self.css.addcss("[1432] div.footnote .label {{ display: inline-block; width: 0em; text-indent: {0}; text-align: right;}}".format(indent))
+
+      # if there is a pending vertical space, include it in style
+      hcss = ""
+      if self.pvs > 0:
+        hcss = " margin-top:{}em; ".format(self.pvs)
+        self.pvs = 0
+
+      if hcss != "":
+        self.wb[self.cl] = "<div class='footnote' id='f{}' style='{}'>".format(fnname, hcss)
+      else:
+        self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
+      s = "<span class='label'><a href='#r{0}'>{0}</a>.&nbsp;&nbsp;</span>".format(fnname)
+      self.cl += 1
+      self.wb[self.cl] = s + self.wb[self.cl]
+
 
   # tables .ta r:5 l:20 r:5 or .ta rlr
   #
