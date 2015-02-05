@@ -1294,7 +1294,7 @@ class Ppt(Book):
           i += 1
 
         else:
-          m=re.match(r"\.fn ([A-Za-z][A-Za-z0-9\-_\:\.]*)", self.wb[i])
+          m=re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)", self.wb[i])
           if not m:
             self.warn("Invalid footnote name/number: {}".format(self.wb[i]))
 
@@ -2269,7 +2269,7 @@ class Ppt(Book):
     if m: # footnote start
       fnname = m.group(1)
     else:                       # then check for named footnote
-      m = re.match(r"\.fn ([A-Za-z][A-Za-z0-9\-_\:\.]*)", self.wb[self.cl])
+      m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)", self.wb[self.cl])
       if m:
         fnname = m.group(1)
       else:
@@ -3043,7 +3043,7 @@ class Pph(Book):
           fncr += 1
 
         else:
-          m=re.match(r"\.fn ([A-Za-z][A-Za-z0-9\-_\:\.]*)", self.wb[i])
+          m=re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)", self.wb[i])
           if m:
             fnlist2[m.group(1)] += 1 # Remember this non-numeric footnote name
             fnname = m.group(1)
@@ -3084,14 +3084,14 @@ class Pph(Book):
         m = re.search(r"\[(\d+)\]", self.wb[i])
 
       line = self.wb[i]  # now look for named footnote references
-      m2 = re.search(r"\[([A-Za-z][A-Za-z0-9\-_\:\.]*)\]", line)
+      m2 = re.search(r"\[([A-Za-z0-9\-_\:\.]+)\]", line)
       while m2:
         name = m2.group(1)
         if name in fnlist2:  # if it's there, we have a reference to a footnote
           fnlist2[name] += 1 # remember we saw a reference to it
           fnDupCheck(name)
         line = re.sub(re.escape(name), "", line, 1) # remove the hit so we can look for another
-        m2 = re.search(r"\[([A-Za-z][A-Za-z0-9\-_\:\.]*)\]", line)
+        m2 = re.search(r"\[([A-Za-z0-9\-_\:\.]+)\]", line)
 
       i += 1
 
@@ -4813,7 +4813,7 @@ class Pph(Book):
     if m: # footnote start
       fnname = m.group(1)
     else:
-      m = re.match(r"\.fn ([A-Za-z][A-Za-z0-9\-_\:\.]*)", self.wb[self.cl]) # then named
+      m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)", self.wb[self.cl]) # then named
       if m:
         fnname = m.group(1)
       else:
