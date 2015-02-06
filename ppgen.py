@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46f"  # 4-Feb-2015    Non-numeric footnote labels
+VERSION="3.46g"  # 6-Feb-2015    Prevent page link processing (#text:ID#) from interfering with RGB colors in .de
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1181,6 +1181,7 @@ class Ppt(Book):
 
     self.preProcessCommon()
 
+    ###should rewrite to exempt .li blocks from a bunch of this
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # <lang> tags ignored in text version.
     for i in range(len(self.wb)):
@@ -1217,6 +1218,7 @@ class Ppt(Book):
 
     # remove internal page links
     # two forms: #17# and #The Encounter:ch01#
+    ### should rewrite to exempt .li blocks
     text = "\n".join(self.wb)
     text = re.sub(r"#(\d+)#", r"\1", text)
     text = re.sub(r"#([iIvVxXlLcCdDmM]+)#", r"\1", text) # don't forget about Roman numerals as page numbers
@@ -1255,7 +1257,7 @@ class Ppt(Book):
       while m:
         explicit = True
         fncr = int(m.group(1)) + 1
-        s = re.sub("\[(\d+)\]", "", s, 1)
+        s = re.sub(re.escape(m.group(0)), "", s, 1)
         m = re.search("\[(\d+)\]", s)
       if explicit: # don't support mixing # and explicit in the same line
         i += 1
@@ -2832,6 +2834,25 @@ class Pph(Book):
     # without interference from other HTML markup ppgen may have added
     i = 0
     while i < len(self.wb):
+
+      # skip literal sections, as we shouldn't mess around in them
+      if ".li" == self.wb[i]:
+        while i < len(self.wb) and not ".li-" == self.wb[i]:
+          i += 1
+        if i == len(self.wb):
+          self.crash_w_context("unclosed .li", i)
+        i += 1
+        continue
+
+      # skip .de statements (including continuations), too, to avoid affecting RGB color specifications
+      if self.wb[i].startswith(".de"):
+        while (i < len(self.wb) - 1) and self.wb[i].endswith("\\"):
+          i += 1
+        if not self.wb[i].endswith("\\"):
+          i += 1
+        else:
+          self.fatal("source file ends with continued .de command: {}".format(self.wb[i]))
+
       self.wb[i] = re.sub(r"#(\d+)#", r"⑲\1⑲", self.wb[i])
       self.wb[i] = re.sub(r"#([iIvVxXlLcCdDmM]+)#", r"⑲\1⑲", self.wb[i])
       self.wb[i] = re.sub(r"#(.*?:.*?)#", r"⑲\1⑲", self.wb[i])
@@ -3000,7 +3021,7 @@ class Pph(Book):
       while m:
         explicit = True
         fncr = int(m.group(1)) + 1
-        s = re.sub("\[(\d+)\]", "", s, 1)
+        s = re.sub(re.escape(m.group(0)), "", s, 1)
         m = re.search("\[(\d+)\]", s)
       if explicit: # don't support mixing # and explicit in the same line
         i += 1
@@ -3008,7 +3029,7 @@ class Pph(Book):
 
       m = re.search("\[#\]", self.wb[i]) # auto-assigned
       while m:
-        self.wb[i] = re.sub("\[#\]", "[{}]".format(fncr), self.wb[i], 1)
+        self.wb[i] = re.sub(re.escape(m.group(0)), "[{}]".format(fncr), self.wb[i], 1)
         fncr += 1
         m = re.search("\[#\]", self.wb[i])
       i += 1
@@ -3314,7 +3335,7 @@ class Pph(Book):
         thecolor = m.group(1)
         safename = re.sub("#","", thecolor)
         self.css.addcss("[1209] .color_{0} {{ color:{1}; }}".format(safename,thecolor))
-        self.wb[i] = re.sub("<c.*?>", "<span class='color_{0}'>".format(safename), self.wb[i], 1)
+        self.wb[i] = re.sub(re.escape(m.group(0)), "<span class='color_{0}'>".format(safename), self.wb[i], 1)
         m = re.search(r"<c=[\"']?(.*?)[\"']?>", self.wb[i])
       self.wb[i] = re.sub("<\/c>", "</span>", self.wb[i],1)
 
@@ -3411,25 +3432,25 @@ class Pph(Book):
       m = re.search(r"⑲(\d+?)⑲", self.wb[i])
       while m: # page number reference
         s = "<a href='⫉Page_{0}'>{0}</a>".format(m.group(1)) # link to it
-        self.wb[i] = re.sub(r"⑲(\d+?)⑲", s, self.wb[i], 1)
+        self.wb[i] = re.sub(m.group(0), s, self.wb[i], 1)
         m = re.search(r"⑲(\d+?)⑲", self.wb[i])
 
       m = re.search(r"⑲([iIvVxXlLcCdDmM]+)⑲", self.wb[i]) # Roman numeral reference
       while m:
         s = "<a href='⫉Page_{0}'>{0}</a>".format(m.group(1)) # link to that
-        self.wb[i] = re.sub(r"⑲[iIvVxXlLcCdDmM]+⑲", s, self.wb[i], 1)
+        self.wb[i] = re.sub(m.group(0), s, self.wb[i], 1)
         m = re.search(r"⑲([iIvVxXlLcCdDmM]+)⑲", self.wb[i])
 
       m = re.search(r"⑲(.*?):(.*?)⑲", self.wb[i]) # named reference
       while m:
         s = "<a href='⫉{}'>{}</a>".format(m.group(2), m.group(1)) # link to that
         self.checkId(m.group(2))
-        self.wb[i] = re.sub(r"⑲(.*?):(.*?)⑲", s, self.wb[i], 1)
+        self.wb[i] = re.sub(re.escape(m.group(0)), s, self.wb[i], 1)
         m = re.search(r"⑲(.*?):(.*?)⑲", self.wb[i])
 
       self.wb[i] = re.sub("⫉", '#', self.wb[i])
 
-    for i, line in enumerate(self.wb):
+    for i, line in enumerate(self.wb):  ### extraneous and should be deleted?
       self.wb[i] = re.sub("⑥", ":", self.wb[i])
     
     for i, line in enumerate(self.wb):
