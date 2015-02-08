@@ -1599,8 +1599,7 @@ class Ppt(Book):
         if longcount == 4:
           self.warn("additional long lines not reported")
         if longcount < 4:
-          m = re.match(r".{0,60}\s", s)
-          self.warn("long line (>{}) beginning:\n  {}....".format(self.linelimitwarning, m.group(0)))
+          self.warn("long line (>{}) beginning:\n  {} ...".format(self.linelimitwarning, s[:60]))
       f1.write( "{:s}\r\n".format(s) )
     f1.close()
 
@@ -1665,8 +1664,7 @@ class Ppt(Book):
         if longcount == 4:
           self.warn("additional long lines not reported")
         if longcount < 4:
-          m = re.match(r".{0,60}\s", s)
-          self.warn("long line (>{}) beginning:\n  {}....".format(self.linelimitwarning, m.group(0)))
+          self.warn("long line (>{}) beginning:\n  {} ...".format(self.linelimitwarning, s[:60]))
       f1.write( "{:s}\r\n".format(s) )
     f1.close()
 
