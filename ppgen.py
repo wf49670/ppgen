@@ -15,7 +15,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46g"  # 6-Feb-2015    Prevent page link processing (#text:ID#) from interfering with RGB colors in .de
+VERSION="3.46h"  # 8-Feb-2015    Avoid failures while reporting long lines that don't contain blanks within first 60 characters
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -92,7 +92,7 @@ class Book(object):
   mau = [] # UTF-8
   mal = [] # user-defined Latin-1
 
-  linelimitwarning = 75
+  linelimitwarning = 75  # code changes needed if < 60!
 
   d = {
      '\u00A0':' ', '\u00A1':'¡', '\u00A2':'¢', '\u00A3':'£', '\u00A4':'¤', '\u00A5':'¥', '\u00A6':'¦', '\u00A7':'§',
