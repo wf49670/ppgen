@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+# Note: ppgen uses a number of unicode characters as markers and placeholders to avoid
+# interference from or iterfering with PPer-provided text. They are listed at the end of this file.
+
 import argparse
 from time import gmtime, strftime
 import re, sys, string, os, platform
@@ -5576,3 +5579,52 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+# Special unicode characters used within ppgen to avoid iterference with PPer-provided text
+#
+# \u14aa  ᒪ   CANADIAN SYLLABICS MA # precedes lang= info
+# \u14a7  ᒧ   CANADIAN SYLLABICS MO # follows lang= info
+# 4\u24d3 ⓓ   CIRCLED LATIN SMALL LETTER D # four dot ellipsis
+# 3\u24d3 ⓓ   CIRCLED LATIN SMALL LETTER D # three dot ellipsis
+# \u24d3\u24e2.. ⓢ    CIRCLED LATIN SMALL LETTER D + CIRCLED LATIN SMALL LETTER S repeated 2.5
+#                     times # 3 dot ellipsis, spaced
+# \u2460  ①   CIRCLED DIGIT ONE   # \{
+# \u2461  ②   CIRCLED DIGIT TWO   # \}
+# \u2462  ③   CIRCLED DIGIT THREE # \[
+# \u2463  ④   CIRCLED DIGIT FOUR  # \]
+# \u2464  ⑤   CIRCLED DIGIT FIVE  # \<
+# \u2465  ⑥   CIRCLED DIGIT SIX   # \:
+# \u2466  ⑦   CIRCLED DIGIT SEVEN # used in footnote processing (along with circled 11/12/13/14)
+# \u2467 	⑧   CIRCLED DIGIT EIGHT # Used for leading nbsp in .ti processing
+# \u2468  ⑨   CIRCLED DIGIT NINE  # \- (so it doesn't become an em-dash later)
+# \u2469  ⑩   CIRCLED NUMBER TEN  # temporarily protect \| during Greek conversion
+# \u246a  ⑪   CIRCLED NUMBER ELEVEN # used in footnote processing (along with 7/12/13/14)
+# \u246b  ⑫   CIRCLED NUMBER TWELVE # used in footnote processing (along with 7/11/13/14)
+# \u246c  ⑬   CIRCLED NUMBER THIRTEEN # used in footnote processing (along with 7/11/12/14)
+# \u246d  ⑭   CIRCLED NUMBER FOURTEEN # used in footnote processing (along with 7/11/12/13)
+#                 "⑪" becomes "<" in final HTML
+#                 "⑫"         ">"
+#                 "⑬"         "["
+#                 "⑭"         "]"
+# \u246e  ⑮   CIRCLED NUMBER FIFTEEN # temporarily protect \(space) during Greek conversion
+# \u246f  ⑯   CIRCLED NUMBER SIXTEEN # precedes page number info
+# \u2470  ⑰   CIRCLED NUMBER SEVENTEEN # follows page number info
+# \u2471  ⑱   CIRCLED NUMBER EIGHTEEN # surrounds .bn info
+# \u2472  ⑲   CIRCLED NUMBER NINETEEN # Protects PPer supplied links (#...#)
+# \u2473  ⑳   CIRCLED NUMBER TWENTY # \>
+# \u24c8  Ⓢ   CIRCLED LATIN CAPITAL LETTER S # (non-breaking space)
+# \u24c9  Ⓣ   CIRCLED LATIN CAPITAL LETTER T # (zero space)
+# \u24ca  Ⓤ   CIRCLED LATIN CAPITAL LETTER U # (thin space)
+# \u24cb  Ⓥ   CIRCLED LATIN CAPITAL LETTER V # (thick space)
+# \u24cf  Ⓩ   CIRCLED LATIN CAPITAL LETTER Z # &
+# \u24e2  ⓢ   CIRCLED LATIN SMALL LETTER S # non-breaking space (\  or \_ or &nbsp;)
+# \u24e3  ⓣ   CIRCLED LATIN SMALL LETTER T # zero space (\&)
+# \u24e4  ⓤ   CIRCLED LATIN SMALL LETTER U # thin space (\^)
+# \u24e5  ⓥ   CIRCLED LATIN SMALL LETTER V # thick space (\|)
+# \u24ea  ⓪   CIRCLED DIGIT 0 # \#
+# \u25ee  ◮   UP-POINTING TRIANGLE WITH RIGHT HALF BLACK # <b> or <strong> (becomes =)
+# \u25f8  ◸   UPPER LEFT TRIANGLE # precedes superscripts
+# \u25f9  ◹   UPPER RIGHT TRIANGLE # follows superscripts
+# \u25fa  ◺  	LOWER LEFT TRIANGLE # precedes subscripts
+# \u25ff  ◿   LOWER RIGHT TRIANGLE # follows subscripts
+# \u2ac9  ⫉   SUBSET OF ABOVE ALMOST EQUAL TO # used temporarily during page number reference processing
