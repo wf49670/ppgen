@@ -2,7 +2,11 @@
 # -*- coding: utf-8 -*-
 
 # Note: ppgen uses a number of unicode characters as markers and placeholders to avoid
-# interference from or iterfering with PPer-provided text. They are listed at the end of this file.
+# interference from or iterfering with PPer-provided text. They are listed at the end of this file,
+# before the css keys.
+#
+# Note: ppgen generates css using a numeric key to ensure that the css statements come out in the
+# proper order in the HTML. They are listed at the end of this file, after the unicode characters.
 
 import argparse
 from time import gmtime, strftime
@@ -5628,3 +5632,79 @@ if __name__ == '__main__':
 # \u25fa  ◺  	LOWER LEFT TRIANGLE # precedes subscripts
 # \u25ff  ◿   LOWER RIGHT TRIANGLE # follows subscripts
 # \u2ac9  ⫉   SUBSET OF ABOVE ALMOST EQUAL TO # used temporarily during page number reference processing
+#
+#
+# ppgen css numbers:
+#
+# 1100      body if pnshow
+# 1100      body if not pnshow
+# 1100      h1
+# 1100      h2
+# 1100      h3
+# 1100      h4
+# 1100      h5
+# 1100      h6
+# 1105-1108 .pageno if pnshow
+# 1109      .pageno:after if pnshow
+# 1170      p
+# 1199      sup (defined if footnotes)
+# 1200      Small caps
+# 1201      <l>
+# 1202      <xl>
+# 1202      <xxl>
+# 1203      <s>
+# 1204      <xs>
+# 1205      <xxs>
+# 1205      <u>
+# 1209      <c>     will duplicate for various colors
+# 1215      .nf b: .lg-container-b
+# 1216             @media handheld
+# 1217      .nf l: .lg-container-l
+# 1218             @media handheld
+# 1219      .nf r: .lg-container-r
+# 1220             @media handheld
+# 1221      .nf b/l/r: .linegroup
+# 1222                 @media handheld
+# 1223                .linegroup .group0 (if override to margin 0)
+# 1223                .linegroup .group
+# 1224                .linegroup .line
+# 1225                div.linegroup > :first-child
+# 1227                .linegroup .<indent-class-name>
+# 1378      <g>     gesperrt
+# 1379      Handheld version of <g>
+# 1430      div.footnote
+# 1431      div.footnote>:first-child
+# 1432      div.footnote p (if indented paragraphs)
+# 1432      div.footnote .label (if block paragraphs)
+# 1465-1467 .pb (div.pbb, hr.pb, and handheld version)
+# 1576      .chapter
+# 1600      .figcenter
+# 1600      .figleft
+# 1600      .figright
+# 1601      div.figcenter p
+# 1601      div.figleft p
+# 1601      div.figright p
+# 1602      Handheld version of .figleft
+# 1602      Handheld version of .figright
+# 1608      .figcenter img
+# 1608      .figleft img
+# 1608      .figright img
+# 1610      various illustration widths (idn)
+# 1610      various epub illustration widths
+# 1611      various caption widths (icn)
+# 1613      various caption alignments (icn)
+# 1614      something else about image widths (ign)
+# 1670      .table<number> width
+# 1671      .table<number> width in epub
+# 1873      .nf c: .nf-center
+# 1876             .nf-center-c0 (if indented paragraphs)
+# 1876             .nf-center-c1 (if block paragraphs)
+# 1920      img.drop-capi
+# 1921      .di: p.drop-capi<number>
+# 1922           p.drop-capi<number>:first-letter
+# 1923-1926      @media handheld version of 1921-1922
+# 1930      .dc: p.drop-capa<number>
+# 1931           p.drop-capa<number>:first-letter
+# 1933-1937      @media handheld version of 1930-1931
+# 2000-up   Dynamic styles created from styles needed in the text
+# 3000-up   User supplied css from .de
