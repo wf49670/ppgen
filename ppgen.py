@@ -218,6 +218,7 @@ class Book(object):
     self.nregs["lang"] = "en" # base language for the book (used in HTML header)
     self.nregs["Footnote"] = "Footnote" # English word for Footnote for text files
     self.nregs["Illustration"] = "Illustration" # English word for Illustration for text files
+    self.nregs["Sidenote"] = "Sidenote" # English word for Sidenote for text files
     self.nregs["dcs"] = "250%" # drop cap font size
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string
@@ -414,6 +415,8 @@ class Book(object):
       self.doNr()
     elif ".dv" == dotcmd: # user-specifice <div> for HTML
       self.doDiv()
+    elif ".sn" == dotcmd: # sidenote
+      self.doSidenote()
     else:
       self.crash_w_context("unhandled dot command: {}".format(self.wb[self.cl]), self.cl)
 
@@ -469,6 +472,9 @@ class Book(object):
         known_register = True
       if registerName == "Illustration": # foreign language translation for "Illustration"
         self.nregs["Illustration"] = self.deQuote(m.group(2), self.cl)
+        known_register = True
+      if registerName == "Sidenote": # foreign language translation for "Sidenote"
+        self.nregs["Sidenote"] = self.deQuote(m.group(2), self.cl)
         known_register = True
       if registerName == "dcs": # drop cap font size
         self.nregs["dcs"] = m.group(2)
@@ -2539,6 +2545,16 @@ class Ppt(Book):
       del self.wb[self.cl] # last or single line
     else:
       self.fatal("source file ends with continued .de command: {}".format(self.wb[self.cl]))
+
+  def doSidenote(self):
+    m = re.match(r"\.sn (.*)", self.wb[self.cl])
+    if m:
+      self.eb.append(".RS 1") # request at least one space in text before sidenote
+      self.eb.append("[{}: {}]".format(self.nregs["Sidenote"], m.group(1)))
+      self.eb.append(".RS 1") # request at least one space in text after sidenote
+      self.cl += 1
+    else:
+      self.fatal("malformed .sn directive: {}".format(self.wb[self.cl]))
 
   def doPara(self):
     t = []
@@ -5339,6 +5355,18 @@ class Pph(Book):
     else:
       self.warn("malformed .rj directive: {}".format(self.wb[i]))
 
+  def doSidenote(self):
+    m = re.match(r"\.sn (.*)", self.wb[self.cl])
+    if m:
+      # CSS taken from http://www.pgdp.net/wiki/Sidenotes
+      self.css.addcss("[1500] .sidenote { text-indent: 0; text-align: left; min-width: 9em; max-width: 9em; padding-bottom: .3em; padding-top: .3em; padding-left: .3em; padding-right: .3em; margin-right: 1em; float: left; clear: left; margin-top: 1em; margin-bottom: .3em; font-size: smaller; color: black; background-color: #eeeeee; border: thin dotted gray; }")
+      self.css.addcss("[1501] @media handheld { .sidenote { float: left; clear: none; font-weight: bold; }}")
+
+      self.wb[self.cl] = "<div class='sidenote'>{}</div>".format(m.group(1))
+      self.cl += 1
+    else:
+      self.fatal("malformed .sn directive: {}".format(self.wb[self.cl]))
+
   def doPara(self):
     s = self.fetchStyle() # style line with current parameters
 
@@ -5677,6 +5705,8 @@ if __name__ == '__main__':
 # 1432      div.footnote p (if indented paragraphs)
 # 1432      div.footnote .label (if block paragraphs)
 # 1465-1467 .pb (div.pbb, hr.pb, and handheld version)
+# 1500      .sidenote
+# 1501      @media handheld .sidenote
 # 1576      .chapter
 # 1600      .figcenter
 # 1600      .figleft
