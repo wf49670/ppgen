@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46h"  # 8-Feb-2015    Avoid failures while reporting long lines that don't contain blanks within first 60 characters
+VERSION="3.46hSn"  # 10-Feb-2015    3.46h + initial sidenote implementation
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -5359,7 +5359,12 @@ class Pph(Book):
     m = re.match(r"\.sn (.*)", self.wb[self.cl])
     if m:
       # CSS taken from http://www.pgdp.net/wiki/Sidenotes
-      self.css.addcss("[1500] .sidenote { text-indent: 0; text-align: left; min-width: 9em; max-width: 9em; padding-bottom: .3em; padding-top: .3em; padding-left: .3em; padding-right: .3em; margin-right: 1em; float: left; clear: left; margin-top: 1em; margin-bottom: .3em; font-size: smaller; color: black; background-color: #eeeeee; border: thin dotted gray; }")
+      self.css.addcss("[1500] .sidenote { text-indent: 0; text-align: left; min-width: 9em; " + 
+                      "max-width: 9em; padding-bottom: .3em; padding-top: .3em; padding-left: .3em; " +
+                      "padding-right: .3em; margin-right: 1em; float: left; clear: left; margin-top: 1em; " +
+                      "margin-bottom: .3em; font-size: smaller; color: black; background-color: #eeeeee; " +
+                      "border: thin dotted gray; }"
+                      )
       self.css.addcss("[1501] @media handheld { .sidenote { float: left; clear: none; font-weight: bold; }}")
 
       self.wb[self.cl] = "<div class='sidenote'>{}</div>".format(m.group(1))
