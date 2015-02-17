@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46j"  # 16-Feb-2015    Merge Greek + Diacritics into Develop
+VERSION="3.46k"  # 16-Feb-2015    Allow PPer to force creation of -utf8.txt output by specifying -ou even for Latin-1 encoded input files
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1364,7 +1364,8 @@ class Book(object):
   def __init__(self, args, renc):
     del self.wb[:]
     del self.eb[:]
-    self.renc = renc # requested output encoding (t, u, or h)
+    self.renc = renc.lower() # requested output encoding (t, u, or h)
+    self.forceutf8 = (True) if (renc == "U") else (False)
     self.debug = args.debug
     self.srcfile = args.infile
     self.anonymous = args.anonymous
@@ -2468,7 +2469,7 @@ class Ppt(Book):
     Book.__init__(self, args, renc)
     if self.listcvg:
       self.cvglist()
-    self.renc = renc # requested encoding: "l" Latin-1, "u" UTF-8
+    self.renc = renc.lower() # requested encoding: "l" Latin-1, "u" UTF-8
     if self.renc == "u":
       self.outfile = re.sub("-src", "", self.srcfile.split('.')[0]) + "-utf8.txt"
     if self.renc == "l":
@@ -4050,10 +4051,10 @@ class Ppt(Book):
   def run(self): # Text
     self.loadFile(self.srcfile)
     # requested encoding is UTF-8 but file is latin1only
-    if self.renc == 'u' and self.latin1only == True and not self.cvgfilter:
+    if self.renc == 'u' and self.latin1only == True and not self.forceutf8 and not self.cvgfilter:
       return # do not make UTF-8 text file
     # file is ASCII->Latin_1 but trying to run as UTF-8
-    if self.encoding == "latin_1" and self.renc == 'u' and not self.cvgfilter:
+    if self.encoding == "latin_1" and self.renc == 'u' and not self.forceutf8 and not self.cvgfilter:
       return # do not make UTF-8 text file
 
     if self.renc == "l":
@@ -6998,14 +6999,14 @@ def main():
     exit(1)
 
   if 't' in args.output_format:
-    ppt = Ppt(args, "u")
+    ppt = Ppt(args, "u") # if PPer did not explicitly ask for utf-8, only create it if input is encoded in utf-8
     ppt.run()
     ppt = Ppt(args, "l")
     ppt.run()
 
   # UTF-8 only
   if 'u' in args.output_format:
-    ppt = Ppt(args, "u")
+    ppt = Ppt(args, "U")  # if PPer explicitly asked for utf-8 always create it, even if input is encoded in Latin-1 or ASCII
     ppt.run()
 
   # Latin-1 only
