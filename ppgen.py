@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46h"  # 8-Feb-2015    Avoid failures while reporting long lines that don't contain blanks within first 60 characters
+VERSION="3.46i"  # 12-Feb-2015    # Fix <div> generated before a .li in HTML to allow deStyle to work properly
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -3622,7 +3622,7 @@ class Pph(Book):
   # .li literal (pass-through)
   def doLit(self):
     if self.pvs > 0: # handle any pending vertical space before the .li
-      self.wb[self.cl] = "<div style=\"margin-top:{}em;\"></div>".format(self.pvs)
+      self.wb[self.cl] = "<div style='margin-top: {}em;'></div>".format(self.pvs)
       self.pvs = 0
     else:
       del self.wb[self.cl]  # .li
