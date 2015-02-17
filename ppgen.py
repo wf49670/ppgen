@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46j"  # 16-Feb-2015    Merge Greek + Diacritics into Develop
+VERSION="3.46k"  # 16-Feb-2015    Allow PPer to force creation of -utf8.txt output by specifying -ou even for Latin-1 encoded input files
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1364,7 +1364,8 @@ class Book(object):
   def __init__(self, args, renc):
     del self.wb[:]
     del self.eb[:]
-    self.renc = renc # requested output encoding (t, u, or h)
+    self.renc = renc.lower() # requested output encoding (t, u, or h)
+    self.forceutf8 = (True) if (renc == "U") else (False)
     self.debug = args.debug
     self.srcfile = args.infile
     self.anonymous = args.anonymous
@@ -1792,7 +1793,7 @@ class Book(object):
     # process [Greek: ...] in UTF-8 output if requested to via .gk command
     i = 0
     self.gk_user = []
-    gk_requested = False
+    self.gk_requested = False
     gk_done = False
     self.gkpre = ""
     self.gksuf = ""
@@ -1819,7 +1820,7 @@ class Book(object):
         if "done" in self.wb[i]:
           gk_done = True
         del self.wb[i]
-        gk_requested = True
+        self.gk_requested = True
 
         if gkin and gkout:
           m = re.search(r"\\u[0-9a-fA-F]{4}", gkout) # find any characters defined by unicode constants in output string
@@ -1831,7 +1832,7 @@ class Book(object):
           self.gk_user.append((gkin, gkout))
         continue
       i += 1
-    if gk_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
+    if self.gk_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
       text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
       text = re.sub(r"\[Greek: (.*?)]", gkrepl, text, flags=re.DOTALL)
 
@@ -1841,7 +1842,7 @@ class Book(object):
     # process diacritic markup in UTF-8 output if requested to via .cv command
     i = 0
     self.diacritics_user = []
-    dia_requested = False
+    self.dia_requested = False
     dia_done = False
     diapre = ""
     diasuf = ""
@@ -1876,7 +1877,7 @@ class Book(object):
         if "done" in self.wb[i]:
           dia_done = True
         del self.wb[i]
-        dia_requested = True
+        self.dia_requested = True
         if (diain and not diaout) or (diaout and not diain):
           self.warn("Missing in= or out= value: {}".format(orig))
         if diain:
@@ -1906,7 +1907,7 @@ class Book(object):
               self.warn("No builtin diacritic {} to ignore: {}".format(diain, orig))
         continue
       i += 1
-    if dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
+    if self.dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
       text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
       if not diatest:
         if len(self.diacritics_user) > 0:
@@ -2468,7 +2469,7 @@ class Ppt(Book):
     Book.__init__(self, args, renc)
     if self.listcvg:
       self.cvglist()
-    self.renc = renc # requested encoding: "l" Latin-1, "u" UTF-8
+    self.renc = renc.lower() # requested encoding: "l" Latin-1, "u" UTF-8
     if self.renc == "u":
       self.outfile = re.sub("-src", "", self.srcfile.split('.')[0]) + "-utf8.txt"
     if self.renc == "l":
@@ -4050,10 +4051,10 @@ class Ppt(Book):
   def run(self): # Text
     self.loadFile(self.srcfile)
     # requested encoding is UTF-8 but file is latin1only
-    if self.renc == 'u' and self.latin1only == True and not self.cvgfilter:
+    if self.renc == 'u' and self.latin1only == True and not self.forceutf8 and not self.cvgfilter:
       return # do not make UTF-8 text file
     # file is ASCII->Latin_1 but trying to run as UTF-8
-    if self.encoding == "latin_1" and self.renc == 'u' and not self.cvgfilter:
+    if self.encoding == "latin_1" and self.renc == 'u' and not self.forceutf8 and not self.cvgfilter:
       return # do not make UTF-8 text file
 
     if self.renc == "l":
@@ -4951,7 +4952,7 @@ class Pph(Book):
 
     if self.encoding == "utf_8":
       t.append("    <meta http-equiv=\"Content-Type\" content=\"text/html;charset=UTF-8\" />")
-    if self.encoding == "latin_1":
+    elif self.encoding == "latin_1":
       t.append("    <meta http-equiv=\"Content-Type\" content=\"text/html;charset=ISO-8859-1\" />")
 
     if self.dtitle != "":
@@ -6950,6 +6951,8 @@ class Pph(Book):
   def run(self): # HTML
     self.loadFile(self.srcfile)
     self.preprocess()
+    if self.gk_requested or self.dia_requested: # override output encoding if doing Greek or diacritics
+      self.encoding = "utf_8"
     self.process()
     self.postprocess()
     self.deStyle()
@@ -6998,14 +7001,14 @@ def main():
     exit(1)
 
   if 't' in args.output_format:
-    ppt = Ppt(args, "u")
+    ppt = Ppt(args, "u") # if PPer did not explicitly ask for utf-8, only create it if input is encoded in utf-8
     ppt.run()
     ppt = Ppt(args, "l")
     ppt.run()
 
   # UTF-8 only
   if 'u' in args.output_format:
-    ppt = Ppt(args, "u")
+    ppt = Ppt(args, "U")  # if PPer explicitly asked for utf-8 always create it, even if input is encoded in Latin-1 or ASCII
     ppt.run()
 
   # Latin-1 only
