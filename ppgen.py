@@ -1391,6 +1391,21 @@ class Ppt(Book):
           re_sc = re.compile(r"<sc>(.*?)<\/sc>")
           self.wb[i] = re.sub(re_sc, to_uppercase, self.wb[i])
 
+    # need to process .nr early for self.nregs["Sidenote"]
+    for i, line in enumerate(self.wb):
+      if self.wb[i][0:3] == ".nr":
+        self.cl = i
+        self.doNr()
+
+    # handle sidenotes inside paragraphs, sidenotes outside paragraphs handled later in process()
+    for i, line in enumerate(self.wb):
+      m = re.match(r"\.sn (.*)", self.wb[i])
+      if m:
+        islineaboveblank = i > 0 and self.wb[i-1].rstrip() == ""
+        islinebelowblank = i < len(self.wb)-1 and self.wb[i+1].rstrip() == ""
+        if not islineaboveblank and not islinebelowblank:
+          self.wb[i] = "[{}: {}]".format(self.nregs["Sidenote"], m.group(1))
+
   # -------------------------------------------------------------------------------------
   # post-process emit buffer (TEXT)
 
@@ -2547,6 +2562,7 @@ class Ppt(Book):
       self.fatal("source file ends with continued .de command: {}".format(self.wb[self.cl]))
 
   def doSidenote(self):
+    # handle sidenotes outside paragraphs, sidenotes inside paragraphs are handled beforehand in preprocess()
     m = re.match(r"\.sn (.*)", self.wb[self.cl])
     if m:
       self.eb.append(".RS 1") # request at least one space in text before sidenote
@@ -3375,6 +3391,26 @@ class Pph(Book):
         m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
       self.wb[i] = re.sub("<\/fs>", "</span>", self.wb[i])
 
+    # handle sidenotes inside paragraphs, sidenotes outside paragraphs handled later in process()
+    for i, line in enumerate(self.wb):
+      m = re.match(r"\.sn (.*)", self.wb[i])
+      if m:
+        # CSS taken from http://www.pgdp.net/wiki/Sidenotes
+        self.css.addcss("[1500] .sidenote, .sni { text-indent: 0; text-align: left; min-width: 9em; " +
+                        "max-width: 9em; padding-bottom: .3em; padding-top: .3em; padding-left: .3em; " +
+                        "padding-right: .3em; margin-right: 1em; float: left; clear: left; margin-top: 1em; " +
+                        "margin-bottom: .3em; font-size: smaller; color: black; background-color: #eeeeee; " +
+                        "border: thin dotted gray; }"
+                        )
+        self.css.addcss("[1501] @media handheld { .sidenote, .sni { float: left; clear: none; font-weight: bold; }}")
+        self.css.addcss("[1502] .sni { text-indent: -.2em; }")
+        self.css.addcss("[1503] .hidev { visibility: hidden; }")
+
+        islineaboveblank = i > 0 and self.wb[i-1].rstrip() == ""
+        islinebelowblank = i < len(self.wb)-1 and self.wb[i+1].rstrip() == ""
+        if not islineaboveblank and not islinebelowblank:
+          self.wb[i] = "⓫{}⓫".format(m.group(1))
+
   # -------------------------------------------------------------------------------------
   # restore tokens in HTML text
 
@@ -3482,6 +3518,11 @@ class Pph(Book):
         m = re.search(r"ᒪ'(.+?)'", self.wb[i])
       self.wb[i] = re.sub("ᒧ", "</span>", self.wb[i])
 
+    # inline sidenotes
+    for i, line in enumerate(self.wb):
+      m = re.search(r"⓫(.*)⓫", self.wb[i])
+      if m:
+        self.wb[i] = re.sub(r"⓫(.*?)⓫", "<span class='sni'><span class='hidev'>|</span>{}<span class='hidev'>|</span></span>".format(m.group(1)), self.wb[i])
 
   # -------------------------------------------------------------------------------------
   # save buffer to specified dstfile (HTML output)
@@ -5356,17 +5397,9 @@ class Pph(Book):
       self.warn("malformed .rj directive: {}".format(self.wb[i]))
 
   def doSidenote(self):
+    # handle sidenotes outside paragraphs, sidenotes inside paragraphs are handled beforehand in preprocess()
     m = re.match(r"\.sn (.*)", self.wb[self.cl])
     if m:
-      # CSS taken from http://www.pgdp.net/wiki/Sidenotes
-      self.css.addcss("[1500] .sidenote { text-indent: 0; text-align: left; min-width: 9em; " + 
-                      "max-width: 9em; padding-bottom: .3em; padding-top: .3em; padding-left: .3em; " +
-                      "padding-right: .3em; margin-right: 1em; float: left; clear: left; margin-top: 1em; " +
-                      "margin-bottom: .3em; font-size: smaller; color: black; background-color: #eeeeee; " +
-                      "border: thin dotted gray; }"
-                      )
-      self.css.addcss("[1501] @media handheld { .sidenote { float: left; clear: none; font-weight: bold; }}")
-
       self.wb[self.cl] = "<div class='sidenote'>{}</div>".format(m.group(1))
       self.cl += 1
     else:
@@ -5659,6 +5692,7 @@ if __name__ == '__main__':
 # \u24e4  ⓤ   CIRCLED LATIN SMALL LETTER U # thin space (\^)
 # \u24e5  ⓥ   CIRCLED LATIN SMALL LETTER V # thick space (\|)
 # \u24ea  ⓪   CIRCLED DIGIT 0 # \#
+# \u24EB  ⓫   NEGATIVE CIRCLED NUMBER ELEVEN # surrounds sidenotes
 # \u25ee  ◮   UP-POINTING TRIANGLE WITH RIGHT HALF BLACK # <b> or <strong> (becomes =)
 # \u25f8  ◸   UPPER LEFT TRIANGLE # precedes superscripts
 # \u25f9  ◹   UPPER RIGHT TRIANGLE # follows superscripts
@@ -5710,8 +5744,10 @@ if __name__ == '__main__':
 # 1432      div.footnote p (if indented paragraphs)
 # 1432      div.footnote .label (if block paragraphs)
 # 1465-1467 .pb (div.pbb, hr.pb, and handheld version)
-# 1500      .sidenote
-# 1501      @media handheld .sidenote
+# 1500      .sidenote, .sni
+# 1501      @media handheld
+# 1502      .sni
+# 1503      .hidev
 # 1576      .chapter
 # 1600      .figcenter
 # 1600      .figleft
