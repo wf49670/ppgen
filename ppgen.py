@@ -1963,6 +1963,49 @@ class Book(object):
     if self.dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
       if not dia_blobbed:
         text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
+      #
+      # Correct diacritics with <i> markup in them if requested
+      #
+      if dia_italic.lower().startswith("y"):
+        print("Checking for <i> within diacritic markup and correcting")
+        for s in self.diacritics_user:
+          si = "[<i>" + s[0][1:-1] + "</i>]"
+          so = "<i>" + s[0] + "</i>"
+          try:
+            text, count = re.subn(re.escape(si), so, text)
+            if count:
+              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+          except:
+            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
+        for s in self.diacritics:
+          si = "[<i>" + s[0][1:-1] + "</i>]"
+          so = "<i>" + s[0] + "</i>"
+          try:
+            text, count = re.subn(re.escape(si), so, text)
+            if count:
+              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+          except:
+            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
+      if dia_bold.lower().startswith("y"):
+        print("Checking for <b> within diacritic markup and correcting")
+        for s in self.diacritics_user:
+          si = "[<b>" + s[0][1:-1] + "</b>]"
+          so = "<b>" + s[0] + "</b>"
+          try:
+            text, count = re.subn(re.escape(si), so, text)
+            if count:
+              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+          except:
+            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
+        for s in self.diacritics:
+          si = "[<b>" + s[0][1:-1] + "</b>]"
+          so = "<b>" + s[0] + "</b>"
+          try:
+            text, count = re.subn(re.escape(si), so, text)
+            if count:
+              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+          except:
+            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
       if not diatest:
         if len(self.diacritics_user) > 0:
           for s in self.diacritics_user:
