@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46k"  # 16-Feb-2015    Allow PPer to force creation of -utf8.txt output by specifying -ou even for Latin-1 encoded input files
+VERSION="3.46kLZ"  # 17-Feb-2015    Footnote "landing zones" for text and HTML
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1619,6 +1619,18 @@ class Book(object):
         print("   {}".format(s))
     self.fatal("exiting")
 
+  def warn_w_context(self, msg, i, r=5):
+    print("***Warning: {}\ncontext:".format(msg))
+    startline = max(0,i-r)
+    endline = min(len(self.wb),i+r)
+    for j in range(startline,endline):
+      s = self.umap(self.wb[j])
+      if j == i:
+        print(">> {}".format(s))
+      else:
+        print("   {}".format(s))
+
+
   # extract content of an optionally quoted string
   # used in .nr
 
@@ -2451,6 +2463,22 @@ class Book(object):
     if override:
       self.pnshow = False # disable visible page numbers
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # Examine footnote markers (.fm)
+    #   Look for .fm with lz=
+    #     If any found, set flags for later
+    self.footnoteLzT = False
+    self.footnoteLzH = False
+    for i, t in enumerate(self.wb):
+      if t.startswith(".fm"):
+        if "lz=" in t:
+          t, lz = self.get_id("lz", t)
+          if "t" in lz:
+           self.footnoteLzT = True
+          if "h" in lz:
+            self.footnoteLzH = True
+
+
 # ====== ppt ============================================================================
 
 # this class is used to generate UTF-8 or Latin-1 (ANSI) text
@@ -2462,6 +2490,7 @@ class Ppt(Book):
   eb = [] # emit buffer for generated text
   wb = [] # working buffer
   bb = [] # GG .bin buffer
+  fnlist = [] # list of footnotes
 
   long_table_line_count = 0
 
@@ -2548,7 +2577,7 @@ class Ppt(Book):
 
     # at this point, s is ready to wrap
     mywidth = ll - indent
-    t =[]
+    t = []
     twidth = mywidth
     while len(s) > twidth:
       twidth2 = 0
@@ -2562,17 +2591,17 @@ class Ppt(Book):
             m = re.match("(.*?)(⑱.*?⑱)(.*)",stemp)
       if len(s) > twidth:
         try:
-          snip_at = s.rindex(" ", 0, twidth)
+          snip_at = s.rindex(" ", 0, twidth) # Plan A: snip at a last blank within first twidth characters
         except:
           # could not find a place to wrap
           try: # this one might fail, too, so catch exceptions
-            snip_at = s.index(" ", twidth) # Plan B
+            snip_at = s.index(" ") # Plan B: snip at any blank, even if line is wide
           except:
-            snip_at = len(s)
-          if len(t) == 0:
-            self.warn("wide line: {}".format(hold + s)) # include any "hold" characters if wrapping first line
-          else:
-            self.warn("wide line: {}".format(s)) # else just include the current line.
+            snip_at = len(s) # Plan C: leave the line wide
+          #if len(t) == 0:
+          #  self.warn("wide line: {}".format(hold + s)) # include any "hold" characters if wrapping first line
+          #else:
+          #  self.warn("wide line: {}".format(s)) # else just include the current line.
         t.append(s[:snip_at])
         if snip_at < len(s):
           s = s[snip_at+1:]
@@ -3701,31 +3730,71 @@ class Ppt(Book):
   # note: in text do not check for duplicate footnotes. they occur in the wild
   # note: invalid footnote names generated warning messages earlier during pre-processing
   def doFnote(self):
-
     m = re.match(r"\.fn-", self.wb[self.cl])
     if m: # footnote ends
+      if self.footnoteLzT: # if special footnote landing zone processing in effect
+        self.grabFootnoteT()
       self.wb[self.cl] = ".in -2"
       return
-
-    fnname = ""
-    m = re.match(r"\.fn (\d+)( |$)", self.wb[self.cl]) # First look for numeric
-    if m: # footnote start
-      fnname = m.group(1)
-    else:                       # then check for named footnote
-      m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)", self.wb[self.cl])
-      if m:
+    else: # footnote begins
+      fnname = ""
+      m = re.match(r"\.fn (\d+)( |$)", self.wb[self.cl]) # First look for numeric
+      if m: # footnote start
         fnname = m.group(1)
-      else:
-        fnname = "<<Invalid footnote name; see messages>>"
-    self.eb.append("{} {}:".format(self.nregs["Footnote"], fnname))
-    self.wb[self.cl] = ".in +2"
+      else:                       # then check for named footnote
+        m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)", self.wb[self.cl])
+        if m:
+          fnname = m.group(1)
+        else:
+          fnname = "<<Invalid footnote name; see messages>>"
+      self.eb.append("{} {}:".format(self.nregs["Footnote"], fnname))
+      if self.footnoteLzT: # if special footnote landing zone processing in effect
+        self.footnoteStart = len(self.eb) - 1 # remember where this footnote started
+      self.wb[self.cl] = ".in +2"
 
+  # grab a complete footnote out of self.eb and save it for later
+  def grabFootnoteT(self):
+    t = [] # buffer for the footnote label and text
+    i = self.footnoteStart
+    while i < len(self.eb):
+      t.append(self.eb[i]) # grab a line then delete it
+      del self.eb[i]
+    self.fnlist.append(t) # when done, append complete list into fnlist for later use
 
   # footnote mark
   def doFmark(self):
-    self.eb.append(".RS 1")
-    self.eb.append("-----")
-    self.eb.append(".RS 1")
+    rend = True
+    lz = False
+    m = re.match(r"\.fm (.*)", self.wb[self.cl])
+    if m:
+      options = m.group(1)
+      if "norend" in options:
+        rend = False
+      if "rend=" in options:
+        options, rendvalue = self.get_id("rend", options)
+        if rendvalue == "no" or rendvalue == "norend" or not "t" in rendvalue:
+          rend = False
+      if "lz=" in options:
+        options, lzvalue = self.get_id("lz", options)
+        if "t" in lzvalue:
+          lz = True
+        else:
+          rend = False  # If this .fm is a landing zone for html but not text, don't do rend for it either
+      if "=" in options:
+        self.warn("Unrecognized option in .fm command: {}".format(self.wb[self.cl]))
+    if rend:
+      self.eb.append(".RS 1")
+      self.eb.append("-----")
+      self.eb.append(".RS 1")
+    if lz:
+      # emit saved footnotes
+      if len(self.fnlist): # make sure there's something to generate
+        for t in self.fnlist:
+          for s in t:
+            self.eb.append(s)
+        self.fnlist = [] # remove everything we handled
+      else:
+        self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
     self.cl += 1
 
   # Table code, text
@@ -4048,6 +4117,9 @@ class Ppt(Book):
         continue
       self.doPara()
 
+    if len(self.fnlist):  # any saved footnotes that didn't have a .fm to generate them?
+      self.warn("Footnotes encountered after last \".fm lz=t\" have not been generated. Missing a .fm somewhere?")
+
   def run(self): # Text
     self.loadFile(self.srcfile)
     # requested encoding is UTF-8 but file is latin1only
@@ -4079,6 +4151,7 @@ class Pph(Book):
   fsz = "100%" # font size for paragraphs
   pdc = "" # pending drop cap
   igc = 1 # illustration geometry counter
+  fnlist = [] # list of footnotes
 
   def __init__(self, args, renc):
     Book.__init__(self, args, renc)
@@ -6256,8 +6329,44 @@ class Pph(Book):
 
   # .fm footnote mark
   def doFmark(self):
-    self.wb[self.cl] = "<hr style='border:none; border-bottom:1px solid; width:10%; margin-left:0; margin-top:1em; text-align:left;' />"
-    self.cl += 1
+    rend = True
+    lz = False
+    m = re.match(r"\.fm (.*)", self.wb[self.cl])
+    if m:
+      options = m.group(1)
+      if "norend" in options:
+        rend = False
+      if "rend=" in options:
+        options, rendvalue = self.get_id("rend", options)
+        if rendvalue == "no" or rendvalue == "norend" or not "h" in rendvalue:
+          rend = False
+      if "lz=" in options:
+        options, lzvalue = self.get_id("lz", options)
+        if "h" in lzvalue:
+          lz = True
+        else:
+          rend = False  # If this .fm is a landing zone for text but not html, don't do rend for it either
+      if "=" in options:
+        self.warn("Unrecognized option in .fm command: {}".format(self.wb[self.cl]))
+    if rend:
+      self.wb[self.cl] = "<hr style='border:none; border-bottom:1px solid; width:10%; margin-left:0; margin-top:1em; text-align:left;' />"
+      self.cl += 1
+    else:
+      del self.wb[self.cl]
+    if lz:
+      # emit saved footnotes
+      if len(self.fnlist): # make sure there's something to generate
+        for t in self.fnlist:
+          for s in t:
+            if self.cl < len(self.wb):
+              self.wb.insert(self.cl, s)
+            else:
+              self.wb.append(s)
+            self.cl += 1
+        self.fnlist = [] # remove everything we handled
+      else:
+        self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
+
 
   # .fn footnote
   # here on footnote start or end
@@ -6271,6 +6380,8 @@ class Pph(Book):
     if m: # footnote ends
       self.wb[self.cl] = "</div>"
       self.cl += 1
+      if self.footnoteLzH: # if special footnote landing zone processing in effect
+        self.grabFootnoteH()
       return
 
     m = re.match(r"\.fn (\d+)( |$)", self.wb[self.cl]) # First try numeric footnote
@@ -6295,6 +6406,8 @@ class Pph(Book):
       self.css.addcss("[1431] div.footnote>:first-child { margin-top:1em; }")
       self.css.addcss("[1432] div.footnote p {{ text-indent:1em;margin-top:{0}em;margin-bottom:{1}; }}".format(s2,s2))
       self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
+      if self.footnoteLzH: # if special footnote landing zone processing in effect
+        self.footnoteStart = self.cl # remember where this footnote started
       self.cl += 1
       # self.wb[self.cl] = "<a href='#r{0}'>[{0}]</a> {1}".format(fnname, self.wb[self.cl])
       self.wb[self.cl] = "<a href='#r{0}'>{0}</a>. {1}".format(fnname, self.wb[self.cl])
@@ -6318,9 +6431,22 @@ class Pph(Book):
         self.wb[self.cl] = "<div class='footnote' id='f{}' style='{}'>".format(fnname, hcss)
       else:
         self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
+      if self.footnoteLzH: # if special footnote landing zone processing in effect
+        self.footnoteStart = self.cl # remember where this footnote started
       s = "<span class='label'><a href='#r{0}'>{0}</a>.&nbsp;&nbsp;</span>".format(fnname)
       self.cl += 1
       self.wb[self.cl] = s + self.wb[self.cl]
+
+  # grab a complete footnote out of self.wb and save it for later
+  def grabFootnoteH(self):
+    t = [] # buffer for the footnote label and text
+    i = self.footnoteStart
+    while i < self.cl:
+      t.append(self.wb[i]) # grab a line then delete it
+      del self.wb[i]
+      self.cl -= 1
+    self.fnlist.append(t) # when done, append complete list into fnlist for later use
+    #self.cl = i
 
 
   # tables .ta r:5 l:20 r:5 or .ta rlr
@@ -6940,6 +7066,9 @@ class Pph(Book):
         continue
 
       self.doPara() # it's a paragraph to wrap
+
+    if len(self.fnlist):  # any saved footnotes that didn't have a .fm to generate them?
+      self.warn("Footnotes encountered after last \".fm lz=h\" have not been generated. Missing a .fm somewhere?")
 
   def makeHTML(self):
     self.doHeader()
