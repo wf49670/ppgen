@@ -1963,49 +1963,6 @@ class Book(object):
     if self.dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
       if not dia_blobbed:
         text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
-      #
-      # Correct diacritics with <i> markup in them if requested
-      #
-      if dia_italic.lower().startswith("y"):
-        print("Checking for <i> within diacritic markup and correcting")
-        for s in self.diacritics_user:
-          si = "[<i>" + s[0][1:-1] + "</i>]"
-          so = "<i>" + s[0] + "</i>"
-          try:
-            text, count = re.subn(re.escape(si), so, text)
-            if count:
-              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
-          except:
-            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
-        for s in self.diacritics:
-          si = "[<i>" + s[0][1:-1] + "</i>]"
-          so = "<i>" + s[0] + "</i>"
-          try:
-            text, count = re.subn(re.escape(si), so, text)
-            if count:
-              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
-          except:
-            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
-      if dia_bold.lower().startswith("y"):
-        print("Checking for <b> within diacritic markup and correcting")
-        for s in self.diacritics_user:
-          si = "[<b>" + s[0][1:-1] + "</b>]"
-          so = "<b>" + s[0] + "</b>"
-          try:
-            text, count = re.subn(re.escape(si), so, text)
-            if count:
-              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
-          except:
-            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
-        for s in self.diacritics:
-          si = "[<b>" + s[0][1:-1] + "</b>]"
-          so = "<b>" + s[0] + "</b>"
-          try:
-            text, count = re.subn(re.escape(si), so, text)
-            if count:
-              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
-          except:
-            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
       if not diatest:
         if len(self.diacritics_user) > 0:
           for s in self.diacritics_user:
@@ -2661,17 +2618,17 @@ class Ppt(Book):
             m = re.match("(.*?)(⑱.*?⑱)(.*)",stemp)
       if len(s) > twidth:
         try:
-          snip_at = s.rindex(" ", 0, twidth)
+          snip_at = s.rindex(" ", 0, twidth) # Plan A: snip at a last blank within first twidth characters
         except:
           # could not find a place to wrap
           try: # this one might fail, too, so catch exceptions
-            snip_at = s.index(" ", twidth) # Plan B
+            snip_at = s.index(" ") # Plan B: snip at any blank, even if line is wide
           except:
-            snip_at = len(s)
-          if len(t) == 0:
-            self.warn("wide line: {}".format(hold + s)) # include any "hold" characters if wrapping first line
-          else:
-            self.warn("wide line: {}".format(s)) # else just include the current line.
+            snip_at = len(s) # Plan C: leave the line wide
+          #if len(t) == 0:
+          #  self.warn("wide line: {}".format(hold + s)) # include any "hold" characters if wrapping first line
+          #else:
+          #  self.warn("wide line: {}".format(s)) # else just include the current line.
         t.append(s[:snip_at])
         if snip_at < len(s):
           s = s[snip_at+1:]
