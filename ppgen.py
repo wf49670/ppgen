@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46l"  # 17-Feb-2015    Handle misformatted diacritics ([<i>...</i>] or [<b>...</b>]) if requested by PPer
+VERSION="3.47"  # 19-Feb-2015    Merge Development 3.46l into Master
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
