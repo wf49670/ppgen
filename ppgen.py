@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46k"  # 16-Feb-2015    Allow PPer to force creation of -utf8.txt output by specifying -ou even for Latin-1 encoded input files
+VERSION="3.46kSN"  # 17-Feb-2015    3.46k + Sidenotes
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -7187,7 +7187,7 @@ if __name__ == '__main__':
 # 1432      div.footnote .label (if block paragraphs)
 # 1465-1467 .pb (div.pbb, hr.pb, and handheld version)
 # 1500      .sidenote, .sni
-# 1501      @media handheld
+# 1501      @media handheld sidenote
 # 1502      .sni
 # 1503      .hidev
 # 1576      .chapter
