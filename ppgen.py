@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46kLZ"  # 17-Feb-2015    Footnote "landing zones" for text and HTML
+VERSION="3.47LZ"  # 19-Feb-2015    3.47 + Footnote Landing Zones
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1856,13 +1856,17 @@ class Book(object):
     self.diacritics_user = []
     self.dia_requested = False
     dia_done = False
+    dia_blobbed = False
     diapre = ""
     diasuf = ""
     diakeep = "n"
     diatest = False
     dia_quit = "n"
+    dia_italic = "n"
+    dia_bold = "n"
     while i < len(self.wb) and not dia_done:
       if self.wb[i].startswith(".cv"):
+        self.dia_requested = True
         orig = self.wb[i]
         diain = ""
         diaout = ""
@@ -1886,10 +1890,13 @@ class Book(object):
           self.wb[i], diaout = self.get_id("out", self.wb[i])
         if "quit=" in self.wb[i]:
           self.wb[i], dia_quit = self.get_id("quit", self.wb[i])
+        if "italic=" in self.wb[i]:
+          self.wb[i], dia_italic = self.get_id("italic", self.wb[i])
+        if "bold=" in self.wb[i]:
+          self.wb[i], dia_bold = self.get_id("bold", self.wb[i])
         if "done" in self.wb[i]:
           dia_done = True
         del self.wb[i]
-        self.dia_requested = True
         if (diain and not diaout) or (diaout and not diain):
           self.warn("Missing in= or out= value: {}".format(orig))
         if diain:
@@ -1919,8 +1926,55 @@ class Book(object):
               self.warn("No builtin diacritic {} to ignore: {}".format(diain, orig))
         continue
       i += 1
-    if self.dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
+    if self.dia_requested and (dia_italic.lower().startswith("y") or dia_bold.lower().startswith("y")):
       text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
+      dia_blobbed = True
+      #
+      # Correct diacritics with <i> markup in them if requested
+      #
+      if dia_italic.lower().startswith("y"):
+        print("Checking for <i> within diacritic markup and correcting")
+        for s in self.diacritics_user:
+          si = "[<i>" + s[0][1:-1] + "</i>]"
+          so = "<i>" + s[0] + "</i>"
+          try:
+            text, count = re.subn(re.escape(si), so, text)
+            if count:
+              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+          except:
+            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
+        for s in self.diacritics:
+          si = "[<i>" + s[0][1:-1] + "</i>]"
+          so = "<i>" + s[0] + "</i>"
+          try:
+            text, count = re.subn(re.escape(si), so, text)
+            if count:
+              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+          except:
+            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
+      if dia_bold.lower().startswith("y"):
+        print("Checking for <b> within diacritic markup and correcting")
+        for s in self.diacritics_user:
+          si = "[<b>" + s[0][1:-1] + "</b>]"
+          so = "<b>" + s[0] + "</b>"
+          try:
+            text, count = re.subn(re.escape(si), so, text)
+            if count:
+              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+          except:
+            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
+        for s in self.diacritics:
+          si = "[<b>" + s[0][1:-1] + "</b>]"
+          so = "<b>" + s[0] + "</b>"
+          try:
+            text, count = re.subn(re.escape(si), so, text)
+            if count:
+              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+          except:
+            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
+    if self.dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
+      if not dia_blobbed:
+        text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
       if not diatest:
         if len(self.diacritics_user) > 0:
           for s in self.diacritics_user:
@@ -1981,6 +2035,8 @@ class Book(object):
         if header_needed:
           print("No unconverted diacritics seem to remain after conversion.")
         text2 = []
+
+    if dia_blobbed:
       self.wb = text.splitlines()
 
     if gk_quit.lower().startswith("y") or dia_quit.lower().startswith("y") or self.cvgfilter:
