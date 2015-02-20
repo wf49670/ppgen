@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46kSN"  # 17-Feb-2015    3.46k + Sidenotes
+VERSION="3.47SNwf"  # 19-Feb-2015    3.47 + Sidenotes by Davem22 + Sidenote changes by wf
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -2513,6 +2513,28 @@ class Book(object):
     if override:
       self.pnshow = False # disable visible page numbers
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # Locate any .sn commands located within paragraphs, and transform so they will be
+    #   gathered as part of the paragraph text later in doPara
+    # Also, while doing this scan, note whether any .sn are present in the file at all
+    self.snPresent = False
+    for i, line in enumerate(self.wb):
+      if line.startswith(".sn"):
+        m = re.match(r"\.sn (.*)", self.wb[i])
+        if m:
+          self.snPresent = True
+          islineaboveblank = (i > 0 and (self.wb[i-1].rstrip() == ""
+                                         or self.wb[i-1].startswith("."))
+                              or i == 0)
+          islinebelowblank = (i < len(self.wb)-1 and (self.wb[i+1].rstrip() == ""
+                                                      or self.wb[i+1].startswith("."))
+                              or i == len(self.wb) - 1)
+          if not islineaboveblank and not islinebelowblank:
+            self.wb[i] = "⓫{}⓫".format(m.group(1))
+        else:
+          self.fatal("malformed .sn directive: {}".format(self.wb[i]))
+
+
 # ====== ppt ============================================================================
 
 # this class is used to generate UTF-8 or Latin-1 (ANSI) text
@@ -2882,21 +2904,6 @@ class Ppt(Book):
         else: # single line
           re_sc = re.compile(r"<sc>(.*?)<\/sc>")
           self.wb[i] = re.sub(re_sc, to_uppercase, self.wb[i])
-
-    # need to process .nr early for self.nregs["Sidenote"]
-    for i, line in enumerate(self.wb):
-      if self.wb[i][0:3] == ".nr":
-        self.cl = i
-        self.doNr()
-
-    # handle sidenotes inside paragraphs, sidenotes outside paragraphs handled later in process()
-    for i, line in enumerate(self.wb):
-      m = re.match(r"\.sn (.*)", self.wb[i])
-      if m:
-        islineaboveblank = i > 0 and self.wb[i-1].rstrip() == ""
-        islinebelowblank = i < len(self.wb)-1 and self.wb[i+1].rstrip() == ""
-        if not islineaboveblank and not islinebelowblank:
-          self.wb[i] = "[{}: {}]".format(self.nregs["Sidenote"], m.group(1))
 
   # -------------------------------------------------------------------------------------
   # post-process emit buffer (TEXT)
@@ -4062,7 +4069,7 @@ class Ppt(Book):
       self.eb.append(".RS 1") # request at least one space in text after sidenote
       self.cl += 1
     else:
-      self.fatal("malformed .sn directive: {}".format(self.wb[self.cl]))
+      self.fatal("malformed .sn directive: {}".format(self.wb[self.cl])) # should never hit this as preprocesscommon() checked it
 
   def doPara(self):
     t = []
@@ -4070,10 +4077,20 @@ class Ppt(Book):
     pstart = self.cl
 
     # grab the paragraph from the source file into t[]
+    # note: we will transform encoded sidenote information within the paragraph into
+    # its final format here, as it will affect wrapping. This differs from the handling
+    # for HTML where it is handled during post-processing, as our HTML processing for
+    # paragraphs does not wrap the text, leaving that to the browser or other rendering engine.
     j = pstart
     while (j < len(self.wb) and
            self.wb[j] and
-           not re.match("\.", self.wb[j])):
+           not self.wb[j].startswith(".")):
+      if self.wb[j].startswith("⓫"): # .sn line within paragraph?
+        m = re.match("⓫(.*?)⓫$", self.wb[j])
+        if m:
+          self.wb[j] = "[{}: {}]".format(self.nregs["Sidenote"], m.group(1))
+        else:
+          self.fatal("Incorrect encoded .sn information found: {}".format(self.wb[j]))
       t.append(self.wb[j])
       j += 1
     pend = j
@@ -4885,26 +4902,6 @@ class Pph(Book):
         m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
       self.wb[i] = re.sub("<\/fs>", "</span>", self.wb[i])
 
-    # handle sidenotes inside paragraphs, sidenotes outside paragraphs handled later in process()
-    for i, line in enumerate(self.wb):
-      m = re.match(r"\.sn (.*)", self.wb[i])
-      if m:
-        # CSS taken from http://www.pgdp.net/wiki/Sidenotes
-        self.css.addcss("[1500] .sidenote, .sni { text-indent: 0; text-align: left; min-width: 9em; " +
-                        "max-width: 9em; padding-bottom: .3em; padding-top: .3em; padding-left: .3em; " +
-                        "padding-right: .3em; margin-right: 1em; float: left; clear: left; margin-top: 1em; " +
-                        "margin-bottom: .3em; font-size: smaller; color: black; background-color: #eeeeee; " +
-                        "border: thin dotted gray; }"
-                        )
-        self.css.addcss("[1501] @media handheld { .sidenote, .sni { float: left; clear: none; font-weight: bold; }}")
-        self.css.addcss("[1502] .sni { text-indent: -.2em; }")
-        self.css.addcss("[1503] .hidev { visibility: hidden; }")
-
-        islineaboveblank = i > 0 and self.wb[i-1].rstrip() == ""
-        islinebelowblank = i < len(self.wb)-1 and self.wb[i+1].rstrip() == ""
-        if not islineaboveblank and not islinebelowblank:
-          self.wb[i] = "⓫{}⓫".format(m.group(1))
-
   # -------------------------------------------------------------------------------------
   # restore tokens in HTML text
 
@@ -5055,6 +5052,19 @@ class Pph(Book):
       self.css.addcss("[1100] body { margin-left:8%;margin-right:8%; }")
 
     self.css.addcss("[1170] p { text-indent:0;margin-top:0.5em;margin-bottom:0.5em;text-align:justify; }") # para style
+
+    ### generate CSS for sidenotes if any are present in the text
+    if self.snPresent:
+      # CSS taken from http://www.pgdp.net/wiki/Sidenotes
+      self.css.addcss("[1500] .sidenote, .sni { text-indent: 0; text-align: left; min-width: 9em; " +
+                      "max-width: 9em; padding-bottom: .3em; padding-top: .3em; padding-left: .3em; " +
+                      "padding-right: .3em; margin-right: 1em; float: left; clear: left; margin-top: 1em; " +
+                      "margin-bottom: .3em; font-size: smaller; color: black; background-color: #eeeeee; " +
+                      "border: thin dotted gray; }"
+                      )
+      self.css.addcss("[1501] @media handheld { .sidenote, .sni { float: left; clear: none; font-weight: bold; }}")
+      self.css.addcss("[1502] .sni { text-indent: -.2em; }")
+      self.css.addcss("[1503] .hidev { visibility: hidden; }")
 
     # HTML header
     t = []
@@ -6894,7 +6904,11 @@ class Pph(Book):
     # handle sidenotes outside paragraphs, sidenotes inside paragraphs are handled beforehand in preprocess()
     m = re.match(r"\.sn (.*)", self.wb[self.cl])
     if m:
-      self.wb[self.cl] = "<div class='sidenote'>{}</div>".format(m.group(1))
+      if self.pvs > 0: # handle any pending vertical space before the .sn
+        self.wb[self.cl] = "<div class='sidenote' style='margin-top: {}em;'>{}</div>".format(self.pvs, m.group(1))
+        self.pvs = 0
+      else:
+        self.wb[self.cl] = "<div class='sidenote'>{}</div>".format(m.group(1))
       self.cl += 1
     else:
       self.fatal("malformed .sn directive: {}".format(self.wb[self.cl]))
@@ -7190,7 +7204,7 @@ if __name__ == '__main__':
 # \u24e4  ⓤ   CIRCLED LATIN SMALL LETTER U # thin space (\^)
 # \u24e5  ⓥ   CIRCLED LATIN SMALL LETTER V # thick space (\|)
 # \u24ea  ⓪   CIRCLED DIGIT 0 # \#
-# \u24EB  ⓫   NEGATIVE CIRCLED NUMBER ELEVEN # surrounds sidenotes
+# \u24ea  ⓫   NEGATIVE CIRCLED NUMBER ELEVEN # surrounds sidenotes
 # \u25ee  ◮   UP-POINTING TRIANGLE WITH RIGHT HALF BLACK # <b> or <strong> (becomes =)
 # \u25f8  ◸   UPPER LEFT TRIANGLE # precedes superscripts
 # \u25f9  ◹   UPPER RIGHT TRIANGLE # follows superscripts
