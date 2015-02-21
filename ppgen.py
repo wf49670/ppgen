@@ -3522,7 +3522,7 @@ class Ppt(Book):
     # see if the block has hit the left margin
     need_pad = False
     for line in t:
-      if line[0] != " ":
+      if line and line[0] != " ":
         if bnInBlock and line[0] == "⑱":
           m =re.match("^⑱.*?⑱(.*)", line)
           if not (m and m.group(1) == ""):
@@ -3687,7 +3687,7 @@ class Ppt(Book):
     # see if the block has hit the left margin
     need_pad = False
     for line in t:
-      if line[0] != " ":
+      if line and line[0] != " ":
         if bnInBlock and line[0] == "⑱":
           m =re.match("^⑱.*?⑱(.*)", line)
           if not (m and m.group(1) == ""):
