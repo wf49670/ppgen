@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.46l"  # 17-Feb-2015    Handle misformatted diacritics ([<i>...</i>] or [<b>...</b>]) if requested by PPer
+VERSION="3.47a"  # 21-Feb-2015    Fix error with blank lines in .nf c/b for text versions
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -3494,7 +3494,7 @@ class Ppt(Book):
     # see if the block has hit the left margin
     need_pad = False
     for line in t:
-      if line[0] != " ":
+      if line and line[0] != " ":
         if bnInBlock and line[0] == "⑱":
           m =re.match("^⑱.*?⑱(.*)", line)
           if not (m and m.group(1) == ""):
@@ -3659,7 +3659,7 @@ class Ppt(Book):
     # see if the block has hit the left margin
     need_pad = False
     for line in t:
-      if line[0] != " ":
+      if line and line[0] != " ":
         if bnInBlock and line[0] == "⑱":
           m =re.match("^⑱.*?⑱(.*)", line)
           if not (m and m.group(1) == ""):
