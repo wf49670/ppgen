@@ -22,8 +22,8 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47SNwf"  # 19-Feb-2015    3.47 + Sidenotes by Davem22 + Sidenote changes by wf
-
+VERSION="3.47aSNwf"  # 21-Feb-2015    3.47a + Sidenotes by Davem22 + Sidenote changes by wf
+# + fix for .ig bug skipping some lines
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1747,6 +1747,35 @@ class Book(object):
     # Begin Pre-process Common
     #
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # remove comments
+    i = 0
+    while i < len(self.wb):
+      if  re.match(r"\/\/", self.wb[i]): # entire line is a comment
+        del self.wb[i]
+        continue
+      if re.search(r"\/\/.*$", self.wb[i]):
+        self.wb[i] = re.sub(r"\/\/.*$", "", self.wb[i])
+        self.wb[i] = self.wb[i].rstrip()
+      i += 1
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # ignored text removed in preprocessor
+    i = 0
+    while i < len(self.wb):
+      # one line
+      if re.match(r"\.ig ",self.wb[i]): # single line
+        del self.wb[i]
+      elif ".ig" == self.wb[i]: # multi-line
+        while i < len(self.wb) and self.wb[i] != ".ig-":
+          del self.wb[i]
+        if i < len(self.wb):
+          del self.wb[i] # the ".ig-"
+        else:
+          self.fatal("unterminated .ig command")
+      else:
+        i += 1
+
     # if source file is UTF-8 and requested encoding is Latin-1, down-convert
     if self.encoding == "utf_8" and self.renc == "l" and not self.cvgfilter:
       for j,ch in enumerate(self.mau):
@@ -2078,7 +2107,7 @@ class Book(object):
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # process search/replace strings
+    # capture and remove search/replace directives
     # .sr <which> /search/replace/
     # which is a string containing some combination of ulth (UTF-8, Latin-1, Text, HTML)
     # search is  reg-ex search string
@@ -2140,18 +2169,6 @@ class Book(object):
         self.wb[i] = ".ce 1"
       if ".rj" == self.wb[i]:
         self.wb[i] = ".rj 1"
-      i += 1
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # other comments
-    i = 0
-    while i < len(self.wb):
-      if  re.match(r"\/\/", self.wb[i]): # entire line is a comment
-        del self.wb[i]
-        continue
-      if re.search(r"\/\/.*$", self.wb[i]):
-        self.wb[i] = re.sub(r"\/\/.*$", "", self.wb[i])
-        self.wb[i] = self.wb[i].rstrip()
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2342,22 +2359,6 @@ class Book(object):
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # ignored text removed in preprocessor
-    i = 0
-    while i < len(self.wb):
-      # one line
-      if re.match(r"\.ig ",self.wb[i]): # single line
-        del self.wb[i]
-      if ".ig" == self.wb[i]: # multi-line
-        while i < len(self.wb) and self.wb[i] != ".ig-":
-          del self.wb[i]
-        if i < len(self.wb):
-          del self.wb[i] # the ".ig-"
-        else:
-          self.fatal("unterminated .ig command")
-      i += 1
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # search for display title directive, record and remove
     i = 0
     while i < len(self.wb):
@@ -2393,8 +2394,10 @@ class Book(object):
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # .bn (GG-compatible .bin file maintenance)
+    # Also, remember if any .sn are present (kludgy, but convenient to do here)
     i = 0
     self.bnPresent = False
+    self.snPresent = False
     while i < len(self.wb):
       if self.wb[i].startswith(".bn"):
         m = re.search("(\w+?)\.png",self.wb[i])
@@ -2403,6 +2406,8 @@ class Book(object):
           self.wb[i] = "⑱{}⑱".format(m.group(1))
         else:
           self.crash_w_context("malformed .bn command",i)
+      elif (not self.snPresent) and self.wb[i].startswith(".sn"):
+        self.snPresent = True
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2512,28 +2517,6 @@ class Book(object):
         self.pnshow = True
     if override:
       self.pnshow = False # disable visible page numbers
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # Locate any .sn commands located within paragraphs, and transform so they will be
-    #   gathered as part of the paragraph text later in doPara
-    # Also, while doing this scan, note whether any .sn are present in the file at all
-    self.snPresent = False
-    for i, line in enumerate(self.wb):
-      if line.startswith(".sn"):
-        m = re.match(r"\.sn (.*)", self.wb[i])
-        if m:
-          self.snPresent = True
-          islineaboveblank = (i > 0 and (self.wb[i-1].rstrip() == ""
-                                         or self.wb[i-1].startswith("."))
-                              or i == 0)
-          islinebelowblank = (i < len(self.wb)-1 and (self.wb[i+1].rstrip() == ""
-                                                      or self.wb[i+1].startswith("."))
-                              or i == len(self.wb) - 1)
-          if not islineaboveblank and not islinebelowblank:
-            self.wb[i] = "⓫{}⓫".format(m.group(1))
-        else:
-          self.fatal("malformed .sn directive: {}".format(self.wb[i]))
-
 
 # ====== ppt ============================================================================
 
@@ -4061,7 +4044,7 @@ class Ppt(Book):
       self.fatal("source file ends with continued .de command: {}".format(self.wb[self.cl]))
 
   def doSidenote(self):
-    # handle sidenotes outside paragraphs, sidenotes inside paragraphs are handled beforehand in preprocess()
+    # handle sidenotes outside paragraphs, sidenotes inside paragraphs are handled in doPara
     m = re.match(r"\.sn (.*)", self.wb[self.cl])
     if m:
       self.eb.append(".RS 1") # request at least one space in text before sidenote
@@ -4083,14 +4066,15 @@ class Ppt(Book):
     # paragraphs does not wrap the text, leaving that to the browser or other rendering engine.
     j = pstart
     while (j < len(self.wb) and
-           self.wb[j] and
-           not self.wb[j].startswith(".")):
-      if self.wb[j].startswith("⓫"): # .sn line within paragraph?
-        m = re.match("⓫(.*?)⓫$", self.wb[j])
+           self.wb[j]):  # any blank line ends the paragraph
+      if self.wb[j].startswith(".sn"): # Allow .sn in paragraph
+        m = re.match(r"\.sn (.*)", self.wb[j])
         if m:
           self.wb[j] = "[{}: {}]".format(self.nregs["Sidenote"], m.group(1))
         else:
-          self.fatal("Incorrect encoded .sn information found: {}".format(self.wb[j]))
+          self.crash_w_contect("malformed .sn directive: {}".format(self.wb[j]), j)
+      elif self.wb[j].startswith("."): # but any other . directive ends the paragraph
+        break
       t.append(self.wb[j])
       j += 1
     pend = j
@@ -6901,7 +6885,7 @@ class Pph(Book):
       self.warn("malformed .rj directive: {}".format(self.wb[i]))
 
   def doSidenote(self):
-    # handle sidenotes outside paragraphs, sidenotes inside paragraphs are handled beforehand in preprocess()
+    # handle sidenotes outside paragraphs, sidenotes inside paragraphs are handled in doPara()
     m = re.match(r"\.sn (.*)", self.wb[self.cl])
     if m:
       if self.pvs > 0: # handle any pending vertical space before the .sn
@@ -6968,10 +6952,16 @@ class Pph(Book):
       # it's a normal paragraph
       self.wb[self.cl] = "<p {}{}>".format(c_str,s_str) + self.wb[self.cl]
 
-    while ( self.cl < len(self.wb) \
-       # any blank line in source ends paragraph
-       and self.wb[self.cl] \
-       and self.wb[self.cl][0] != "." ): # any dot command in source ends paragraph
+    while ( self.cl < len(self.wb) and
+            self.wb[self.cl]): # any blank line in source ends paragraph
+      if self.wb[self.cl].startswith(".sn"): # allow .sn directive inside paragraph
+        m = re.match(r"\.sn (.*)", self.wb[self.cl])
+        if m:
+          self.wb[self.cl] = "⓫{}⓫".format(m.group(1)) # encode the sidenote text for later postprocessing
+        else:
+          self.crash_w_context("malformed .sn directive: {}".format(self.wb[self.cl]), self.cl)
+      elif self.wb[self.cl].startswith("."): # but any other . directive ends the paragraph
+        break
       self.cl += 1
     i = self.cl - 1
     # if para ended with .bn info, place the </p> before it, not after it to avoid extra
@@ -7204,7 +7194,7 @@ if __name__ == '__main__':
 # \u24e4  ⓤ   CIRCLED LATIN SMALL LETTER U # thin space (\^)
 # \u24e5  ⓥ   CIRCLED LATIN SMALL LETTER V # thick space (\|)
 # \u24ea  ⓪   CIRCLED DIGIT 0 # \#
-# \u24ea  ⓫   NEGATIVE CIRCLED NUMBER ELEVEN # surrounds sidenotes
+# \u24ea  ⓫   NEGATIVE CIRCLED NUMBER ELEVEN # surrounds sidenotes within paragraphs in HTML
 # \u25ee  ◮   UP-POINTING TRIANGLE WITH RIGHT HALF BLACK # <b> or <strong> (becomes =)
 # \u25f8  ◸   UPPER LEFT TRIANGLE # precedes superscripts
 # \u25f9  ◹   UPPER RIGHT TRIANGLE # follows superscripts
