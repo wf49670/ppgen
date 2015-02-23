@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47a"  # 21-Feb-2015    Fix error with blank lines in .nf c/b for text versions
+VERSION="3.47aDC"  # 23-Feb-2015    Initial implementation of drop cap letters (not images) for .nf blocks
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -6134,14 +6134,16 @@ class Pph(Book):
           continue
       
       if self.wb[i].startswith(".dc"):
-        nf_pdc = True
-        self.doDropcap(i, type="nf")
+        self.warn(".di not supported within .nf c block: {}".format(self.wb[i]))
+        #nf_pdc = True
+        #self.doDropcap(i, type="nf")
         del self.wb[i]
         continue
         
       if self.wb[i].startswith(".di"):
-        nf_pdi = True
-        di = self.doDropimageGuts(i, type="nf")
+        self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
+        #nf_pdi = True
+        #di = self.doDropimageGuts(i, type="nf")
         del self.wb[i]
         continue
           
@@ -6153,10 +6155,10 @@ class Pph(Book):
         if nf_pdc:
           nf_pdc = False
           t.append("    <div  class='{}' style='margin-top:{}em'>".format(self.pdc, pending_mt) + self.wb[i].strip() + "</div>")
-        elif nf_pdi:
-          nf_pdi = False
-          s = "<img class='drop-capinf' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"])
-          t.append("    <div class='drop-capinf{}' style='margin-top:{}em'>".format(di["s_adj"], pending_mt) + s + self.wb[i].strip() + "</div>")
+        #elif nf_pdi:
+        #  nf_pdi = False
+        #  s = "<img class='drop-capinf' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"])
+        #  t.append("    <div class='drop-capinf{}' style='margin-top:{}em'>".format(di["s_adj"], pending_mt) + s + self.wb[i].strip() + "</div>")
         else:
           t.append("    <div style='margin-top:{}em'>".format(pending_mt) + self.wb[i].strip() + "</div>")
         printable_lines_in_block += 1
@@ -6165,10 +6167,10 @@ class Pph(Book):
         if nf_pdc:
           nf_pdc = False
           t.append("    <div  class='{}'>".format(self.pdc) + self.wb[i].strip() + "</div>")
-        elif nf_pdi:
-          nf_pdi = False
-          s = "<img class='drop-capinf' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"])
-          t.append("    <div class='drop-capinf{}'>".format(di["s_adj"]) + s + self.wb[i].strip() + "</div>")
+        #elif nf_pdi:
+        #  nf_pdi = False
+        #  s = "<img class='drop-capinf' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"])
+        #  t.append("    <div class='drop-capinf{}'>".format(di["s_adj"]) + s + self.wb[i].strip() + "</div>")
         else:
           t.append("    <div>" + self.wb[i].strip() + "</div>")
         printable_lines_in_block += 1
@@ -6284,12 +6286,12 @@ class Pph(Book):
       if self.wb[i].startswith(".dc"):
         nf_pdc = True
         self.doDropcap(i, type="nf")
-        del self.wb[i]
         continue
         
       if self.wb[i].startswith(".di"):
-        nf_pdi = True
-        di = self.doDropimageGuts(i, type="nf")
+        self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
+        #nf_pdi = True
+        #di = self.doDropimageGuts(i, type="nf")
         del self.wb[i]
         continue
 
@@ -6314,25 +6316,31 @@ class Pph(Book):
           spvs = " style='margin-top:{}em' ".format(cpvs)
         else:
           spvs = ""
-        if leadsp > 0: # (Note: support for drop-cap not implemented for indented lines)
-          if nf_pdc or nf_pdi:
-            self.warn("drop-cap or drop-image not supported on indented line in .nf block: {}".format(ss+tmp))
-            nf_pdc = False
-            nf_pdi = False
+        if leadsp > 0: # (Note: support for drop-cap not fully implemented for indented lines)
+          #if nf_pdc: # or nf_pdi, eventually
+          #  self.warn("drop-cap not supported on indented line in .nf block: {}".format(ss+tmp))
+          #  nf_pdc = False
+          #  nf_pdi = False
           # create an indent class
-          iclass = "in{}".format(leadsp)
-          iamt = str(-3 + leadsp/2) # calculate based on -3 base
+          if nf_pdc:
+            nf_pdc = False
+            iclass = "in{}dc".format(leadsp)
+            iamt = "0"
+            t.append("      <div class='linedc {0} {1}' {2}>{3}</div>".format(iclass, self.pdc, spvs, ss+tmp.lstrip()))
+          else:
+            iclass = "in{}".format(leadsp)
+            iamt = str(-3 + leadsp/2) # calculate based on -3 base
+            t.append("      <div class='line {0}' {1}>{2}</div>".format(iclass, spvs, ss+tmp.lstrip()))
           self.css.addcss("[1227] .linegroup .{} {{ text-indent: {}em; }}".format(iclass, iamt))
-          t.append("      <div class='line {0}' {1}>{2}</div>".format(iclass, spvs, ss+tmp.lstrip()))
           printable_lines_in_block += 1
         else:
           if nf_pdc:
             nf_pdc = False
-            t.append("    <div  class='line {0}' {1}>{2}</div>".format(self.pdc, spvs, ss+tmp))
-          elif nf_pdi:
-            nf_pdi = False
-            simg = "<img class='drop-capinf' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"])
-            t.append("    <div  class='line' {0}>{1}{2}</div>".format(spvs, simg, ss+tmp))
+            t.append("    <div  class='linedc {0}' {1}>{2}</div>".format(self.pdc, spvs, ss+tmp))
+          #elif nf_pdi:
+          #  nf_pdi = False
+          #  simg = "<img class='drop-capinf' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"])
+          #  t.append("    <div  class='line' {0}>{1}{2}</div>".format(spvs, simg, ss+tmp))
           else:
             t.append("      <div class='line' {0}>{1}</div>".format(spvs, ss+tmp))
           printable_lines_in_block += 1
