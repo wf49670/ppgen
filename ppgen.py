@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47aSNwf2"  # 22-Feb-2015    3.47a + Sidenotes by Davem22 + Sidenote changes by wf (trying <sn>...</sn> for internal sidenotes)
+VERSION="3.47b"  # 24-Feb-2015     3.47a + Sidenotes by Davem22 + changes by Walt to use <sn>...</sn> for sidenotes inside other objects
 # + fix for .ig bug skipping some lines
 # + fix for a self.umap problem and a crash_w_context problem
 
@@ -5059,7 +5059,7 @@ class Pph(Book):
     ### generate CSS for sidenotes if any are present in the text
     if self.snPresent:
       # CSS taken from http://www.pgdp.net/wiki/Sidenotes with changes.
-      self.css.addcss("[1500] .sidenote, .sni { text-indent: 0; text-align: left; min-width: 9em; " +
+      self.css.addcss("[1500] .sidenote, .sni { text-indent: 0; text-align: left; width: 9em; min-width: 9em; " +
                       "max-width: 9em; padding-bottom: .1em; padding-top: .1em; padding-left: .3em; " +
                       "padding-right: .3em; margin-right: 3.5em; float: left; clear: left; margin-top: 0em; " +
                       "margin-bottom: 0em; font-size: small; color: black; background-color: #eeeeee; " +
