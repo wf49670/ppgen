@@ -1646,32 +1646,9 @@ class Book(object):
     else:
       registerName = m.group(1)
       registerValue = m.group(2)
-      known_register = False
-      if registerName == "psi": # paragraph spacing, indented text
-        self.nregs["psi"] = m.group(2)
-        known_register = True
-      if registerName == "psb": # paragraph spacing, block text
-        self.nregs["psb"] = m.group(2)
-        known_register = True
-      if registerName == "pnc": # page number color
-        self.nregs["pnc"] = m.group(2)
-        known_register = True
-      if registerName == "lang": # base language
-        self.nregs["lang"] = m.group(2)
-        known_register = True
-      if registerName == "Footnote": # foreign language translation for "Footnote"
-        self.nregs["Footnote"] = self.deQuote(m.group(2), self.cl)
-        known_register = True
-      if registerName == "Illustration": # foreign language translation for "Illustration"
-        self.nregs["Illustration"] = self.deQuote(m.group(2), self.cl)
-        known_register = True
-      if registerName == "Sidenote": # foreign language translation for "Sidenote"
-        self.nregs["Sidenote"] = self.deQuote(m.group(2), self.cl)
-        known_register = True
-      if registerName == "dcs": # drop cap font size
-        self.nregs["dcs"] = m.group(2)
-        known_register = True
-      if not known_register:
+      if registerName in self.nregs:
+        self.nregs[registerName] = self.deQuote(m.group(2), self.cl)
+      else:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
       del(self.wb[self.cl])
 
