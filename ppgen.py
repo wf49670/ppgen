@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47aSNwf2"  # 22-Feb-2015    3.47a + Sidenotes by Davem22 + Sidenote changes by wf (trying <sn>...</sn> for internal sidenotes)
+VERSION="3.47b"  # 24-Feb-2015     3.47a + Sidenotes by Davem22 + changes by Walt to use <sn>...</sn> for sidenotes inside other objects
 # + fix for .ig bug skipping some lines
 # + fix for a self.umap problem and a crash_w_context problem
 
