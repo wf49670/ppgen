@@ -1377,6 +1377,7 @@ class Book(object):
     self.wrapper.break_long_words = False
     self.wrapper.break_on_hyphens = False
     self.nregs["psi"] = "0" # default above/below paragraph spacing for indented text
+    self.nregs["pti"] = "1.0em" # default paragraph indentation for indented text
     self.nregs["psb"] = "1.0em" # default above/below paragraph spacing for block text
     self.nregs["pnc"] = "silver" # use to define page number color in HTML
     self.nregs["lang"] = "en" # base language for the book (used in HTML header)
@@ -6902,7 +6903,7 @@ class Pph(Book):
     # if there is a text-indent already, don't change it
     # otherwise, add a text-indent if self.pindent is set.
     if self.pdc == ""  and self.pindent and 'text-indent' not in s:
-      s += 'text-indent:1em;'
+      s += 'text-indent:{};'.format(self.nregs["pti"])
 
     # apply either "psi" or "psb" spacing
     if self.pindent:
