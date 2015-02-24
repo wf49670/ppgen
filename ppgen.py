@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47aSNwf"  # 21-Feb-2015    3.47a + Sidenotes by Davem22 + Sidenote changes by wf
+VERSION="3.47aSNwf2"  # 22-Feb-2015    3.47a + Sidenotes by Davem22 + Sidenote changes by wf (trying <sn>...</sn> for internal sidenotes)
 # + fix for .ig bug skipping some lines
 # + fix for a self.umap problem and a crash_w_context problem
 
@@ -2190,6 +2190,7 @@ class Book(object):
       self.wb[i] = self.wb[i].replace(r"\>", "⑳")
       self.wb[i] = self.wb[i].replace(r"\:", "⑥")
       self.wb[i] = self.wb[i].replace(r"\-", "⑨")
+      self.wb[i] = self.wb[i].replace(r"\#", "⓪")
       # spacing
       self.wb[i] = self.wb[i].replace(r'\ ', "ⓢ") # non-breaking space
       self.wb[i] = self.wb[i].replace(r'\_', "ⓢ") # alternate non-breaking space
@@ -2396,10 +2397,8 @@ class Book(object):
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # .bn (GG-compatible .bin file maintenance)
-    # Also, remember if any .sn are present (kludgy, but convenient to do here)
     i = 0
     self.bnPresent = False
-    self.snPresent = False
     while i < len(self.wb):
       if self.wb[i].startswith(".bn"):
         m = re.search("(\w+?)\.png",self.wb[i])
@@ -2408,8 +2407,6 @@ class Book(object):
           self.wb[i] = "⑱{}⑱".format(m.group(1))
         else:
           self.crash_w_context("malformed .bn command",i)
-      elif (not self.snPresent) and self.wb[i].startswith(".sn"):
-        self.snPresent = True
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2825,6 +2822,9 @@ class Ppt(Book):
     # inline markup processing (text)
     # sc small caps ; l large ; xl x-large ; s small ; xs s-small ; u underline
     # g gesperrt ; converted to text form: em, b, i
+    # sn: inline sidenote, converted to [Sidenote: text]
+
+    tempSidenote = self.nregs["Sidenote"] # grab initial value of Sidenote special register
 
     for i, line in enumerate(self.wb):
 
@@ -2868,6 +2868,17 @@ class Ppt(Book):
       # color dropped
       self.wb[i] = re.sub(r"<c=[^>]+>", "", self.wb[i])
       self.wb[i] = re.sub(r"<\/c>", "", self.wb[i])
+
+      # inline sidenotes <sn>text</sn>
+      # note: Must look for .nr Sidenote as most .nr processing happens after this, during process()
+      #       We cannot simply move the .nr processing earlier as (in theory) someone could change the
+      #       .nr settings multiple times during a run
+      if self.wb[i].startswith(".nr Sidenote"):
+        m = re.match(r"\.nr Sidenote (.+)", self.wb[i])
+        if m:
+          tempSidenote = m.group(1) # remember new Sidenote name value
+      self.wb[i] = re.sub("<sn(?: class=[^>]*)?>", "[{}: ".format(tempSidenote), self.wb[i])
+      self.wb[i] = re.sub("</sn>", "]", self.wb[i])
 
     # do small caps last since it could uppercase a tag.
     for i, line in enumerate(self.wb):
@@ -2963,6 +2974,7 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("⑳", ">")
       self.eb[i] = self.eb[i].replace("⑥", ":")
       self.eb[i] = self.eb[i].replace("⑨", "-")
+      self.eb[i] = self.eb[i].replace("⓪", "#")
       # text space replacement
       self.eb[i] = re.sub("ⓢ|Ⓢ", " ", self.eb[i]) # non-breaking space
       self.eb[i] = re.sub("ⓣ|Ⓣ", " ", self.eb[i]) # zero space
@@ -4046,7 +4058,8 @@ class Ppt(Book):
       self.fatal("source file ends with continued .de command: {}".format(self.wb[self.cl]))
 
   def doSidenote(self):
-    # handle sidenotes outside paragraphs, sidenotes inside paragraphs are handled in doPara
+    # handle sidenotes outside paragraphs, sidenotes inside paragraphs are handled as <sn>-style markup
+    self.snPresent = True
     m = re.match(r"\.sn (.*)", self.wb[self.cl])
     if m:
       self.eb.append(".RS 1") # request at least one space in text before sidenote
@@ -4068,15 +4081,8 @@ class Ppt(Book):
     # paragraphs does not wrap the text, leaving that to the browser or other rendering engine.
     j = pstart
     while (j < len(self.wb) and
-           self.wb[j]):  # any blank line ends the paragraph
-      if self.wb[j].startswith(".sn"): # Allow .sn in paragraph
-        m = re.match(r"\.sn (.*)", self.wb[j])
-        if m:
-          self.wb[j] = "[{}: {}]".format(self.nregs["Sidenote"], m.group(1))
-        else:
-          self.crash_w_contect("malformed .sn directive: {}".format(self.wb[j]), j)
-      elif self.wb[j].startswith("."): # but any other . directive ends the paragraph
-        break
+           self.wb[j] and
+           not self.wb[j].startswith(".")): # any blank line or dot directive ends paragraph
       t.append(self.wb[j])
       j += 1
     pend = j
@@ -4360,6 +4366,8 @@ class Pph(Book):
         self.wb[i], 1)
 
     self.preProcessCommon()
+
+    self.snPresent = False
 
     # protect PPer-supplied internal link information
     # two forms: #number# and #name:id-value#
@@ -4690,7 +4698,6 @@ class Pph(Book):
           tagstack = []
           i += 1 # step inside the .nf block
           while i < len(self.wb) and not self.wb[i].startswith(".nf-"): # as long as we are in a .nf
-            tmpline = self.wb[i]
             if self.wb[i].startswith(".nf "):
               self.crash_w_context("nested no-fill block:", i)
             # ignore .bn lines; just pass them through
@@ -4700,7 +4707,8 @@ class Pph(Book):
                 i += 1
                 continue
             # find all tags on this line; ignore <a and </a tags completely for this purpose
-            t = re.findall("<\/?[^a>]*>", self.wb[i])
+            tmpline = re.sub("</?a[^>]*>", "", self.wb[i])
+            t = re.findall("<\/?[^>]*>", tmpline)
             sstart = "" # what to prepend to the line
             for s in tagstack: # build the start string
               sstart += s
@@ -4727,6 +4735,8 @@ class Pph(Book):
                 closetag = "</fs>" # font size
               if closetag.startswith("</lang"):
                 closetag = "</lang>" # language
+              if closetag.startswith("</sn"):
+                closetag = "</sn>" # inline sidenote
               send += closetag
             self.wb[i] = self.wb[i] + send
             i += 1
@@ -4888,6 +4898,17 @@ class Pph(Book):
         m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
       self.wb[i] = re.sub("<\/fs>", "</span>", self.wb[i])
 
+      # <sn>...</sn> becomes a span
+      tmpline = self.wb[i]
+      self.wb[i] = re.sub("<sn>", "<span class='sni'><span class='hidev'>⓫</span>", self.wb[i])
+      m = re.search(r"<sn class=([\"'])(\w*)\1>", self.wb[i])
+      while m:
+        self.wb[i] = re.sub(re.escape(m.group(0)), "<span class='sni {}'><span class='hidev'>⓫</span>".format(m.group(2)), self.wb[i])
+        m = re.search(r"<sn class=([\"'])(\w*)\1>", self.wb[i])
+      self.wb[i] = re.sub("</sn>", "<span class='hidev'>⓫</span></span>", self.wb[i])
+      if not self.snPresent and tmpline != self.wb[i]:
+        self.snPresent = True
+
   # -------------------------------------------------------------------------------------
   # restore tokens in HTML text
 
@@ -4899,6 +4920,8 @@ class Pph(Book):
     text = re.sub("④", "]", text)
     text = re.sub("⑤", "&lt;", text)
     text = re.sub("⑳", "&gt;", text)
+    text = re.sub("⓪", "#", text)
+    text = re.sub("⓫", "|", text)
     # text space replacement
     text = re.sub("ⓢ", "&nbsp;", text) # non-breaking space
     text = re.sub("ⓣ", "&#8203;", text) # zero space
@@ -4995,12 +5018,6 @@ class Pph(Book):
         m = re.search(r"ᒪ'(.+?)'", self.wb[i])
       self.wb[i] = re.sub("ᒧ", "</span>", self.wb[i])
 
-    # inline sidenotes
-    for i, line in enumerate(self.wb):
-      m = re.search(r"⓫(.*)⓫", self.wb[i])
-      if m:
-        self.wb[i] = re.sub(r"⓫(.*?)⓫", "<span class='sni'><span class='hidev'>|</span>{}<span class='hidev'>|</span></span>".format(m.group(1)), self.wb[i])
-
   # -------------------------------------------------------------------------------------
   # save buffer to specified dstfile (HTML output)
   def saveFile(self, fn):
@@ -5041,12 +5058,13 @@ class Pph(Book):
 
     ### generate CSS for sidenotes if any are present in the text
     if self.snPresent:
-      # CSS taken from http://www.pgdp.net/wiki/Sidenotes
+      # CSS taken from http://www.pgdp.net/wiki/Sidenotes with changes.
       self.css.addcss("[1500] .sidenote, .sni { text-indent: 0; text-align: left; min-width: 9em; " +
-                      "max-width: 9em; padding-bottom: .3em; padding-top: .3em; padding-left: .3em; " +
-                      "padding-right: .3em; margin-right: 1em; float: left; clear: left; margin-top: 1em; " +
-                      "margin-bottom: .3em; font-size: smaller; color: black; background-color: #eeeeee; " +
-                      "border: thin dotted gray; }"
+                      "max-width: 9em; padding-bottom: .1em; padding-top: .1em; padding-left: .3em; " +
+                      "padding-right: .3em; margin-right: 3.5em; float: left; clear: left; margin-top: 0em; " +
+                      "margin-bottom: 0em; font-size: small; color: black; background-color: #eeeeee; " +
+                      "border: thin dotted gray; font-style: normal; font-weight: normal; font-variant: normal; " +
+                      "letter-spacing: 0em; text-decoration: none; }"
                       )
       self.css.addcss("[1501] @media handheld { .sidenote, .sni { float: left; clear: none; font-weight: bold; }}")
       self.css.addcss("[1502] .sni { text-indent: -.2em; }")
@@ -6887,7 +6905,8 @@ class Pph(Book):
       self.warn("malformed .rj directive: {}".format(self.wb[i]))
 
   def doSidenote(self):
-    # handle sidenotes outside paragraphs, sidenotes inside paragraphs are handled in doPara()
+    # handle sidenotes outside paragraphs, sidenotes inside paragraphs are done in <sn>-style markup
+    self.snPresent = True  # remember we have sidenotes
     m = re.match(r"\.sn (.*)", self.wb[self.cl])
     if m:
       if self.pvs > 0: # handle any pending vertical space before the .sn
@@ -6955,15 +6974,8 @@ class Pph(Book):
       self.wb[self.cl] = "<p {}{}>".format(c_str,s_str) + self.wb[self.cl]
 
     while ( self.cl < len(self.wb) and
-            self.wb[self.cl]): # any blank line in source ends paragraph
-      if self.wb[self.cl].startswith(".sn"): # allow .sn directive inside paragraph
-        m = re.match(r"\.sn (.*)", self.wb[self.cl])
-        if m:
-          self.wb[self.cl] = "⓫{}⓫".format(m.group(1)) # encode the sidenote text for later postprocessing
-        else:
-          self.crash_w_context("malformed .sn directive: {}".format(self.wb[self.cl]), self.cl)
-      elif self.wb[self.cl].startswith("."): # but any other . directive ends the paragraph
-        break
+            self.wb[self.cl] and
+            not self.wb[self.cl].startswith(".")): # any blank line or dot command ends paragraph
       self.cl += 1
     i = self.cl - 1
     # if para ended with .bn info, place the </p> before it, not after it to avoid extra
@@ -7169,7 +7181,7 @@ if __name__ == '__main__':
 # \u2464  ⑤   CIRCLED DIGIT FIVE  # \<
 # \u2465  ⑥   CIRCLED DIGIT SIX   # \:
 # \u2466  ⑦   CIRCLED DIGIT SEVEN # used in footnote processing (along with circled 11/12/13/14)
-# \u2467 	⑧   CIRCLED DIGIT EIGHT # Used for leading nbsp in .ti processing
+# \u2467  ⑧   CIRCLED DIGIT EIGHT # Used for leading nbsp in .ti processing
 # \u2468  ⑨   CIRCLED DIGIT NINE  # \- (so it doesn't become an em-dash later)
 # \u2469  ⑩   CIRCLED NUMBER TEN  # temporarily protect \| during Greek conversion
 # \u246a  ⑪   CIRCLED NUMBER ELEVEN # used in footnote processing (along with 7/12/13/14)
@@ -7195,12 +7207,12 @@ if __name__ == '__main__':
 # \u24e3  ⓣ   CIRCLED LATIN SMALL LETTER T # zero space (\&)
 # \u24e4  ⓤ   CIRCLED LATIN SMALL LETTER U # thin space (\^)
 # \u24e5  ⓥ   CIRCLED LATIN SMALL LETTER V # thick space (\|)
-# \u24ea  ⓪   CIRCLED DIGIT 0 # \#
-# \u24ea  ⓫   NEGATIVE CIRCLED NUMBER ELEVEN # surrounds sidenotes within paragraphs in HTML
+# \u24ea  ⓪   CIRCLED DIGIT 0 # (\#)
+# \u24eb  ⓫   NEGATIVE CIRCLED NUMBER ELEVEN # temporary substitute for | in inline HTML sidenotes until postprocessing
 # \u25ee  ◮   UP-POINTING TRIANGLE WITH RIGHT HALF BLACK # <b> or <strong> (becomes =)
 # \u25f8  ◸   UPPER LEFT TRIANGLE # precedes superscripts
 # \u25f9  ◹   UPPER RIGHT TRIANGLE # follows superscripts
-# \u25fa  ◺  	LOWER LEFT TRIANGLE # precedes subscripts
+# \u25fa  ◺   LOWER LEFT TRIANGLE # precedes subscripts
 # \u25ff  ◿   LOWER RIGHT TRIANGLE # follows subscripts
 # \u2ac9  ⫉   SUBSET OF ABOVE ALMOST EQUAL TO # used temporarily during page number reference processing
 #
