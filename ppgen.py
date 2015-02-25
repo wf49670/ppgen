@@ -1377,6 +1377,7 @@ class Book(object):
     self.wrapper.break_long_words = False
     self.wrapper.break_on_hyphens = False
     self.nregs["psi"] = "0" # default above/below paragraph spacing for indented text
+    self.nregs["pti"] = "1.0em" # default paragraph indentation for indented text
     self.nregs["psb"] = "1.0em" # default above/below paragraph spacing for block text
     self.nregs["pnc"] = "silver" # use to define page number color in HTML
     self.nregs["lang"] = "en" # base language for the book (used in HTML header)
@@ -1646,32 +1647,9 @@ class Book(object):
     else:
       registerName = m.group(1)
       registerValue = m.group(2)
-      known_register = False
-      if registerName == "psi": # paragraph spacing, indented text
-        self.nregs["psi"] = m.group(2)
-        known_register = True
-      if registerName == "psb": # paragraph spacing, block text
-        self.nregs["psb"] = m.group(2)
-        known_register = True
-      if registerName == "pnc": # page number color
-        self.nregs["pnc"] = m.group(2)
-        known_register = True
-      if registerName == "lang": # base language
-        self.nregs["lang"] = m.group(2)
-        known_register = True
-      if registerName == "Footnote": # foreign language translation for "Footnote"
-        self.nregs["Footnote"] = self.deQuote(m.group(2), self.cl)
-        known_register = True
-      if registerName == "Illustration": # foreign language translation for "Illustration"
-        self.nregs["Illustration"] = self.deQuote(m.group(2), self.cl)
-        known_register = True
-      if registerName == "Sidenote": # foreign language translation for "Sidenote"
-        self.nregs["Sidenote"] = self.deQuote(m.group(2), self.cl)
-        known_register = True
-      if registerName == "dcs": # drop cap font size
-        self.nregs["dcs"] = m.group(2)
-        known_register = True
-      if not known_register:
+      if registerName in self.nregs:
+        self.nregs[registerName] = self.deQuote(m.group(2), self.cl)
+      else:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
       del(self.wb[self.cl])
 
@@ -6925,7 +6903,7 @@ class Pph(Book):
     # if there is a text-indent already, don't change it
     # otherwise, add a text-indent if self.pindent is set.
     if self.pdc == ""  and self.pindent and 'text-indent' not in s:
-      s += 'text-indent:1em;'
+      s += 'text-indent:{};'.format(self.nregs["pti"])
 
     # apply either "psi" or "psb" spacing
     if self.pindent:
