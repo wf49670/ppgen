@@ -2378,7 +2378,7 @@ class Book(object):
     self.bnPresent = False
     while i < len(self.wb):
       if self.wb[i].startswith(".bn"):
-        m = re.search("(\w+?)\.png",self.wb[i])
+        m = re.search("(\w+?)\.(png|jpg|jpeg)",self.wb[i])
         if m:
           self.bnPresent = True
           self.wb[i] = "⑱{}⑱".format(m.group(1))
