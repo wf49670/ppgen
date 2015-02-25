@@ -22,9 +22,8 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47b"  # 24-Feb-2015     3.47a + Sidenotes by Davem22 + changes by Walt to use <sn>...</sn> for sidenotes inside other objects
-# + fix for .ig bug skipping some lines
-# + fix for a self.umap problem and a crash_w_context problem
+VERSION="3.47c"  # 24-Feb-2015     "pti" named register to control amount of indent for indented paragraphs
+
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
