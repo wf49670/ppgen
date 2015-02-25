@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47c"  # 24-Feb-2015     "pti" named register to control amount of indent for indented paragraphs
+VERSION="3.47d"  # 25-Feb-2015     allow .jpg/.jpeg file extension for .bn command
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -2376,12 +2376,21 @@ class Book(object):
     # .bn (GG-compatible .bin file maintenance)
     i = 0
     self.bnPresent = False
+    image_type = ""
     while i < len(self.wb):
       if self.wb[i].startswith(".bn"):
         m = re.search("(\w+?)\.(png|jpg|jpeg)",self.wb[i])
         if m:
           self.bnPresent = True
           self.wb[i] = "⑱{}⑱".format(m.group(1))
+          temp = ("png" if m.group(2) == "png" else "jpg")
+          if image_type:
+            if image_type != temp:
+              self.warn("Project contains both png and jpg proofing images.\n" +
+                        "     Please check to ensure no high-res illustrations are missing;\n" +
+                        "     if any are missing please contact db-req for assistance.")
+          else:
+            image_type = temp
         else:
           self.crash_w_context("malformed .bn command",i)
       i += 1
