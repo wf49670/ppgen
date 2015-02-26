@@ -1613,16 +1613,18 @@ class Book(object):
       self.crash_w_context("unhandled dot command: {}".format(self.wb[self.cl]), self.cl)
 
   def crash_w_context(self, msg, i, r=5):
-    print("{}\ncontext:".format(self.umap(msg)))
+    sys.stderr.write("\nERROR: {}\ncontext:".format(self.umap(msg)))
     startline = max(0,i-r)
     endline = min(len(self.wb),i+r)
+    sys.stderr.write(" -----")
     for j in range(startline,endline):
       s = self.umap(self.wb[j])
       if j == i:
-        print(">> {}".format(s))
+        sys.stderr.write(">> {}".format(s))
       else:
-        print("   {}".format(s))
-    self.fatal("exiting")
+        sys.stderr.write("   {}".format(s))
+    sys.stderr.write(" -----")
+    exit(1)
 
   # extract content of an optionally quoted string
   # used in .nr
