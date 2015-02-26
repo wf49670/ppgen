@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47d"  # 25-Feb-2015     allow .jpg/.jpeg file extension for .bn command
+VERSION="3.47e"  # 26-Feb-2015     standardize some "malformed directive" messages and revise format of crash_w_context messages (Davem2)
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
