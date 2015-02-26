@@ -3298,7 +3298,7 @@ class Ppt(Book):
       howmany = int(m.group(1))
       self.eb.append(".RS {}".format(howmany))
     else:
-      self.fatal("malformed space directive: {}".format(self.wb[self.cl]))
+      self.fatal("malformed .sp directive: {}".format(self.wb[self.cl]))
     self.cl += 1
 
   # .fs
@@ -5733,7 +5733,7 @@ class Pph(Book):
       self.pvs = max(int(m.group(1)), self.pvs)  # honor if larger than current pvs
       del self.wb[self.cl]
     else:
-      self.fatal("malformed space directive: {}".format(self.wb[self.cl]))
+      self.fatal("malformed .sp directive: {}".format(self.wb[self.cl]))
 
   # .fs
   # change font size for following paragraphs
@@ -5754,7 +5754,7 @@ class Pph(Book):
       self.fsz = m.group(1) + "em"
       self.wb[self.cl] = ""
     if ".fs" in self.wb[self.cl]:
-      self.warn("font-size directive error: {}".format(self.wb[self.cl]))
+      self.fatal("malformed .fs directive: {}".format(self.wb[self.cl]))
     del self.wb[self.cl]
 
   # .il illustrations
@@ -6701,7 +6701,7 @@ class Pph(Book):
         d_height = m.group(3)
         d_adj = m.group(4)
       else:
-        self.crash_w_context("malformed drop image directive", self.cl)
+        self.crash_w_context("malformed .di directive", self.cl)
 
     self.warn("CSS3 drop-cap. Please note in upload.")
     self.css.addcss("[1920] img.drop-capi { float:left;margin:0 0.5em 0 0;position:relative;z-index:1; }")
@@ -6888,7 +6888,7 @@ class Pph(Book):
         self.cl += 1
         nlines -= 1
     else:
-      self.warn("malformed .rj directive: {}".format(self.wb[i]))
+      self.fatal("malformed .rj directive: {}".format(self.wb[i]))
 
   def doSidenote(self):
     # handle sidenotes outside paragraphs, sidenotes inside paragraphs are done in <sn>-style markup
