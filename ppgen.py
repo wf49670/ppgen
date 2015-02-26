@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47d"  # 25-Feb-2015     allow .jpg/.jpeg file extension for .bn command
+VERSION="3.47e"  # 26-Feb-2015     standardize some "malformed directive" messages and revise format of crash_w_context messages (Davem2)
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -2390,7 +2390,7 @@ class Book(object):
             if image_type != temp:
               self.warn("Project contains both png and jpg proofing images.\n" +
                         "     Please check to ensure no high-res illustrations are missing;\n" +
-                        "     if any are missing please contact db-req for assistance.")
+                        "     if any are missing please contact the PM or db-req for assistance.")
           else:
             image_type = temp
         else:
