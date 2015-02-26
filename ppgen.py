@@ -1467,7 +1467,7 @@ class Book(object):
         return (attr, the_id, m.group(0))
     else:
       # should never get here
-      self.fatal("could not process {} in {}".format(tgt, attr))
+      self.crash_w_context("could not process {} in {}".format(tgt, attr),self.cl)
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # load file from specified source file
@@ -5204,23 +5204,9 @@ class Pph(Book):
     self.wb[self.cl:self.cl+1] = ["<div class='pbb'></div>", "<hr class='pb' style='{}' />".format(hcss)]
     self.cl += 2
 
-  # extract any "class=" argument from string s
-  def getClass(self, s):
-    if "class='" in s:
-      m = re.search(r"class='(.*?)'", s)
-      if m:
-        self.wb[self.cl] = re.sub(m.group(0), "", self.wb[self.cl])
-        return m.group(1)
-    if "class=\"" in s:
-      m = re.search(r"class=\"(.*?)\"", s)
-      if m:
-        self.wb[self.cl] = re.sub(m.group(0), "", self.wb[self.cl])
-        return m.group(1)
-    return ""
-
   # doDiv (HTML)
   def doDiv(self):
-    self.wb[self.cl:self.cl+1] = ["<div class='{}'>".format(self.getClass(self.wb[self.cl])), ""]
+    self.wb[self.cl:self.cl+1] = ["<div class='{}'>".format(self.get_id("class",self.wb[self.cl])[1]), ""]
     j = self.cl
     while j < len(self.wb) and self.wb[j] != ".dv-":
       j += 1
