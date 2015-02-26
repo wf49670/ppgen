@@ -1613,16 +1613,18 @@ class Book(object):
       self.crash_w_context("unhandled dot command: {}".format(self.wb[self.cl]), self.cl)
 
   def crash_w_context(self, msg, i, r=5):
-    print("{}\ncontext:".format(self.umap(msg)))
+    sys.stderr.write("\nERROR: {}\ncontext:\n".format(self.umap(msg)))
     startline = max(0,i-r)
     endline = min(len(self.wb),i+r)
+    sys.stderr.write(" -----\n")
     for j in range(startline,endline):
       s = self.umap(self.wb[j])
       if j == i:
-        print(">> {}".format(s))
+        sys.stderr.write(">> {}\n".format(s))
       else:
-        print("   {}".format(s))
-    self.fatal("exiting")
+        sys.stderr.write("   {}\n".format(s))
+    sys.stderr.write(" -----\n")
+    exit(1)
 
   # extract content of an optionally quoted string
   # used in .nr
@@ -1642,7 +1644,7 @@ class Book(object):
   def doNr(self):
     m = re.match(r"\.nr (.+?) (.+)", self.wb[self.cl])
     if not m:
-      self.crash_w_context("malformed .nr command: {}".format(self.wb[self.cl]), self.cl)
+      self.crash_w_context("malformed .nr directive", self.cl)
     else:
       registerName = m.group(1)
       registerValue = m.group(2)
@@ -2309,7 +2311,7 @@ class Book(object):
           self.wb[i] = ".nf c"
           self.wb.insert(i+nlines+1, ".nf-")
         else:
-          self.fatal("malformed .ce directive: {}".format(self.wb[i]))
+          self.crash_w_context("malformed .ce directive", self.cl)
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2392,7 +2394,7 @@ class Book(object):
           else:
             image_type = temp
         else:
-          self.crash_w_context("malformed .bn command",i)
+          self.crash_w_context("malformed .bn directive", self.cl)
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -3298,7 +3300,7 @@ class Ppt(Book):
       howmany = int(m.group(1))
       self.eb.append(".RS {}".format(howmany))
     else:
-      self.fatal("malformed space directive: {}".format(self.wb[self.cl]))
+      self.crash_w_context("malformed .sp directive", self.cl)
     self.cl += 1
 
   # .fs
@@ -3434,7 +3436,7 @@ class Ppt(Book):
     if handled:
       self.cl += 1
     else:
-      self.fatal("malformed .in command: \"{}\"".format(self.wb[self.cl]))
+      self.crash_w_context("malformed .in directive", self.cl)
 
   # .ll line length
   def doLl(self):
@@ -3474,7 +3476,7 @@ class Ppt(Book):
       return
 
     # if here, has not been handled
-    self.fatal("malformed .ll command: \"{}\"".format(self.wb[self.cl]))
+    self.crash_w_context("malformed .ll directive", self.cl)
 
   # .ti temporary indent
   def doTi(self):
@@ -4031,7 +4033,7 @@ class Ppt(Book):
         nlines -= 1
       self.eb.append(".RS 1")
     else:
-      self.fatal("malformed .rj directive: {}".format(self.wb[self.cl]))
+      self.crash_w_context("malformed .rj directive", self.cl)
 
   # .de CSS definition
   # ignore the directive in text
@@ -4053,7 +4055,7 @@ class Ppt(Book):
       self.eb.append(".RS 1") # request at least one space in text after sidenote
       self.cl += 1
     else:
-      self.fatal("malformed .sn directive: {}".format(self.wb[self.cl])) # should never hit this as preprocesscommon() checked it
+      self.crash_w_context("malformed .sn directive", self.cl) # should never hit this as preprocesscommon() checked it
 
   def doPara(self):
     t = []
@@ -5733,7 +5735,7 @@ class Pph(Book):
       self.pvs = max(int(m.group(1)), self.pvs)  # honor if larger than current pvs
       del self.wb[self.cl]
     else:
-      self.fatal("malformed space directive: {}".format(self.wb[self.cl]))
+      self.crash_w_context("malformed .sp directive", self.cl)
 
   # .fs
   # change font size for following paragraphs
@@ -5754,7 +5756,7 @@ class Pph(Book):
       self.fsz = m.group(1) + "em"
       self.wb[self.cl] = ""
     if ".fs" in self.wb[self.cl]:
-      self.warn("font-size directive error: {}".format(self.wb[self.cl]))
+      self.crash_w_context("malformed .fs directive", self.cl)
     del self.wb[self.cl]
 
   # .il illustrations
@@ -6080,7 +6082,7 @@ class Pph(Book):
       return
 
     # should not get here
-    self.fatal("malformed .in command: \"{}\"".format(self.wb[self.cl]))
+    self.crash_w_context("malformed .in directive", self.cl)
 
   # .ll line length
   def doLl(self):
@@ -6120,7 +6122,7 @@ class Pph(Book):
       return
 
     # should not get here
-    self.fatal("malformed .ll directive: {}".format(self.wb[self.cl]))
+    self.crash_w_context("malformed .ll directive", self.cl)
 
   # .ti temporary indent
   def doTi(self):
@@ -6701,7 +6703,7 @@ class Pph(Book):
         d_height = m.group(3)
         d_adj = m.group(4)
       else:
-        self.crash_w_context("malformed drop image directive", self.cl)
+        self.crash_w_context("malformed .di directive", self.cl)
 
     self.warn("CSS3 drop-cap. Please note in upload.")
     self.css.addcss("[1920] img.drop-capi { float:left;margin:0 0.5em 0 0;position:relative;z-index:1; }")
@@ -6888,7 +6890,7 @@ class Pph(Book):
         self.cl += 1
         nlines -= 1
     else:
-      self.warn("malformed .rj directive: {}".format(self.wb[i]))
+      self.crash_w_context("malformed .rj directive", self.cl)
 
   def doSidenote(self):
     # handle sidenotes outside paragraphs, sidenotes inside paragraphs are done in <sn>-style markup
@@ -6902,7 +6904,7 @@ class Pph(Book):
         self.wb[self.cl] = "<div class='sidenote'>{}</div>".format(m.group(1))
       self.cl += 1
     else:
-      self.fatal("malformed .sn directive: {}".format(self.wb[self.cl]))
+      self.crash_w_context("malformed .sn directive", self.cl)
 
   def doPara(self):
     s = self.fetchStyle() # style line with current parameters
