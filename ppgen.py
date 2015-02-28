@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47e"  # 26-Feb-2015     standardize some "malformed directive" messages and revise format of crash_w_context messages (Davem2)
+VERSION="3.47f"  # 28-Feb-2015     fix </g> and </c> error that only handled one of each per line
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -4867,9 +4867,9 @@ class Pph(Book):
         thecolor = m.group(1)
         safename = re.sub("#","", thecolor)
         self.css.addcss("[1209] .color_{0} {{ color:{1}; }}".format(safename,thecolor))
-        self.wb[i] = re.sub(re.escape(m.group(0)), "<span class='color_{0}'>".format(safename), self.wb[i], 1)
+        self.wb[i] = re.sub(re.escape(m.group(0)), "<span class='color_{0}'>".format(safename), self.wb[i])
         m = re.search(r"<c=[\"']?(.*?)[\"']?>", self.wb[i])
-      self.wb[i] = re.sub("<\/c>", "</span>", self.wb[i],1)
+      self.wb[i] = re.sub("<\/c>", "</span>", self.wb[i])
 
       # <g> is now a stylized em in HTML
       # using a @media handheld, in epub/mobi it is italicized, with normal letter spacing
@@ -4878,7 +4878,7 @@ class Pph(Book):
         self.wb[i] = re.sub(r"<g>", "<em class='gesperrt'>", self.wb[i])
         self.css.addcss("[1378] em.gesperrt { font-style: normal; letter-spacing: 0.2em; margin-right: -0.2em; }")
         self.css.addcss("[1379] @media handheld { em.gesperrt { font-style: italic; letter-spacing: 0; margin-right: 0;}}")
-      self.wb[i] = re.sub("<\/g>", "</em>", self.wb[i],1)
+      self.wb[i] = re.sub("<\/g>", "</em>", self.wb[i])
 
       m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
       while m:
