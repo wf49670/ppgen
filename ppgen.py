@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47g"  # 1-Mar-2015     fix CSS so footnote bottom margin has "em" unit specified
+VERSION="3.47?"  # 1-Mar-2015     <abbr> tag
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -2680,10 +2680,12 @@ class Ppt(Book):
 
     ###should rewrite to exempt .li blocks from a bunch of this
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # <lang> tags ignored in text version.
+    # <lang> and <abbr> tags ignored in text version.
     for i in range(len(self.wb)):
       self.wb[i] = re.sub(r"<lang[^>]*>","",self.wb[i])
-      self.wb[i] = re.sub(r"<\/lang>","",self.wb[i])
+      self.wb[i] = re.sub(r"</lang>","",self.wb[i])
+      self.wb[i] = re.sub(r"<abbr[^>]*>","",self.wb[i])
+      self.wb[i] = re.sub(r"</abbr>","",self.wb[i])
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # look for <b>
@@ -2843,9 +2845,6 @@ class Ppt(Book):
       # alternate handling
       # small caps ignored
       self.wb[i] = re.sub(r"<\/?SC>", "", self.wb[i])
-
-      # lang dropped (<i> would be separate)
-      self.wb[i] = re.sub(r"<\/?lang>", "", self.wb[i])
 
       # gesperrt in text
       self.wb[i] = re.sub(r"<\/?g>", "_", self.wb[i])
@@ -4725,6 +4724,8 @@ class Pph(Book):
                 closetag = "</lang>" # language
               if closetag.startswith("</sn"):
                 closetag = "</sn>" # inline sidenote
+              if closetag.startswith("</abbr"):
+                closetag = "</abbr>" # abbreviation
               send += closetag
             self.wb[i] = self.wb[i] + send
             i += 1
@@ -4749,14 +4750,65 @@ class Pph(Book):
         m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
         while m:
           langspec = m.group(1)
-          self.wb[i] = re.sub(m.group(0), "ᒪ'{}'".format(langspec), self.wb[i], 1)
+          self.wb[i] = re.sub(re.escape(m.group(0)), "ᒪ'{}'".format(langspec), self.wb[i])
           # self.wb[i] = re.sub(m.group(0), "<span lang=\"{0}\" xml:lang=\"{0}\">".format(langspec), self.wb[i], 1)
           m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
-        if "lang=" in self.wb[i]:
+        if "<lang" in self.wb[i]:
           self.fatal("incorrect lang markup: {}".format(self.wb[i]))
-        self.wb[i] = re.sub(r"<\/lang>", "ᒧ",self.wb[i])
+        self.wb[i] = re.sub(r"</lang>", "ᒧ",self.wb[i])
         i += 1
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # <abbr> tags processed in HTML.
+    # (1) <abbr="Saint">St.</abbr> or <abbr=Saint>St.</abbr>
+    #       would generate <abbr title='Saint'>St.</abbr>
+    # (2) <abbr rend=arabic>XXX</abbr>
+    #       would generate <abbr title='30'>XXX</abbr>
+    # (3) <abbr rend=spell>Ph.D.</abbr>
+    #       would generate <abbr class='spell'>Ph.D.</abbr>
+    #       along with CSS: abbr.spell { speak: spell-out; }
+    # Any use of <abbr> will generate CSS: abbr { border-bottom-width: 1px; border-bottom-style: dotted; }
+    i = 0
+    abbrfound = False
+    while i < len(self.wb):
+      if self.wb[i] == ".li":         # ignore literal blocks
+        while i < len(self.wb) and self.wb[i] != ".li-":
+          i += 1
+        i += 1  # skip over .li- command
+      else:
+        temp = self.wb[i]
+        # look for form 1 of abbr tag
+        m = re.search(r"<abbr=[\"']?([^\"'>]+)[\"']?>",temp)
+        while m:
+          abbrfound = True
+          abbrtitle = re.sub("'","&#39;",m.group(1)) # escape any ' in the title string
+          temp = re.sub(re.escape(m.group(0)), "", temp) # remove the abbr tag from the temporary copy of the line
+          self.wb[i] = re.sub(re.escape(m.group(0)), "<abbr title='{}'>".format(abbrtitle), self.wb[i]) # replace in original line
+          m = re.search(r"<abbr=[\"']?([^\"'>]+)[\"']?>",temp) # search for more <abbr= tags in copy
+        # look for form 2 of abbr tag
+        m = re.search(r"<abbr rend=[\"']?arabic[\"']?>([iIvVxXlLcCdDmM]+)",temp)
+        while m:
+          abbrfound = True
+          abbrtitle = self.fromRoman(m.group(1).lower())
+          temp = re.sub(re.escape(m.group(0)), "", temp) # remove the abbr tag from the temporary copy of the line
+          self.wb[i] = re.sub(re.escape(m.group(0)), "<abbr title='{}'>{}".format(abbrtitle, m.group(1)), self.wb[i]) # replace in original line
+          m = re.search(r"<abbr rend=[\"']?arabic[\"']?>([iIvVxXlLcCdDmM]+)",temp) # search for more <abbr rend=arabic tags in copy
+        # look for form 3 of abbr tag
+        spellfound = False
+        m = re.search(r"<abbr rend=[\"']?spell[\"']?>",temp)
+        while m:
+          abbrfound = True
+          spellfound = True
+          temp = re.sub(re.escape(m.group(0)), "", temp) # remove the abbr tag from the temporary copy of the line
+          self.wb[i] = re.sub(re.escape(m.group(0)), "<abbr class='spell'>", self.wb[i]) # replace in original line
+          m = re.search(r"<abbr rend=[\"']?spell[\"']?>",temp) # search for more <abbr rend=spell tags in copy
+        if abbrfound:
+          self.css.addcss("[1210] abbr { border-bottom-width: 1px; border-bottom-style: dotted; }")
+        if spellfound:
+          self.css.addcss("[1210] abbr.spell { speak: spell-out; }")
+        if "<abbr" in temp: # should not have any <abbr tags left in the temp copy
+          self.crash_w_context("incorrect abbr markup: {}".format(temp), i)
+        i += 1
 
     # -------------------------------------------------------------------------
     # inline markup (HTML)
@@ -7228,6 +7280,7 @@ if __name__ == '__main__':
 # 1205      <xxs>
 # 1205      <u>
 # 1209      <c>     will duplicate for various colors
+# 1210      <abbr> and abbr.spell
 # 1215      .nf b: .lg-container-b
 # 1216             @media handheld
 # 1217      .nf l: .lg-container-l
