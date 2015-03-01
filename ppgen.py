@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47g"  # 1-Mar-2015     fix CSS so footnote bottom margin has "em" unit specified
+VERSION="3.47h"  # 1-Mar-2015     Warn on wide tables in text output
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -3515,7 +3515,7 @@ class Ppt(Book):
         else:
           need_pad = True
     if need_pad:
-      self.warn("inserting leading space in wide .nf c")
+      self.warn("inserting leading space in wide .nf c (or .ce)")
       for i,line in enumerate(t):
         t[i] = " "+ t[i]
     t.insert(0, ".RS 1")
@@ -3902,6 +3902,9 @@ class Ppt(Book):
     # margin to center table in 72 character text field
     if totalwidth >= 72:
       tindent = 0
+      if not autosize:
+        self.warn("Table width of {} (including leading indent and space between columns) more than 72 characters:\n        {}".format(
+                   totalwidth+1, self.wb[self.cl]))
     else:
       tindent = (72 - totalwidth) // 2
 
