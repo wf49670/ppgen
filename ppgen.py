@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47h"  # 1-Mar-2015     Warn on wide tables in text output
+VERSION="3.47i"  # 1-Mar-2015     Fix validation problem with <h2> when .pn off and .pn link are both specified
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -5425,6 +5425,7 @@ class Pph(Book):
       t.append("<div class='chapter'></div>") # will force file break
       self.css.addcss("[1576] .chapter { clear:both; }")
     if pnum != "":
+      t.append("<div>")
       if self.pnshow:
         # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
         t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
@@ -5434,6 +5435,8 @@ class Pph(Book):
       t.append("  <h2 id='{}' style='{}'>{}</h2>".format(id, hcss, s))
     else:
       t.append("  <h2 style='{}'>{}</h2>".format(hcss, s))
+    if pnum != "":
+      t.append("</div>")
 
     self.wb[self.cl:self.cl+1] = t
     self.cl += len(t)
