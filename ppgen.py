@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47"  # 19-Feb-2015    Merge Development 3.46l into Master
+VERSION="3.47.1"  # 1-Mar-2015    Fix footnote CSS but introduced in 3.46f (missing "em" unit in bottom-margin)
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -6349,7 +6349,7 @@ class Pph(Book):
 
       self.css.addcss("[1430] div.footnote {}")
       self.css.addcss("[1431] div.footnote>:first-child { margin-top:1em; }")
-      self.css.addcss("[1432] div.footnote p {{ text-indent:1em;margin-top:{0}em;margin-bottom:{1}; }}".format(s2,s2))
+      self.css.addcss("[1432] div.footnote p {{ text-indent:1em;margin-top:{0}em;margin-bottom:{1}em; }}".format(s2,s2))
       self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
       self.cl += 1
       # self.wb[self.cl] = "<a href='#r{0}'>[{0}]</a> {1}".format(fnname, self.wb[self.cl])
