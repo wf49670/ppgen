@@ -22,7 +22,10 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47LZ"  # 19-Feb-2015    3.47 + Footnote Landing Zones
+VERSION="3.47LZ2"  # 24-Feb-2015    3.47 + Footnote Landing Zones
+# Trying to extend so paragraphs can flow around footnotes and
+# also provide an override to allow some footnotes to appear elsewhere, like
+# within a table rather than at a normal landing zone
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -2529,9 +2532,9 @@ class Book(object):
       if t.startswith(".fm"):
         if "lz=" in t:
           t, lz = self.get_id("lz", t)
-          if "t" in lz:
+          if lz == "t" or lz == "th" or lz == "ht":
            self.footnoteLzT = True
-          if "h" in lz:
+          if lz == "h" or lz == "th" or lz == "ht":
             self.footnoteLzH = True
 
 
@@ -2818,10 +2821,9 @@ class Ppt(Book):
         if m:
           fncr = int(m.group(1)) + 1
 
-        elif ".fn #" == self.wb[i]:### test this spacing
-          self.wb[i:i+1] = [".sp 1",".fn {}".format(fncr)]
+        elif ".fn #" == self.wb[i]:### remember to generate footnote spacing in text
+          self.wb[i] = ".fn {}".format(fncr)
           fncr += 1
-          i += 1
 
         else:
           m=re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)", self.wb[i])
@@ -2833,7 +2835,7 @@ class Ppt(Book):
           self.crash_w_context("Error: .fn- has no opening .fn command", i)
         fnlevel -= 1
 
-      i += 1
+      i += 1###
     if fnlevel != 0:
       self.crash_w_context("Error: Unclosed .fn block", fn0)
 
