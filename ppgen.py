@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47.1"  # 1-Mar-2015    Fix footnote CSS but introduced in 3.46f (missing "em" unit in bottom-margin)
+VERSION="3.47.2"  # 1-Mar-2015    Fix .cv problem introduced while refactoring some code, which prevented it from working
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1963,6 +1963,7 @@ class Book(object):
     if self.dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
       if not dia_blobbed:
         text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
+        dia_blobbed = True
       if not diatest:
         if len(self.diacritics_user) > 0:
           for s in self.diacritics_user:
