@@ -22,9 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47k"  # 1-Mar-2015     Fix problem in self.umap that causes a failure while printing an error/warning message
-# Also: change default pti value from 1.0em to 1em to aid regression testing
-# Also: put comment removal code back where it was, after .sr capture, so .sr strings can include // easily
+VERSION="3.47l"  # 2-Mar-2015     Fix problem with self-closing HTML tags in .nf blocks
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -3908,8 +3906,8 @@ class Ppt(Book):
     if totalwidth >= 72:
       tindent = 0
       if not autosize:
-        self.warn("Table width of {} (including leading indent and space between columns) more than 72 characters:\n        {}".format(
-                   totalwidth+1, self.wb[self.cl]))
+        self.warn("PPer-supplied table width (including leading indent and space\n" + "           " +
+                  "between columns) of {} is greater than 72 characters:\n           {}".format(totalwidth+1, self.wb[self.cl]))
     else:
       tindent = (72 - totalwidth) // 2
 
@@ -4704,14 +4702,17 @@ class Pph(Book):
                 i += 1
                 continue
             # find all tags on this line; ignore <a and </a tags completely for this purpose
-            tmpline = re.sub("</?a[^>]*>", "", self.wb[i])
+            tmpline = re.sub("<a [^>]*>", "", self.wb[i])
+            tmpline = re.sub("</a>", "", tmpline)
             t = re.findall("<\/?[^>]*>", tmpline)
             sstart = "" # what to prepend to the line
             for s in tagstack: # build the start string
               sstart += s
             self.wb[i] = sstart + self.wb[i] # rewrite the line with new start
             for s in t: # we may have more tags on this line
-              if not s.startswith("</"): # it is of form <..> an opening tag
+              if s.endswith("/>"): # it is a self-closing tag
+                continue           # ignore it
+              elif not s.startswith("</"): # it is an opening tag
                 if s in tagstack:
                   self.warn("Nested {} tags in .nf block: {}".format(s, tmpline))
                 tagstack.append(s) # save it on the stack
@@ -4726,7 +4727,12 @@ class Pph(Book):
             send = "" # string end
             for s in reversed(tagstack): # if there is something left, tack it on end of line
               closetag =  re.sub("<","</", s) # make it into a closing tag
-              if closetag.startswith("</c"): # anything that had arguments closes without them
+              m = re.match(r"</(\w+) .*>", s) # is it a tag with parameters?
+              if m:                           # if so, drop them
+                s = "</m.group(1)>"
+              # next remove arguments from any ppgen inline tag that has arguments
+              # without a preceding space (e.g., <c=red> or <fs=120%>)
+              if closetag.startswith("</c"):
                 closetag = "</c>" # colors
               if closetag.startswith("</fs"):
                 closetag = "</fs>" # font size
