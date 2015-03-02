@@ -22,7 +22,9 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47j"  # 1-Mar-2015     Avoid crash if .de is the last real line of the file; fix .cv problem
+VERSION="3.47k"  # 1-Mar-2015     Fix problem in self.umap that causes a failure while printing an error/warning message
+# Also: change default pti value from 1.0em to 1em to aid regression testing
+# Also: put comment removal code back where it was, after .sr capture, so .sr strings can include // easily
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1376,7 +1378,7 @@ class Book(object):
     self.wrapper.break_long_words = False
     self.wrapper.break_on_hyphens = False
     self.nregs["psi"] = "0" # default above/below paragraph spacing for indented text
-    self.nregs["pti"] = "1.0em" # default paragraph indentation for indented text
+    self.nregs["pti"] = "1em" # default paragraph indentation for indented text
     self.nregs["psb"] = "1.0em" # default above/below paragraph spacing for block text
     self.nregs["pnc"] = "silver" # use to define page number color in HTML
     self.nregs["lang"] = "en" # base language for the book (used in HTML header)
@@ -1422,7 +1424,7 @@ class Book(object):
         c1 = self.d[c] # yes, replace with converted Latin-1 character
       else:
         c1 = c
-      if ord(c1) < 0x80:
+      if len(c1) > 1 or ord(c1) < 0x80:
         t += c1 # no conversion, transfer character as is
       else:
         t += "*" # use an asterisk if not plain text
@@ -1729,18 +1731,6 @@ class Book(object):
     #
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # remove comments
-    i = 0
-    while i < len(self.wb):
-      if  re.match(r"\/\/", self.wb[i]): # entire line is a comment
-        del self.wb[i]
-        continue
-      if re.search(r"\/\/.*$", self.wb[i]):
-        self.wb[i] = re.sub(r"\/\/.*$", "", self.wb[i])
-        self.wb[i] = self.wb[i].rstrip()
-      i += 1
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # ignored text removed in preprocessor
     i = 0
     while i < len(self.wb):
@@ -1756,7 +1746,6 @@ class Book(object):
           self.fatal("unterminated .ig command")
       else:
         i += 1
-
     # if source file is UTF-8 and requested encoding is Latin-1, down-convert
     if self.encoding == "utf_8" and self.renc == "l" and not self.cvgfilter:
       for j,ch in enumerate(self.mau):
@@ -2151,6 +2140,21 @@ class Book(object):
         self.wb[i] = ".ce 1"
       if ".rj" == self.wb[i]:
         self.wb[i] = ".rj 1"
+      i += 1
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # remove comments
+    # Note: Must remain **after** capturing .sr directives so they can contain the // sequence
+    #       without PPers having to jump through hoops
+    #
+    i = 0
+    while i < len(self.wb):
+      if  re.match(r"\/\/", self.wb[i]): # entire line is a comment
+        del self.wb[i]
+        continue
+      if re.search(r"\/\/.*$", self.wb[i]):
+        self.wb[i] = re.sub(r"\/\/.*$", "", self.wb[i])
+        self.wb[i] = self.wb[i].rstrip()
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
