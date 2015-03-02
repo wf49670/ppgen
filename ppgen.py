@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47i"  # 1-Mar-2015     Fix validation problem with <h2> when .pn off and .pn link are both specified
+VERSION="3.47j"  # 1-Mar-2015     Avoid crash if .de is the last real line of the file; fix .cv problem
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1979,6 +1979,7 @@ class Book(object):
     if self.dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
       if not dia_blobbed:
         text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
+        dia_blobbed = True
       if not diatest:
         if len(self.diacritics_user) > 0:
           for s in self.diacritics_user:
@@ -4385,6 +4386,7 @@ class Pph(Book):
           i += 1
         else:
           self.fatal("source file ends with continued .de command: {}".format(self.wb[i]))
+        continue
 
       self.wb[i] = re.sub(r"#(\d+)#", r"⑲\1⑲", self.wb[i])
       self.wb[i] = re.sub(r"#([iIvVxXlLcCdDmM]+)#", r"⑲\1⑲", self.wb[i])
