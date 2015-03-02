@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47m"  # 2-Mar-2015     implement <abbr> tag
+VERSION="3.47n"  # 2-Mar-2015     detect/Remove comments earlier in pre-processing. Also, allow escaping of / characters via \/
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1729,6 +1729,24 @@ class Book(object):
     #
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # Remove comments in pre-processor
+    # Also un-escape any escaped / characters in the text (\/ becomes /)
+    #
+    i = 0
+    while i < len(self.wb):
+      if  re.match(r"\/\/", self.wb[i]): # entire line is a comment
+        del self.wb[i]
+        continue
+      if re.search(r"\/\/.*$", self.wb[i]):
+        self.wb[i] = re.sub(r"\/\/.*$", "", self.wb[i])
+      #
+      # convert escaped / characters
+      #
+      self.wb[i] = re.sub(r"\\/", "/", self.wb[i])
+      self.wb[i] = self.wb[i].rstrip()
+      i += 1
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # ignored text removed in preprocessor
     i = 0
     while i < len(self.wb):
@@ -2090,7 +2108,6 @@ class Book(object):
     self.srr = []    # "replace" array
     while i < len(self.wb):
       if self.wb[i].startswith(".sr"):
-
         m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
         if m:
           self.srw.append(m.group(1))
@@ -2138,21 +2155,6 @@ class Book(object):
         self.wb[i] = ".ce 1"
       if ".rj" == self.wb[i]:
         self.wb[i] = ".rj 1"
-      i += 1
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # remove comments
-    # Note: Must remain **after** capturing .sr directives so they can contain the // sequence
-    #       without PPers having to jump through hoops
-    #
-    i = 0
-    while i < len(self.wb):
-      if  re.match(r"\/\/", self.wb[i]): # entire line is a comment
-        del self.wb[i]
-        continue
-      if re.search(r"\/\/.*$", self.wb[i]):
-        self.wb[i] = re.sub(r"\/\/.*$", "", self.wb[i])
-        self.wb[i] = self.wb[i].rstrip()
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
