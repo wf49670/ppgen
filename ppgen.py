@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47n"  # 2-Mar-2015     detect/Remove comments earlier in pre-processing. Also, allow escaping of / characters via \/
+VERSION="3.47o"  # 3-Mar-2015     Fix several "malformed .?? directive" messages to show the correct context for the error
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -2316,7 +2316,7 @@ class Book(object):
           self.wb[i] = ".nf c"
           self.wb.insert(i+nlines+1, ".nf-")
         else:
-          self.crash_w_context("malformed .ce directive", self.cl)
+          self.crash_w_context("malformed .ce directive", i)
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2399,7 +2399,7 @@ class Book(object):
           else:
             image_type = temp
         else:
-          self.crash_w_context("malformed .bn directive", self.cl)
+          self.crash_w_context("malformed .bn directive", i)
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
