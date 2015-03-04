@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47o"  # 3-Mar-2015     Fix several "malformed .?? directive" messages to show the correct context for the error
+VERSION="3.47p"  # 3-Mar-2015     Detect usage of .pn +0 or pn=+0 and reject them
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -4415,6 +4415,8 @@ class Pph(Book):
       m = re.match(r"\.pn \+(\d+)", self.wb[i])
       if m:
         increment_amount = int(m.group(1))
+        if increment_amount == 0: # can't have duplicate page numbers
+          self.crash_w_context("Invalid .pn increment amount, +0", i)
         if (self.pageno).isnumeric():
           self.pageno = "{}".format(int(self.pageno) + increment_amount)
         else: # Roman
@@ -4450,6 +4452,8 @@ class Pph(Book):
       m = re.match(r"\.h.*?pn=\+(\d+)", self.wb[i])
       if m:
         increment_amount = int(m.group(1))
+        if increment_amount == 0: # can't have duplicate page numbers
+          self.crash_w_context("Invalid pn increment amount, +0", i)
         if (self.pageno).isnumeric():
           self.pageno = "{}".format(int(self.pageno) + increment_amount)
         else: # Roman
