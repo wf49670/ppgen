@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47fSR2"  # 28-Feb-2015     Allow .sr to operate while filtering. Also allow for prompting user whether to perform replace or not
+VERSION="3.47pSR2"  # 3-Mar-2015     Allow .sr to operate while filtering. Also allow for prompting user whether to perform replace or not
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1376,7 +1376,7 @@ class Book(object):
     self.wrapper.break_long_words = False
     self.wrapper.break_on_hyphens = False
     self.nregs["psi"] = "0" # default above/below paragraph spacing for indented text
-    self.nregs["pti"] = "1.0em" # default paragraph indentation for indented text
+    self.nregs["pti"] = "1em" # default paragraph indentation for indented text
     self.nregs["psb"] = "1.0em" # default above/below paragraph spacing for block text
     self.nregs["pnc"] = "silver" # use to define page number color in HTML
     self.nregs["lang"] = "en" # base language for the book (used in HTML header)
@@ -1422,7 +1422,7 @@ class Book(object):
         c1 = self.d[c] # yes, replace with converted Latin-1 character
       else:
         c1 = c
-      if ord(c1) < 0x80:
+      if len(c1) > 1 or ord(c1) < 0x80:
         t += c1 # no conversion, transfer character as is
       else:
         t += "*" # use an asterisk if not plain text
@@ -1645,89 +1645,90 @@ class Book(object):
     k = 0
     l = 0
     ll = 0
-    i = srnum
-    if "\\n" in self.srs[i]: # did user use a regex containing \n ? If so, process all lines in one blob
-      if "p" in self.srw[i]: # Can't do prompting with \n in request
-        self.fatal("Error: Can't request prompting when using \\n in search: .sr \n  {}\n   {}\n   {}".format(
-                    self.srw[i], self.srs[i], self.srr[i]))
-
+    if "\\n" in self.srs[srnum]: # did user use a regex containing \n ? If so, process all lines in one blob
       text = '\n'.join(buffer) # form lines into a blob
       try:
-        m = re.search(self.srs[i], text) # search for current search string
+        m = re.search(self.srs[srnum], text) # search for current search string
       except:
         if 'd' in self.debug:
           traceback.print_exc()
-          self.fatal("Above error occurred searching for {} in complete text blob".format(self.srs[i]))
+          self.fatal("Above error occurred searching for {} in complete text blob".format(self.srs[srnum]))
         else:
-          self.fatal("Error occurred searching for {} in complete text blob".format(self.srs[i]))
+          self.fatal("Error occurred searching for {} in complete text blob".format(self.srs[srnum]))
       if m:                                             # if found
         if 'r' in self.debug:
-          print("{} found in complete text blob".format(self.srs[i]))
+          print("{} found in complete text blob".format(self.srs[srnum]))
         try:
-          text, l = re.subn(self.srs[i], self.srr[i], text) # replace all occurrences in the blob
+          text, l = re.subn(self.srs[srnum], self.srr[srnum], text) # replace all occurrences in the blob
           ll += l
         except:
           if 'd' in self.debug:
             traceback.print_exc()
-            self.fatal("Above error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[i], self.srr[i]))
+            self.fatal("Above error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[srnum], self.srr[srnum]))
           else:
-            self.fatal("Error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[i], self.srr[i]))
+            self.fatal("Error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[srnum], self.srr[srnum]))
         if 'r' in self.debug:
-          print("Replaced with {}".format(self.srr[i]))
-      print("Search string {}:{} matched in complete text and replaced {} times.".format(i+1, self.srs[i], ll))
+          print("Replaced with {}".format(self.srr[srnum]))
+      print("Search string {}:{} matched in complete text and replaced {} times.".format(srnum+1, self.srs[srnum], ll))
       buffer = text.splitlines() # break blob back into individual lines
 
     else:
-      for j in range(len(buffer)):
+      quit = False
+      j = 0
+      while j < len(buffer) and not quit:
         try:
-          m = re.search(self.srs[i], buffer[j]) # search for current search string
+          m = re.search(self.srs[srnum], buffer[j]) # search for current search string
         except:
           if 'd' in self.debug:
             traceback.print_exc()
-            self.fatal("Above error occurred searching for\n  {}\n in: {}".format(self.srs[i], buffer[j]))
+            self.fatal("Above error occurred searching for\n  {}\n in: {}".format(self.srs[srnum], buffer[j]))
           else:
-            self.fatal("Error occurred searching for\n  {}\n in: {}".format(self.srs[i], buffer[j]))
+            self.fatal("Error occurred searching for\n  {}\n in: {}".format(self.srs[srnum], buffer[j]))
         if m:                                   # if found
           k += 1
-          if 'r' in self.debug or 'p' in self.srw[i]: # if debugging, or if prompt requested
-            print("{} found in: {}".format(self.srs[i], buffer[j]))
+          if 'r' in self.debug or 'p' in self.srw[srnum]: # if debugging, or if prompt requested
+            print("Search string {}:{} found in:\n    {}".format(srnum+1, self.srs[srnum], buffer[j]))
           try:
-            if 'p' in self.srw[i]:                                           # prompting requested?
+            if 'p' in self.srw[srnum]:                                           # prompting requested?
               l = 0
-              temp = re.sub(self.srs[i], self.srr[i], buffer[j])
-              print("replacement will be: {}".format(temp))
+              temp = re.sub(self.srs[srnum], self.srr[srnum], buffer[j])
+              print("replacement will be:\n    {}".format(temp))
               try:
-                reply = raw_input("replace? (y/n/q/r)")
+                reply = input("replace? (y/n/q/r)")
               except EOFError:
                 print("EOF received on prompt; assuming q")
                 reply = "q"
               good_reply = False
               while not good_reply:
                 if reply == "y":                                               # if user replied y (yes)
-                  buffer[j], l = re.subn(self.srs[i], self.srr[i], buffer[j])    # replace all occurrences in the line
+                  buffer[j], l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
                   good_reply = True
                 elif reply == "r":                                             # else if user replied r (run)
-                  buffer[j], l = re.subn(self.srs[i], self.srr[i], buffer[j])    # replace all occurrences in the line
-                  self.srw[i] = self.srw[i].replace("p","")                      # and stop prompting
+                  buffer[j], l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
+                  self.srw[srnum] = self.srw[srnum].replace("p","")                      # and stop prompting
                   good_reply = True
                 elif reply == "n":                                             # else if user replied n (no)
                   print("skipping that one")
                   good_reply = True
                 elif reply == "q":                                             # else if user replied q (quit)
                   print("exiting at user request")
-                  exit(1)
+                  good_reply = True
+                  quit = True
             else:                                                            # not prompting
-              buffer[j], l = re.subn(self.srs[i], self.srr[i], buffer[j])    # replace all occurrences in the line
+              buffer[j], l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
             ll += l
           except:
             if 'd' in self.debug:
               traceback.print_exc()
-              self.fatal("Above error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], buffer[j]))
+              self.fatal("Above error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[srnum], self.srr[srnum], buffer[j]))
             else:
-              self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], buffer[j]))
+              self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[srnum], self.srr[srnum], buffer[j]))
           if 'r' in self.debug:
             print("Replaced: {}".format(buffer[j]))
-      print("Search string {}:{} matched in {} lines, replaced {} times.".format(i+1, self.srs[i], k, ll))
+        j += 1
+      if quit:
+        exit(1)
+      print("Search string {}:{} matched in {} lines, replaced {} times.".format(srnum+1, self.srs[srnum], k, ll))
 
 
   # .nr named register
@@ -1811,25 +1812,38 @@ class Book(object):
       while text[-1] == "": # no trailing blank lines
         text.pop()
 
+      uncomment(text)  # remove comments and un-escape / characters
+
       # insert the filter lines at the front of self.wb
       self.wb[0:0] = text
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # Remove comments and un-escape any escaped / characters in the text (\/ becomes /)
+    #
+    def uncomment(buffer):
+      i = 0
+      while i < len(buffer):
+        if  re.match(r"\/\/", buffer[i]): # entire line is a comment
+          del buffer[i]
+          continue
+        if re.search(r"\/\/.*$", buffer[i]):
+          buffer[i] = re.sub(r"\/\/.*$", "", buffer[i])
+        #
+        # convert escaped / characters
+        #
+        buffer[i] = re.sub(r"\\/", "/", buffer[i])
+        buffer[i] = buffer[i].rstrip()
+        i += 1
 
     #
     # Begin Pre-process Common
     #
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # remove comments
-    i = 0
-    while i < len(self.wb):
-      if  re.match(r"\/\/", self.wb[i]): # entire line is a comment
-        del self.wb[i]
-        continue
-      if re.search(r"\/\/.*$", self.wb[i]):
-        self.wb[i] = re.sub(r"\/\/.*$", "", self.wb[i])
-        self.wb[i] = self.wb[i].rstrip()
-      i += 1
+    # Remove comments in pre-processor
+    # Also un-escape any escaped / characters in the text (\/ becomes /)
+    #
+    uncomment(self.wb)
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # ignored text removed in preprocessor
@@ -1847,7 +1861,6 @@ class Book(object):
           self.fatal("unterminated .ig command")
       else:
         i += 1
-
     # if source file is UTF-8 and requested encoding is Latin-1, down-convert
     if self.encoding == "utf_8" and self.renc == "l" and not self.cvgfilter:
       for j,ch in enumerate(self.mau):
@@ -1889,8 +1902,8 @@ class Book(object):
               if m3:
                 self.warn(".sr command for text skipped by .if h: {}".format(self.umap(line)))
 
-    self.wb = text
-    text = []
+      self.wb = text
+      text = []
 
     # load cvg filter file if specified
     if self.cvgfilter:
@@ -2070,6 +2083,7 @@ class Book(object):
     if self.dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
       if not dia_blobbed:
         text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
+        dia_blobbed = True
       if not diatest:
         if len(self.diacritics_user) > 0:
           for s in self.diacritics_user:
@@ -2157,23 +2171,27 @@ class Book(object):
         if m:
           if m.group(5) != "":           # if anything here then the user's expression was wrong, somehow
             self.warn("Problem with .sr arguments: " +
-                      "1={} 2={} 3={} 4={} Unexpected 5={}\n           {}".format(
+                      "1={} 2={} 3={} 4={} Unexpected 5={}\n             {}".format(
                       m.group(1),m.group(2), m.group(3), m.group(4), m.group(5), self.wb[i]))
             sr_error = True
           if "f" in m.group(1):  # if request to do s/r during filtering
             filter_sr = True     # remember the request
             if ("u" in m.group(1) or "l" in m.group(1) or
                 "t" in m.group(1) or "h" in m.group(1) or "b" in m.group(1)):
-              self.warn(".sr f option can not be used with u, l, t, h, or b options: {}".format(self.wb[i]))
+              self.warn(".sr f option can not be used with u, l, t, h, or b options:" +
+                        "\n             {}".format(self.wb[i]))
               sr_error = True
             if not self.cvgfilter:
-              self.warn(".sr f option can only be used with -f command line option: {}".format(self.wb[i]))
+              self.warn(".sr f option can only be used with -f command line option:" +
+                        "\n             {}".format(self.wb[i]))
               sr_error = True
+          if (("\\n" in m.group(3)) and
+              ("p" in m.group(1))): # Can't do prompting with \n in request
+            self.warn(".sr p option can not be used with \\n in search string:" +
+                      "\n             {}".format(self.wb[i]))
+            sr_error = True
           if "b" in m.group(1):  # remember b option if specified on any .sr
             self.filter_b = True
-          if (("\\n" in m.group(3)) and 
-              ("p" in m.group(1))): # Can't do prompting with \n in request
-            self.warn(".sr p option can not be used with \\n in search string: {}".format(self.wb[i]))
           self.srw.append(m.group(1))
           self.srs.append(m.group(3))
           self.srr.append(m.group(4))
@@ -2189,6 +2207,7 @@ class Book(object):
       self.fatal("Terminating due to the .sr issues listed previously.")
 
     if self.cvgfilter and filter_sr: # if user wants some .sr directives applied in filtering mode do them now
+      self.dprint("processing .sr for filtering")
       for i in range(len(self.srw)):
         if ('f' in self.srw[i]):     # if this one applies to filtering mode
           self.process_SR(self.wb, i)
@@ -2431,7 +2450,7 @@ class Book(object):
           self.wb[i] = ".nf c"
           self.wb.insert(i+nlines+1, ".nf-")
         else:
-          self.crash_w_context("malformed .ce directive", self.cl)
+          self.crash_w_context("malformed .ce directive", i)
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2514,7 +2533,7 @@ class Book(object):
           else:
             image_type = temp
         else:
-          self.crash_w_context("malformed .bn directive", self.cl)
+          self.crash_w_context("malformed .bn directive", i)
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2800,10 +2819,12 @@ class Ppt(Book):
 
     ###should rewrite to exempt .li blocks from a bunch of this
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # <lang> tags ignored in text version.
+    # <lang> and <abbr> tags ignored in text version.
     for i in range(len(self.wb)):
       self.wb[i] = re.sub(r"<lang[^>]*>","",self.wb[i])
-      self.wb[i] = re.sub(r"<\/lang>","",self.wb[i])
+      self.wb[i] = re.sub(r"</lang>","",self.wb[i])
+      self.wb[i] = re.sub(r"<abbr[^>]*>","",self.wb[i])
+      self.wb[i] = re.sub(r"</abbr>","",self.wb[i])
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # look for <b>
@@ -2964,9 +2985,6 @@ class Ppt(Book):
       # small caps ignored
       self.wb[i] = re.sub(r"<\/?SC>", "", self.wb[i])
 
-      # lang dropped (<i> would be separate)
-      self.wb[i] = re.sub(r"<\/?lang>", "", self.wb[i])
-
       # gesperrt in text
       self.wb[i] = re.sub(r"<\/?g>", "_", self.wb[i])
 
@@ -3012,11 +3030,11 @@ class Ppt(Book):
     #
     # Handle any .sr for text that have the b option specified
     if self.filter_b:
+      self.dprint("Processing .sr for text with b specified")
       for i in range(len(self.srw)):
-        if (('t' in self.srw[i]) or (self.renc in self.srw[i]) and
+        if ((('t' in self.srw[i]) or (self.renc in self.srw[i])) and
             ('b' in self.srw[i])): # if this one is for pre-processing and applies to the text form we're generating
           self.process_SR(self.wb, i)
-
 
   # -------------------------------------------------------------------------------------
   # post-process emit buffer (TEXT)
@@ -3132,11 +3150,12 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("◮", "=")
 
 
-    # process saved search/replace strings, if any
+    # process saved search/replace strings for text, if any
     # but only if our output format matches something in the saved "which" value
 
+    self.dprint("processing .sr for text without b specified")
     for i in range(len(self.srw)):
-      if (('t' in self.srw[i]) or (self.renc in self.srw[i]) and not 
+      if ((('t' in self.srw[i]) or (self.renc in self.srw[i])) and not
           ('b' in self.srw[i])): # if this one is for post-processing and applies to the text form we're generating
         self.process_SR(self.eb, i)
 
@@ -3581,7 +3600,7 @@ class Ppt(Book):
         else:
           need_pad = True
     if need_pad:
-      self.warn("inserting leading space in wide .nf c")
+      self.warn("inserting leading space in wide .nf c (or .ce)")
       for i,line in enumerate(t):
         t[i] = " "+ t[i]
     t.insert(0, ".RS 1")
@@ -3968,6 +3987,9 @@ class Ppt(Book):
     # margin to center table in 72 character text field
     if totalwidth >= 72:
       tindent = 0
+      if not autosize:
+        self.warn("PPer-supplied table width (including leading indent and space\n" + "           " +
+                  "between columns) of {} is greater than 72 characters:\n           {}".format(totalwidth+1, self.wb[self.cl]))
     else:
       tindent = (72 - totalwidth) // 2
 
@@ -4448,6 +4470,7 @@ class Pph(Book):
           i += 1
         else:
           self.fatal("source file ends with continued .de command: {}".format(self.wb[i]))
+        continue
 
       self.wb[i] = re.sub(r"#(\d+)#", r"⑲\1⑲", self.wb[i])
       self.wb[i] = re.sub(r"#([iIvVxXlLcCdDmM]+)#", r"⑲\1⑲", self.wb[i])
@@ -4473,6 +4496,8 @@ class Pph(Book):
       m = re.match(r"\.pn \+(\d+)", self.wb[i])
       if m:
         increment_amount = int(m.group(1))
+        if increment_amount == 0: # can't have duplicate page numbers
+          self.crash_w_context("Invalid .pn increment amount, +0", i)
         if (self.pageno).isnumeric():
           self.pageno = "{}".format(int(self.pageno) + increment_amount)
         else: # Roman
@@ -4508,6 +4533,8 @@ class Pph(Book):
       m = re.match(r"\.h.*?pn=\+(\d+)", self.wb[i])
       if m:
         increment_amount = int(m.group(1))
+        if increment_amount == 0: # can't have duplicate page numbers
+          self.crash_w_context("Invalid pn increment amount, +0", i)
         if (self.pageno).isnumeric():
           self.pageno = "{}".format(int(self.pageno) + increment_amount)
         else: # Roman
@@ -4692,7 +4719,7 @@ class Pph(Book):
       # this is a reference in the text to a footnote, like this[14].
       # footnote references can be repeated. Back-link is to the first one only
       #
-      # non-numeric footnote references can only be recognized if we found a .fn 
+      # non-numeric footnote references can only be recognized if we found a .fn
       # for them in the earlier pass through the text
       m = re.search(r"\[(\d+)\]", self.wb[i])  # look for standard numeric footnote references
       while m:
@@ -4761,14 +4788,17 @@ class Pph(Book):
                 i += 1
                 continue
             # find all tags on this line; ignore <a and </a tags completely for this purpose
-            tmpline = re.sub("</?a[^>]*>", "", self.wb[i])
+            tmpline = re.sub("<a [^>]*>", "", self.wb[i])
+            tmpline = re.sub("</a>", "", tmpline)
             t = re.findall("<\/?[^>]*>", tmpline)
             sstart = "" # what to prepend to the line
             for s in tagstack: # build the start string
               sstart += s
             self.wb[i] = sstart + self.wb[i] # rewrite the line with new start
             for s in t: # we may have more tags on this line
-              if not s.startswith("</"): # it is of form <..> an opening tag
+              if s.endswith("/>"): # it is a self-closing tag
+                continue           # ignore it
+              elif not s.startswith("</"): # it is an opening tag
                 if s in tagstack:
                   self.warn("Nested {} tags in .nf block: {}".format(s, tmpline))
                 tagstack.append(s) # save it on the stack
@@ -4783,7 +4813,12 @@ class Pph(Book):
             send = "" # string end
             for s in reversed(tagstack): # if there is something left, tack it on end of line
               closetag =  re.sub("<","</", s) # make it into a closing tag
-              if closetag.startswith("</c"): # anything that had arguments closes without them
+              m = re.match(r"</(\w+) .*>", s) # is it a tag with parameters?
+              if m:                           # if so, drop them
+                s = "</m.group(1)>"
+              # next remove arguments from any ppgen inline tag that has arguments
+              # without a preceding space (e.g., <c=red> or <fs=120%>)
+              if closetag.startswith("</c"):
                 closetag = "</c>" # colors
               if closetag.startswith("</fs"):
                 closetag = "</fs>" # font size
@@ -4791,6 +4826,8 @@ class Pph(Book):
                 closetag = "</lang>" # language
               if closetag.startswith("</sn"):
                 closetag = "</sn>" # inline sidenote
+              if closetag.startswith("</abbr"):
+                closetag = "</abbr>" # abbreviation
               send += closetag
             self.wb[i] = self.wb[i] + send
             i += 1
@@ -4815,14 +4852,65 @@ class Pph(Book):
         m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
         while m:
           langspec = m.group(1)
-          self.wb[i] = re.sub(m.group(0), "ᒪ'{}'".format(langspec), self.wb[i], 1)
+          self.wb[i] = re.sub(re.escape(m.group(0)), "ᒪ'{}'".format(langspec), self.wb[i])
           # self.wb[i] = re.sub(m.group(0), "<span lang=\"{0}\" xml:lang=\"{0}\">".format(langspec), self.wb[i], 1)
           m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
-        if "lang=" in self.wb[i]:
+        if "<lang" in self.wb[i]:
           self.fatal("incorrect lang markup: {}".format(self.wb[i]))
-        self.wb[i] = re.sub(r"<\/lang>", "ᒧ",self.wb[i])
+        self.wb[i] = re.sub(r"</lang>", "ᒧ",self.wb[i])
         i += 1
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # <abbr> tags processed in HTML.
+    # (1) <abbr="Saint">St.</abbr> or <abbr=Saint>St.</abbr>
+    #       would generate <abbr title='Saint'>St.</abbr>
+    # (2) <abbr rend=arabic>XXX</abbr>
+    #       would generate <abbr title='30'>XXX</abbr>
+    # (3) <abbr rend=spell>Ph.D.</abbr>
+    #       would generate <abbr class='spell'>Ph.D.</abbr>
+    #       along with CSS: abbr.spell { speak: spell-out; }
+    # Any use of <abbr> will generate CSS: abbr { border-bottom-width: 1px; border-bottom-style: dotted; }
+    i = 0
+    abbrfound = False
+    while i < len(self.wb):
+      if self.wb[i] == ".li":         # ignore literal blocks
+        while i < len(self.wb) and self.wb[i] != ".li-":
+          i += 1
+        i += 1  # skip over .li- command
+      else:
+        temp = self.wb[i]
+        # look for form 1 of abbr tag
+        m = re.search(r"<abbr=[\"']?([^\"'>]+)[\"']?>",temp)
+        while m:
+          abbrfound = True
+          abbrtitle = re.sub("'","&#39;",m.group(1)) # escape any ' in the title string
+          temp = re.sub(re.escape(m.group(0)), "", temp) # remove the abbr tag from the temporary copy of the line
+          self.wb[i] = re.sub(re.escape(m.group(0)), "<abbr title='{}'>".format(abbrtitle), self.wb[i]) # replace in original line
+          m = re.search(r"<abbr=[\"']?([^\"'>]+)[\"']?>",temp) # search for more <abbr= tags in copy
+        # look for form 2 of abbr tag
+        m = re.search(r"<abbr rend=[\"']?arabic[\"']?>([iIvVxXlLcCdDmM]+)",temp)
+        while m:
+          abbrfound = True
+          abbrtitle = self.fromRoman(m.group(1).lower())
+          temp = re.sub(re.escape(m.group(0)), "", temp) # remove the abbr tag from the temporary copy of the line
+          self.wb[i] = re.sub(re.escape(m.group(0)), "<abbr title='{}'>{}".format(abbrtitle, m.group(1)), self.wb[i]) # replace in original line
+          m = re.search(r"<abbr rend=[\"']?arabic[\"']?>([iIvVxXlLcCdDmM]+)",temp) # search for more <abbr rend=arabic tags in copy
+        # look for form 3 of abbr tag
+        spellfound = False
+        m = re.search(r"<abbr rend=[\"']?spell[\"']?>",temp)
+        while m:
+          abbrfound = True
+          spellfound = True
+          temp = re.sub(re.escape(m.group(0)), "", temp) # remove the abbr tag from the temporary copy of the line
+          self.wb[i] = re.sub(re.escape(m.group(0)), "<abbr class='spell'>", self.wb[i]) # replace in original line
+          m = re.search(r"<abbr rend=[\"']?spell[\"']?>",temp) # search for more <abbr rend=spell tags in copy
+        if abbrfound:
+          self.css.addcss("[1210] abbr { border-bottom-width: 1px; border-bottom-style: dotted; }")
+        if spellfound:
+          self.css.addcss("[1210] abbr.spell { speak: spell-out; }")
+        if "<abbr" in temp: # should not have any <abbr tags left in the temp copy
+          self.crash_w_context("incorrect abbr markup: {}".format(temp), i)
+        i += 1
 
     # -------------------------------------------------------------------------
     # inline markup (HTML)
@@ -4966,6 +5054,7 @@ class Pph(Book):
     #
     # Handle any .sr for HTML that have the b option specified
     if self.filter_b:
+      self.dprint("processing .sr for HTML with b specified")
       for i in range(len(self.srw)):
         if ('h' in self.srw[i]) and ('b' in self.srw[i]): # if this one is for pre-processing and applies to HTML
           self.process_SR(self.wb, i)
@@ -5175,6 +5264,7 @@ class Pph(Book):
   # process saved search/replace strings, if any
   # but only if our output format matches something in the saved "which" value
   def doHTMLSr(self):
+    self.dprint("processing .sr for HTML without b specified")
     for i in range(len(self.srw)):
       if ('h' in self.srw[i]) and not ('b' in self.srw[i]): # if this one applies to HTML and was not already handled
         self.process_SR(self.wb, i)
@@ -5431,6 +5521,7 @@ class Pph(Book):
       t.append("<div class='chapter'></div>") # will force file break
       self.css.addcss("[1576] .chapter { clear:both; }")
     if pnum != "":
+      t.append("<div>")
       if self.pnshow:
         # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
         t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
@@ -5440,6 +5531,8 @@ class Pph(Book):
       t.append("  <h2 id='{}' style='{}'>{}</h2>".format(id, hcss, s))
     else:
       t.append("  <h2 style='{}'>{}</h2>".format(hcss, s))
+    if pnum != "":
+      t.append("</div>")
 
     self.wb[self.cl:self.cl+1] = t
     self.cl += len(t)
@@ -6417,7 +6510,7 @@ class Pph(Book):
 
       self.css.addcss("[1430] div.footnote {}")
       self.css.addcss("[1431] div.footnote>:first-child { margin-top:1em; }")
-      self.css.addcss("[1432] div.footnote p {{ text-indent:1em;margin-top:{0}em;margin-bottom:{1}; }}".format(s2,s2))
+      self.css.addcss("[1432] div.footnote p {{ text-indent:1em;margin-top:{0}em;margin-bottom:{1}em; }}".format(s2,s2))
       self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
       self.cl += 1
       # self.wb[self.cl] = "<a href='#r{0}'>[{0}]</a> {1}".format(fnname, self.wb[self.cl])
@@ -7237,6 +7330,7 @@ if __name__ == '__main__':
 # 1205      <xxs>
 # 1205      <u>
 # 1209      <c>     will duplicate for various colors
+# 1210      <abbr> and abbr.spell
 # 1215      .nf b: .lg-container-b
 # 1216             @media handheld
 # 1217      .nf l: .lg-container-l
