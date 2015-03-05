@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47pSR2"  # 3-Mar-2015     Allow .sr to operate while filtering. Also allow for prompting user whether to perform replace or not
+VERSION="3.47q"  # 5-Mar-2015     Allow .sr to operate while filtering, or before processing. Also allow for prompting
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
