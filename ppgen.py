@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47q"  # 5-Mar-2015     Allow .sr to operate while filtering, or before processing. Also allow for prompting
+VERSION="3.47r"  # 5-Mar-2015     Misc cleanup
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1626,6 +1626,20 @@ class Book(object):
     sys.stderr.write(" -----\n")
     exit(1)
 
+  def warn_w_context(self, msg, i, r=5):
+    sys.stderr.write("\n**warning: {}\ncontext:\n".format(self.umap(msg)))
+    startline = max(0,i-r)
+    endline = min(len(self.wb),i+r)
+    sys.stderr.write(" -----\n")
+    for j in range(startline,endline):
+      s = self.umap(self.wb[j])
+      if j == i:
+        sys.stderr.write(">> {}\n".format(s))
+      else:
+        sys.stderr.write("   {}\n".format(s))
+    sys.stderr.write(" -----\n")
+
+
   # extract content of an optionally quoted string
   # used in .nr
 
@@ -2538,28 +2552,28 @@ class Book(object):
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # superscripts, subscripts
+    pat1 = re.compile("\^([^\{])")   # single-character superscript
+    pat2 = re.compile("\^\{(.*?)\}") # multi-character superscript
+    pat3 = re.compile("_\{(.*?)\}")  # subscript
     for i in range(len(self.wb)):
 
-      pat = re.compile("\^([^\{])")
-      m = re.search(pat, self.wb[i]) # single character superscript
+      m = re.search(pat1, self.wb[i]) # single character superscript
       while m:
         suptext = m.group(1)
-        self.wb[i] = re.sub(pat, "◸{}◹".format(suptext), self.wb[i], 1)
-        m = re.search(pat, self.wb[i])
+        self.wb[i] = re.sub(pat1, "◸{}◹".format(suptext), self.wb[i], 1)
+        m = re.search(pat1, self.wb[i])
 
-      pat = re.compile("\^\{(.*?)\}")
-      m = re.search(pat, self.wb[i])
+      m = re.search(pat2, self.wb[i])
       while m:
         suptext = m.group(1)
-        self.wb[i] = re.sub(pat, "◸{}◹".format(suptext), self.wb[i], 1)
-        m = re.search(pat, self.wb[i])
+        self.wb[i] = re.sub(pat2, "◸{}◹".format(suptext), self.wb[i], 1)
+        m = re.search(pat2, self.wb[i])
 
-      pat = re.compile("_\{(.*?)\}")
-      m = re.search(pat, self.wb[i])
+      m = re.search(pat3, self.wb[i])
       while m:
         subtext = m.group(1)
-        self.wb[i] = re.sub(pat, "◺{}◿".format(subtext), self.wb[i], 1)
-        m = re.search(pat, self.wb[i])
+        self.wb[i] = re.sub(pat3, "◺{}◿".format(subtext), self.wb[i], 1)
+        m = re.search(pat3, self.wb[i])
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # map small caps to <sc> or <SC>
@@ -2954,6 +2968,9 @@ class Ppt(Book):
     # sn: inline sidenote, converted to [Sidenote: text]
 
     tempSidenote = self.nregs["Sidenote"] # grab initial value of Sidenote special register
+    in_nf = False # flags to help determine whether inline sidenotes are inside of .nf blocks, tables, or footnotes
+    in_ta = False
+    in_fn = False
 
     for i, line in enumerate(self.wb):
 
@@ -2999,14 +3016,30 @@ class Ppt(Book):
       # note: Must look for .nr Sidenote as most .nr processing happens after this, during process()
       #       We cannot simply move the .nr processing earlier as (in theory) someone could change the
       #       .nr settings multiple times during a run
-      if self.wb[i].startswith(".nr Sidenote"):
+      if self.wb[i].startswith(".nf "):
+        in_nf = True
+      elif self.wb[i].startswith(".nf-"):
+        in_nf = False
+      elif self.wb[i].startswith(".ta "):
+        in_ta = True
+      elif self.wb[i].startswith(".ta-"):
+        in_ta = False
+      elif self.wb[i].startswith(".fn "):
+        in_fn = True
+      elif self.wb[i].startswith(".fn-"):
+        in_fn = False
+      elif self.wb[i].startswith(".nr Sidenote"):
         m = re.match(r"\.nr Sidenote (.+)", self.wb[i])
         if m:
           tempSidenote = m.group(1) # remember new Sidenote name value
-      self.wb[i] = re.sub("<sn(?: class=[^>]*)?>", "[{}: ".format(tempSidenote), self.wb[i])
+      self.wb[i], l = re.subn("<sn(?: class=[^>]*)?>", "[{}: ".format(tempSidenote), self.wb[i])
       self.wb[i] = re.sub("</sn>", "]", self.wb[i])
+      if l and (in_nf or in_ta or in_fn):
+        self.warn_w_context("Inline sidenote probably won't work well here:", i)
 
     # do small caps last since it could uppercase a tag.
+    re_scmult = re.compile(r"<sc>(.+?)<\/sc>", re.DOTALL)
+    re_scsing = re.compile(r"<sc>(.*?)<\/sc>")
     for i, line in enumerate(self.wb):
       def to_uppercase(m):
         return m.group(1).upper()
@@ -3019,13 +3052,11 @@ class Ppt(Book):
             del(self.wb[i])
           t.append(self.wb[i]) # last line
           ts = "\n".join(t) # make all one line
-          re_sc = re.compile(r"<sc>(.+?)<\/sc>", re.DOTALL)
-          ts = re.sub(re_sc, to_uppercase, ts)
+          ts = re.sub(re_scmult, to_uppercase, ts)
           t = ts.splitlines() # back to a series of lines
           self.wb[i:i+1] = t
         else: # single line
-          re_sc = re.compile(r"<sc>(.*?)<\/sc>")
-          self.wb[i] = re.sub(re_sc, to_uppercase, self.wb[i])
+          self.wb[i] = re.sub(re_scsing, to_uppercase, self.wb[i])
 
     #
     # Handle any .sr for text that have the b option specified
@@ -4926,16 +4957,27 @@ class Pph(Book):
       self.wb[i] = re.sub(r"<B", "<b", self.wb[i])
       self.wb[i] = re.sub(r"<\/B", "</b", self.wb[i])
 
-    inNF = False
+    in_nf = False
+    in_ta = False
+    in_fn = False
     for i, line in enumerate(self.wb):
+
+      if self.wb[i].startswith(".nf "):
+        in_nf = True
+      elif self.wb[i].startswith(".nf-"):
+        in_nf = False
+      elif self.wb[i].startswith(".ta "):
+        in_ta = True
+      elif self.wb[i].startswith(".ta-"):
+        in_ta = False
+      if self.wb[i].startswith(".fn "):
+        in_fn = True
+      elif self.wb[i].startswith(".fn-"):
+        in_fn = False
 
       # if everything inside <sc>...</sc> markup is uppercase, then
       # use font-size:smaller, else use font-variant:small-caps
 
-      if self.wb[i].startswith(".nf "):
-        inNF = True
-      elif self.wb[i].startswith(".nf-"):
-        inNF = False
       m = re.search("<sc>", self.wb[i]) # opening small cap tag
       while m:
         use_class = "sc" # unless changed
@@ -4956,7 +4998,7 @@ class Pph(Book):
           # we will have replicated the <sc> tags that cross lines
           # of the .nf block, which could leave some all lower-case
           # line alone within the <sc> </sc>, but it's not an error
-          if not inNF and scstring == scstring.lower():
+          if not in_nf and scstring == scstring.lower():
             self.warn("all lower case inside small-caps markup: {}".format(self.wb[i]))
           if scstring == scstring.upper(): # all upper case
             use_class = "fss"
@@ -5042,14 +5084,17 @@ class Pph(Book):
 
       # <sn>...</sn> becomes a span
       tmpline = self.wb[i]
-      self.wb[i] = re.sub("<sn>", "<span class='sni'><span class='hidev'>⓫</span>", self.wb[i])
+      self.wb[i], count = re.subn("<sn>", "<span class='sni'><span class='hidev'>⓫</span>", self.wb[i])
       m = re.search(r"<sn class=([\"'])(\w*)\1>", self.wb[i])
       while m:
-        self.wb[i] = re.sub(re.escape(m.group(0)), "<span class='sni {}'><span class='hidev'>⓫</span>".format(m.group(2)), self.wb[i])
+        self.wb[i], count2 = re.subn(re.escape(m.group(0)), "<span class='sni {}'><span class='hidev'>⓫</span>".format(m.group(2)), self.wb[i])
+        count += count2
         m = re.search(r"<sn class=([\"'])(\w*)\1>", self.wb[i])
       self.wb[i] = re.sub("</sn>", "<span class='hidev'>⓫</span></span>", self.wb[i])
       if not self.snPresent and tmpline != self.wb[i]:
         self.snPresent = True
+      if count and (in_nf or in_ta or in_fn):
+        self.warn_w_context("Inline sidenote probably won't work well here:", i)
 
     #
     # Handle any .sr for HTML that have the b option specified
@@ -5467,7 +5512,7 @@ class Pph(Book):
     rend = "" # default no rend
     align = "c" # default to centered heading
 
-    self.css.addcss("[1100] h2 { text-align:center;font-weight:normal;font-size:1.2em; }")
+    self.css.addcss("[1100] h2 { text-align:center;font-weight:normal;font-size:1.2em; page-break-before: auto}")
 
     m = re.match(r"\.h2 (.*)", self.wb[self.cl])
     if m: # modifier
@@ -5489,10 +5534,7 @@ class Pph(Book):
     elif align != "c":
       self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
 
-    if "nobreak" in rend:
-      hcss += "page-break-before:auto;"
-    else:
-      hcss += "page-break-before:always;"
+    # hcss += "page-break-before:auto;" # not needed, as we now have it in the CSS for h2. page-break is controlled by .chapter div
 
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
@@ -5518,10 +5560,11 @@ class Pph(Book):
     # new in 1.79
     # I always want a div. If it's not a no-break, give it class='chapter'
     if not "nobreak" in rend:
-      t.append("<div class='chapter'></div>") # will force file break
-      self.css.addcss("[1576] .chapter { clear:both; }")
+      t.append("<div class='chapter'>") # will force file break
+      self.css.addcss("[1576] .chapter { clear:both; page-break-before: always;}")
+    else:
+      t.append("<div>") # always want a div around the h2
     if pnum != "":
-      t.append("<div>")
       if self.pnshow:
         # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
         t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
@@ -5531,8 +5574,8 @@ class Pph(Book):
       t.append("  <h2 id='{}' style='{}'>{}</h2>".format(id, hcss, s))
     else:
       t.append("  <h2 style='{}'>{}</h2>".format(hcss, s))
-    if pnum != "":
-      t.append("</div>")
+
+    t.append("</div>") # always close the div
 
     self.wb[self.cl:self.cl+1] = t
     self.cl += len(t)
@@ -6289,10 +6332,13 @@ class Pph(Book):
       i += 1
     # at block end.
     if printable_lines_in_block == 0:
-        self.fatal("empty .nf block")
+        self.crash_w_context("empty .nf block", i)
     # there may be a pending mt at the block end.
     if pending_mt > 0:
-      t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(pending_mt), t[-1])
+      if "<div style='" not in t[-1]:
+        t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(pending_mt), t[-1])
+      else:
+        t[-1] = re.sub(r"<div style='", "<div style='margin-bottom:{}em; ".format(pending_mt), t[-1])
       pending_mt = 0
     t.append("  </div>")
     t.append("</div>")
@@ -6437,7 +6483,10 @@ class Pph(Book):
 
     # there may be a pending mt at the block end.
     if cpvs > 0:
-      t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(cpvs), t[-1])
+      if "style='" in t[-1]:
+        t[-1] = re.sub(r"style='", "style='margin-bottom:{}em; ".format(cpvs), t[-1])
+      else:
+        t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(cpvs), t[-1])
       cpvs = 0
 
     t.append("    </div>")
