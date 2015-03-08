@@ -22,8 +22,8 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47pLZ"  # 4-Mar-2015    3.47p + Footnote Landing Zones
-VERSION="3.47LZ2"  # 24-Feb-2015    3.47 + Footnote Landing Zones
+VERSION="3.47pLZ2"  # 7-Mar-2015    3.47p + Footnote Landing Zones
+# plus addtions:
 # Trying to extend so paragraphs can flow around footnotes and
 # also provide an override to allow some footnotes to appear elsewhere, like
 # within a table rather than at a normal landing zone
@@ -76,6 +76,12 @@ class Book(object):
   wb = [] # working buffer
   eb = [] # emit buffer
   bb = [] # GG .bin file buffer
+  gk_user = [] # PPer-supplied Greek characters
+  diacritics_user = [] # PPer-supplied diacritic characters
+  srw = []    # .sr "which" array
+  srs = []    # .sr "search" array
+  srr = []    # .sr "replace" array
+  fnlist = [] # buffer for saved footnotes
   regLL = 72 # line length
   regIN = 0 # indent
   regTI = 0 # temporary indent
@@ -204,8 +210,6 @@ class Book(object):
      '\uFF5C':'|', '\uFF5D':'}', '\uFF5E':'~',
      '\u2042':'***'
     }
-
-  gk_user = []                          # PPer provided Greek transliterations will go here
 
   gk = [                              # builtin Greek transliterations
      ('ï/', 'i/\+', 'ï/'),            # i/u/y alternatives using dieresis
@@ -570,8 +574,6 @@ class Book(object):
      ('C',        '\u03E0', 'C (Sampi)'),
      ('c',        '\u03E1', 'c (sampi)'),
     ]
-
-  diacritics_user = []  # PPer-supplied diacritic markup will go here
 
   diacritics = [
     ('[=A]',    '\u0100', '\\u0100'), # LATIN CAPITAL LETTER A WITH MACRON    (Latin Extended-A)
@@ -1368,6 +1370,20 @@ class Book(object):
   def __init__(self, args, renc):
     del self.wb[:]
     del self.eb[:]
+    del self.bb[:]
+    del self.fnlist[:]
+    del self.gk_user[:]
+    del self.diacritics_user[:]
+    del self.srw[:]
+    del self.srs[:]
+    del self.srr[:]
+    del self.instack[:]
+    del self.llstack[:]
+    del self.psstack[:]
+    del self.nfstack[:]
+    del self.warnings[:]
+    del self.mal[:]
+    del self.mau[:]
     self.renc = renc.lower() # requested output encoding (t, u, or h)
     self.forceutf8 = (True) if (renc == "U") else (False)
     self.debug = args.debug
@@ -1829,7 +1845,6 @@ class Book(object):
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # process [Greek: ...] in UTF-8 output if requested to via .gk command
     i = 0
-    self.gk_user = []
     self.gk_requested = False
     gk_done = False
     self.gkpre = ""
@@ -1878,7 +1893,6 @@ class Book(object):
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # process diacritic markup in UTF-8 output if requested to via .cv command
     i = 0
-    self.diacritics_user = []
     self.dia_requested = False
     dia_done = False
     dia_blobbed = False
@@ -2060,7 +2074,7 @@ class Book(object):
           m = re.search(r"\[([^*\]].{1,7}?)]", text2)
         if header_needed:
           print("No unconverted diacritics seem to remain after conversion.")
-        text2 = []
+        del text2[:]
 
     if dia_blobbed:
       self.wb = text.splitlines()
@@ -2119,9 +2133,6 @@ class Book(object):
     #
     # Values gathered during preprocessCommon and saved for use during post-processing
     i = 0
-    self.srw = []    # "which" array
-    self.srs = []    # "search" array
-    self.srr = []    # "replace" array
     while i < len(self.wb):
       if self.wb[i].startswith(".sr"):
         m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
@@ -2550,10 +2561,6 @@ class Book(object):
 # a transliteration is provided by the post-processor
 
 class Ppt(Book):
-  eb = [] # emit buffer for generated text
-  wb = [] # working buffer
-  bb = [] # GG .bin buffer
-  fnlist = [] # list of footnotes
 
   long_table_line_count = 0
 
@@ -7344,15 +7351,18 @@ def main():
     ppt = Ppt(args, "l")
     ppt.run()
 
+
   # UTF-8 only
   if 'u' in args.output_format:
     ppt = Ppt(args, "U")  # if PPer explicitly asked for utf-8 always create it, even if input is encoded in Latin-1 or ASCII
     ppt.run()
 
+
   # Latin-1 only
   if 'l' in args.output_format:
    ppt = Ppt(args, "l")
    ppt.run()
+
 
   if 'h' in args.output_format:
     print("creating HTML version")
