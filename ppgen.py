@@ -22,11 +22,13 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47pLZ2"  # 7-Mar-2015    3.47p + Footnote Landing Zones
+VERSION="3.48aLZ2"  # 8-Mar-2015    3.47p + Footnote Landing Zones
 # plus addtions:
 # Trying to extend so paragraphs can flow around footnotes and
 # also provide an override to allow some footnotes to appear elsewhere, like
 # within a table rather than at a normal landing zone
+
+
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1647,15 +1649,17 @@ class Book(object):
     exit(1)
 
   def warn_w_context(self, msg, i, r=5):
-    print("***Warning: {}\ncontext:".format(msg))
+    sys.stderr.write("\n**warning: {}\ncontext:\n".format(self.umap(msg)))
     startline = max(0,i-r)
     endline = min(len(self.wb),i+r)
+    sys.stderr.write(" -----\n")
     for j in range(startline,endline):
       s = self.umap(self.wb[j])
       if j == i:
-        print(">> {}".format(s))
+        sys.stderr.write(">> {}\n".format(s))
       else:
-        print("   {}".format(s))
+        sys.stderr.write("   {}\n".format(s))
+    sys.stderr.write(" -----\n")
 
 
   # extract content of an optionally quoted string
@@ -1669,6 +1673,99 @@ class Book(object):
       self.crash_w_context("incorrect value: {}".format(s), i)
     else:
       return s
+
+  #
+  # process saved .sr requests
+  #
+  def process_SR(self, buffer, srnum):
+    k = 0
+    l = 0
+    ll = 0
+    if "\\n" in self.srs[srnum]: # did user use a regex containing \n ? If so, process all lines in one blob
+      text = '\n'.join(buffer) # form lines into a blob
+      try:
+        m = re.search(self.srs[srnum], text) # search for current search string
+      except:
+        if 'd' in self.debug:
+          traceback.print_exc()
+          self.fatal("Above error occurred searching for {} in complete text blob".format(self.srs[srnum]))
+        else:
+          self.fatal("Error occurred searching for {} in complete text blob".format(self.srs[srnum]))
+      if m:                                             # if found
+        if 'r' in self.debug:
+          print("{} found in complete text blob".format(self.srs[srnum]))
+        try:
+          text, l = re.subn(self.srs[srnum], self.srr[srnum], text) # replace all occurrences in the blob
+          ll += l
+        except:
+          if 'd' in self.debug:
+            traceback.print_exc()
+            self.fatal("Above error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[srnum], self.srr[srnum]))
+          else:
+            self.fatal("Error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[srnum], self.srr[srnum]))
+        if 'r' in self.debug:
+          print("Replaced with {}".format(self.srr[srnum]))
+      print("Search string {}:{} matched in complete text and replaced {} times.".format(srnum+1, self.srs[srnum], ll))
+      buffer = text.splitlines() # break blob back into individual lines
+      text = ""
+
+    else:
+      quit = False
+      j = 0
+      while j < len(buffer) and not quit:
+        try:
+          m = re.search(self.srs[srnum], buffer[j]) # search for current search string
+        except:
+          if 'd' in self.debug:
+            traceback.print_exc()
+            self.fatal("Above error occurred searching for\n  {}\n in: {}".format(self.srs[srnum], buffer[j]))
+          else:
+            self.fatal("Error occurred searching for\n  {}\n in: {}".format(self.srs[srnum], buffer[j]))
+        if m:                                   # if found
+          k += 1
+          if 'r' in self.debug or 'p' in self.srw[srnum]: # if debugging, or if prompt requested
+            print("Search string {}:{} found in:\n    {}".format(srnum+1, self.srs[srnum], buffer[j]))
+          try:
+            if 'p' in self.srw[srnum]:                                           # prompting requested?
+              l = 0
+              temp = re.sub(self.srs[srnum], self.srr[srnum], buffer[j])
+              print("replacement will be:\n    {}".format(temp))
+              try:
+                reply = input("replace? (y/n/q/r)")
+              except EOFError:
+                print("EOF received on prompt; assuming q")
+                reply = "q"
+              good_reply = False
+              while not good_reply:
+                if reply == "y":                                               # if user replied y (yes)
+                  buffer[j], l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
+                  good_reply = True
+                elif reply == "r":                                             # else if user replied r (run)
+                  buffer[j], l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
+                  self.srw[srnum] = self.srw[srnum].replace("p","")                      # and stop prompting
+                  good_reply = True
+                elif reply == "n":                                             # else if user replied n (no)
+                  print("skipping that one")
+                  good_reply = True
+                elif reply == "q":                                             # else if user replied q (quit)
+                  print("exiting at user request")
+                  good_reply = True
+                  quit = True
+            else:                                                            # not prompting
+              buffer[j], l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
+            ll += l
+          except:
+            if 'd' in self.debug:
+              traceback.print_exc()
+              self.fatal("Above error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[srnum], self.srr[srnum], buffer[j]))
+            else:
+              self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[srnum], self.srr[srnum], buffer[j]))
+          if 'r' in self.debug:
+            print("Replaced: {}".format(buffer[j]))
+        j += 1
+      if quit:
+        exit(1)
+      print("Search string {}:{} matched in {} lines, replaced {} times.".format(srnum+1, self.srs[srnum], k, ll))
 
 
   # .nr named register
@@ -1752,9 +1849,29 @@ class Book(object):
       while text[-1] == "": # no trailing blank lines
         text.pop()
 
+      uncomment(text)  # remove comments and un-escape / characters
+
       # insert the filter lines at the front of self.wb
       self.wb[0:0] = text
+      del text[:]
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # Remove comments and un-escape any escaped / characters in the text (\/ becomes /)
+    #
+    def uncomment(buffer):
+      i = 0
+      while i < len(buffer):
+        if  re.match(r"\/\/", buffer[i]): # entire line is a comment
+          del buffer[i]
+          continue
+        if re.search(r"\/\/.*$", buffer[i]):
+          buffer[i] = re.sub(r"\/\/.*$", "", buffer[i])
+        #
+        # convert escaped / characters
+        #
+        buffer[i] = re.sub(r"\\/", "/", buffer[i])
+        buffer[i] = buffer[i].rstrip()
+        i += 1
 
     #
     # Begin Pre-process Common
@@ -1764,19 +1881,7 @@ class Book(object):
     # Remove comments in pre-processor
     # Also un-escape any escaped / characters in the text (\/ becomes /)
     #
-    i = 0
-    while i < len(self.wb):
-      if  re.match(r"\/\/", self.wb[i]): # entire line is a comment
-        del self.wb[i]
-        continue
-      if re.search(r"\/\/.*$", self.wb[i]):
-        self.wb[i] = re.sub(r"\/\/.*$", "", self.wb[i])
-      #
-      # convert escaped / characters
-      #
-      self.wb[i] = re.sub(r"\\/", "/", self.wb[i])
-      self.wb[i] = self.wb[i].rstrip()
-      i += 1
+    uncomment(self.wb)
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # ignored text removed in preprocessor
@@ -1794,13 +1899,6 @@ class Book(object):
           self.fatal("unterminated .ig command")
       else:
         i += 1
-    # if source file is UTF-8 and requested encoding is Latin-1, down-convert
-    if self.encoding == "utf_8" and self.renc == "l" and not self.cvgfilter:
-      for j,ch in enumerate(self.mau):
-        for i in range(len(self.wb)): # O=n^2
-          self.wb[i] = re.sub(ch, self.mal[j], self.wb[i])
-      # user-defined character mapping complete, now do default mapping to Latin-1
-      self.utoLat()
 
     # .if conditionals (moved to preProcessCommon 28-Aug-2014)
     if not self.cvgfilter:
@@ -1835,8 +1933,8 @@ class Book(object):
               if m3:
                 self.warn(".sr command for text skipped by .if h: {}".format(self.umap(line)))
 
-    self.wb = text
-    text = []
+      self.wb = text
+      text = []
 
     # load cvg filter file if specified
     if self.cvgfilter:
@@ -1889,6 +1987,7 @@ class Book(object):
       text = re.sub(r"\[Greek: (.*?)]", gkrepl, text, flags=re.DOTALL)
 
       self.wb = text.splitlines()
+      text = ""
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # process diacritic markup in UTF-8 output if requested to via .cv command
@@ -2057,7 +2156,8 @@ class Book(object):
             print("Replaced {} {} times.".format(s[0], count))
       if self.log:
         header_needed = True
-        text2 = text
+        text2 = []
+        text2.extend(text)
         m = re.search(r"\[([^*\]].{1,7}?)]", text2)
         while m:
           matched = m.group(0)
@@ -2078,16 +2178,77 @@ class Book(object):
 
     if dia_blobbed:
       self.wb = text.splitlines()
+      text = ""
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # capture and remove search/replace directives
+    # .sr <which> /search/replace/
+    # which is a string containing some combination of ulthf (UTF-8, Latin-1, Text, HTML, filtering)
+    #   or b (before processing, rather than in postprocessing) or p (prompt whether to replace or not)
+    # search is  reg-ex search string
+    # replace is a reg-ex replace string
+    # / is any character not contained within either search or replace
+    #
+    # Values gathered during preprocessCommon and saved for use during post-processing
+    i = 0
+    filter_sr = False
+    self.filter_b = False
+    sr_error = False
+    while i < len(self.wb):
+      if self.wb[i].startswith(".sr"):
+        m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
+        if m:
+          if m.group(5) != "":           # if anything here then the user's expression was wrong, somehow
+            self.warn("Problem with .sr arguments: " +
+                      "1={} 2={} 3={} 4={} Unexpected 5={}\n             {}".format(
+                      m.group(1),m.group(2), m.group(3), m.group(4), m.group(5), self.wb[i]))
+            sr_error = True
+          if "f" in m.group(1):  # if request to do s/r during filtering
+            filter_sr = True     # remember the request
+            if ("u" in m.group(1) or "l" in m.group(1) or
+                "t" in m.group(1) or "h" in m.group(1) or "b" in m.group(1)):
+              self.warn(".sr f option can not be used with u, l, t, h, or b options:" +
+                        "\n             {}".format(self.wb[i]))
+              sr_error = True
+            if not self.cvgfilter:
+              self.warn(".sr f option can only be used with -f command line option:" +
+                        "\n             {}".format(self.wb[i]))
+              sr_error = True
+          if (("\\n" in m.group(3)) and
+              ("p" in m.group(1))): # Can't do prompting with \n in request
+            self.warn(".sr p option can not be used with \\n in search string:" +
+                      "\n             {}".format(self.wb[i]))
+            sr_error = True
+          if "b" in m.group(1):  # remember b option if specified on any .sr
+            self.filter_b = True
+          self.srw.append(m.group(1))
+          self.srs.append(m.group(3))
+          self.srr.append(m.group(4))
+
+          del self.wb[i]       # delete this record
+          continue
+        else:
+          self.crash_w_context("Problem parsing .sr arguments.", i)
+
+      i += 1
+
+    if sr_error: # if any .sr parsing problems noted
+      self.fatal("Terminating due to the .sr issues listed previously.")
+
+    if self.cvgfilter and filter_sr: # if user wants some .sr directives applied in filtering mode do them now
+      self.dprint("processing .sr for filtering")
+      for i in range(len(self.srw)):
+        if ('f' in self.srw[i]):     # if this one applies to filtering mode
+          self.process_SR(self.wb, i)
+
 
     if gk_quit.lower().startswith("y") or dia_quit.lower().startswith("y") or self.cvgfilter:
-      self.cvgbailout()  # bail out after .cv/.gk processing if user requested early termination
+      self.cvgbailout()  # bail out after .cv/.gk or filter processing if user requested early termination
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # process character mappings
     # character mappings are from the UTF-8 representation to Latin-1
     i = 0
-    del self.mau[:]
-    del self.mal[:]
     self.mau.append("—")   # maps a dash in UTF-8 to "--" in Latin-1
     self.mal.append("--")
     while i < len(self.wb):
@@ -2123,32 +2284,14 @@ class Book(object):
 
       i += 1
 
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # capture and remove search/replace directives
-    # .sr <which> /search/replace/
-    # which is a string containing some combination of ulth (UTF-8, Latin-1, Text, HTML)
-    # search is  reg-ex search string
-    # replace is a reg-ex replace string
-    # / is any character not contained within either search or replace
-    #
-    # Values gathered during preprocessCommon and saved for use during post-processing
-    i = 0
-    while i < len(self.wb):
-      if self.wb[i].startswith(".sr"):
-        m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
-        if m:
-          self.srw.append(m.group(1))
-          self.srs.append(m.group(3))
-          self.srr.append(m.group(4))
-          if m.group(5) != "":           # if anything here then the user's expression was wrong, somehow
-            self.crash_w_context("Problem with .sr arguments: 1={} 2={} 3={} 4={} Unexpected 5={}".format(m.group(1),m.group(2), m.group(3), m.group(4), m.group(5)), i)
-          del self.wb[i]
-          continue
-        else:
-          self.crash_w_context("Problem parsing .sr arguments.", i)
-
-      i += 1
-
+    # Now that we've gathered mappings, apply them to down-convert
+    # if source file is UTF-8 and requested encoding is Latin-1
+    if self.encoding == "utf_8" and self.renc == "l":
+      for j,ch in enumerate(self.mau):
+        for i in range(len(self.wb)): # O=n^2
+          self.wb[i] = re.sub(ch, self.mal[j], self.wb[i])
+      # user-defined character mapping complete, now do default mapping to Latin-1
+      self.utoLat()
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # long caption lines may end with a single backslash (25-Jun-2014)
@@ -2431,28 +2574,28 @@ class Book(object):
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # superscripts, subscripts
+    pat1 = re.compile("\^([^\{])")   # single-character superscript
+    pat2 = re.compile("\^\{(.*?)\}") # multi-character superscript
+    pat3 = re.compile("_\{(.*?)\}")  # subscript
     for i in range(len(self.wb)):
 
-      pat = re.compile("\^([^\{])")
-      m = re.search(pat, self.wb[i]) # single character superscript
+      m = re.search(pat1, self.wb[i]) # single character superscript
       while m:
         suptext = m.group(1)
-        self.wb[i] = re.sub(pat, "◸{}◹".format(suptext), self.wb[i], 1)
-        m = re.search(pat, self.wb[i])
+        self.wb[i] = re.sub(pat1, "◸{}◹".format(suptext), self.wb[i], 1)
+        m = re.search(pat1, self.wb[i])
 
-      pat = re.compile("\^\{(.*?)\}")
-      m = re.search(pat, self.wb[i])
+      m = re.search(pat2, self.wb[i])
       while m:
         suptext = m.group(1)
-        self.wb[i] = re.sub(pat, "◸{}◹".format(suptext), self.wb[i], 1)
-        m = re.search(pat, self.wb[i])
+        self.wb[i] = re.sub(pat2, "◸{}◹".format(suptext), self.wb[i], 1)
+        m = re.search(pat2, self.wb[i])
 
-      pat = re.compile("_\{(.*?)\}")
-      m = re.search(pat, self.wb[i])
+      m = re.search(pat3, self.wb[i])
       while m:
         subtext = m.group(1)
-        self.wb[i] = re.sub(pat, "◺{}◿".format(subtext), self.wb[i], 1)
-        m = re.search(pat, self.wb[i])
+        self.wb[i] = re.sub(pat3, "◺{}◿".format(subtext), self.wb[i], 1)
+        m = re.search(pat3, self.wb[i])
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # map small caps to <sc> or <SC>
@@ -2771,6 +2914,8 @@ class Ppt(Book):
     # is a <target id...> to remove in the text version
     text = re.sub(r"<target.*?>", "", text)
     self.wb = text.splitlines()
+    text = ""
+
 
     # all page numbers deleted in text version
     i = 0
@@ -2859,6 +3004,9 @@ class Ppt(Book):
     # sn: inline sidenote, converted to [Sidenote: text]
 
     tempSidenote = self.nregs["Sidenote"] # grab initial value of Sidenote special register
+    in_nf = False # flags to help determine whether inline sidenotes are inside of .nf blocks, tables, or footnotes
+    in_ta = False
+    in_fn = False
 
     for i, line in enumerate(self.wb):
 
@@ -2904,14 +3052,30 @@ class Ppt(Book):
       # note: Must look for .nr Sidenote as most .nr processing happens after this, during process()
       #       We cannot simply move the .nr processing earlier as (in theory) someone could change the
       #       .nr settings multiple times during a run
-      if self.wb[i].startswith(".nr Sidenote"):
+      if self.wb[i].startswith(".nf "):
+        in_nf = True
+      elif self.wb[i].startswith(".nf-"):
+        in_nf = False
+      elif self.wb[i].startswith(".ta "):
+        in_ta = True
+      elif self.wb[i].startswith(".ta-"):
+        in_ta = False
+      elif self.wb[i].startswith(".fn "):
+        in_fn = True
+      elif self.wb[i].startswith(".fn-"):
+        in_fn = False
+      elif self.wb[i].startswith(".nr Sidenote"):
         m = re.match(r"\.nr Sidenote (.+)", self.wb[i])
         if m:
           tempSidenote = m.group(1) # remember new Sidenote name value
-      self.wb[i] = re.sub("<sn(?: class=[^>]*)?>", "[{}: ".format(tempSidenote), self.wb[i])
+      self.wb[i], l = re.subn("<sn(?: class=[^>]*)?>", "[{}: ".format(tempSidenote), self.wb[i])
       self.wb[i] = re.sub("</sn>", "]", self.wb[i])
+      if l and (in_nf or in_ta or in_fn):
+        self.warn_w_context("Inline sidenote probably won't work well here:", i)
 
     # do small caps last since it could uppercase a tag.
+    re_scmult = re.compile(r"<sc>(.+?)<\/sc>", re.DOTALL)
+    re_scsing = re.compile(r"<sc>(.*?)<\/sc>")
     for i, line in enumerate(self.wb):
       def to_uppercase(m):
         return m.group(1).upper()
@@ -2924,13 +3088,20 @@ class Ppt(Book):
             del(self.wb[i])
           t.append(self.wb[i]) # last line
           ts = "\n".join(t) # make all one line
-          re_sc = re.compile(r"<sc>(.+?)<\/sc>", re.DOTALL)
-          ts = re.sub(re_sc, to_uppercase, ts)
+          ts = re.sub(re_scmult, to_uppercase, ts)
           t = ts.splitlines() # back to a series of lines
           self.wb[i:i+1] = t
         else: # single line
-          re_sc = re.compile(r"<sc>(.*?)<\/sc>")
-          self.wb[i] = re.sub(re_sc, to_uppercase, self.wb[i])
+          self.wb[i] = re.sub(re_scsing, to_uppercase, self.wb[i])
+
+    #
+    # Handle any .sr for text that have the b option specified
+    if self.filter_b:
+      self.dprint("Processing .sr for text with b specified")
+      for i in range(len(self.srw)):
+        if ((('t' in self.srw[i]) or (self.renc in self.srw[i])) and
+            ('b' in self.srw[i])): # if this one is for pre-processing and applies to the text form we're generating
+          self.process_SR(self.wb, i)
 
   # -------------------------------------------------------------------------------------
   # post-process emit buffer (TEXT)
@@ -3046,76 +3217,14 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("◮", "=")
 
 
-    # process saved search/replace strings, if any
+    # process saved search/replace strings for text, if any
     # but only if our output format matches something in the saved "which" value
 
-    blobbed = False
+    self.dprint("processing .sr for text without b specified")
     for i in range(len(self.srw)):
-      if ('t' in self.srw[i]) or (self.renc in self.srw[i]): # if this one applies to the text form we're generating
-        k = 0
-        l = 0
-        ll = 0
-        if "\\n" in self.srs[i]: # did user use a regex containing \n ? If so, process all lines in one blob
-          if not blobbed:
-            text = '\n'.join(self.eb) # form lines into a blob
-            blobbed = True
-          try:
-            m = re.search(self.srs[i], text) # search for current search string
-          except:
-            if 'd' in self.debug:
-              traceback.print_exc()
-              self.fatal("Above error occurred searching for {} in complete text blob".format(self.srs[i]))
-            else:
-              self.fatal("Error occurred searching for {} in complete text blob".format(self.srs[i]))
-          if m:                                             # if found
-            if 'r' in self.debug:
-              print("{} found in complete text blob".format(self.srs[i]))
-            try:
-              text, l = re.subn(self.srs[i], self.srr[i], text) # replace all occurrences in the blob
-              ll += l
-            except:
-              if 'd' in self.debug:
-                traceback.print_exc()
-                self.fatal("Above error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[i], self.srr[i]))
-              else:
-                self.fatal("Error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[i], self.srr[i]))
-            if 'r' in self.debug:
-              print("Replaced with {}".format(self.srr[i]))
-          print("Search string {}:{} matched in complete text and replaced {} times.".format(i+1, self.srs[i], ll))
-
-        else:
-          if blobbed:
-            self.eb = text.splitlines() # break blob back into individual lines
-            blobbed = False
-          for j in range(len(self.eb)):
-            try:
-              m = re.search(self.srs[i], self.eb[j])               # search for current search string
-            except:
-              if 'd' in self.debug:
-                traceback.print_exc()
-                self.fatal("Above error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.eb[j]))
-              else:
-                self.fatal("Error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.eb[j]))
-            if m:                                             # if found
-              k += 1
-              if 'r' in self.debug:
-                print("{} found in: {}".format(self.srs[i], self.eb[j]))
-              try:
-                self.eb[j], l = re.subn(self.srs[i], self.srr[i], self.eb[j])      # replace all occurrences in the line
-                ll += l
-              except:
-                if 'd' in self.debug:
-                  traceback.print_exc()
-                  self.fatal("Above error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.eb[j]))
-                else:
-                  self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.eb[j]))
-              if 'r' in self.debug:
-                print("Replaced: {}".format(self.eb[j]))
-          print("Search string {}:{} matched in {} lines, replaced {} times.".format(i+1, self.srs[i], k, ll))
-
-    if blobbed:
-      self.eb = text.splitlines() # break blob back into individual lines
-      blobbed = False
+      if ((('t' in self.srw[i]) or (self.renc in self.srw[i])) and not
+          ('b' in self.srw[i])): # if this one is for post-processing and applies to the text form we're generating
+        self.process_SR(self.eb, i)
 
     # build GG .bin info if needed
     if self.bnPresent:  # if any .bn were found
@@ -4929,16 +5038,27 @@ class Pph(Book):
       self.wb[i] = re.sub(r"<B", "<b", self.wb[i])
       self.wb[i] = re.sub(r"<\/B", "</b", self.wb[i])
 
-    inNF = False
+    in_nf = False
+    in_ta = False
+    in_fn = False
     for i, line in enumerate(self.wb):
+
+      if self.wb[i].startswith(".nf "):
+        in_nf = True
+      elif self.wb[i].startswith(".nf-"):
+        in_nf = False
+      elif self.wb[i].startswith(".ta "):
+        in_ta = True
+      elif self.wb[i].startswith(".ta-"):
+        in_ta = False
+      if self.wb[i].startswith(".fn "):
+        in_fn = True
+      elif self.wb[i].startswith(".fn-"):
+        in_fn = False
 
       # if everything inside <sc>...</sc> markup is uppercase, then
       # use font-size:smaller, else use font-variant:small-caps
 
-      if self.wb[i].startswith(".nf "):
-        inNF = True
-      elif self.wb[i].startswith(".nf-"):
-        inNF = False
       m = re.search("<sc>", self.wb[i]) # opening small cap tag
       while m:
         use_class = "sc" # unless changed
@@ -4959,7 +5079,7 @@ class Pph(Book):
           # we will have replicated the <sc> tags that cross lines
           # of the .nf block, which could leave some all lower-case
           # line alone within the <sc> </sc>, but it's not an error
-          if not inNF and scstring == scstring.lower():
+          if not in_nf and scstring == scstring.lower():
             self.warn("all lower case inside small-caps markup: {}".format(self.wb[i]))
           if scstring == scstring.upper(): # all upper case
             use_class = "fss"
@@ -5045,14 +5165,25 @@ class Pph(Book):
 
       # <sn>...</sn> becomes a span
       tmpline = self.wb[i]
-      self.wb[i] = re.sub("<sn>", "<span class='sni'><span class='hidev'>⓫</span>", self.wb[i])
+      self.wb[i], count = re.subn("<sn>", "<span class='sni'><span class='hidev'>⓫</span>", self.wb[i])
       m = re.search(r"<sn class=([\"'])(\w*)\1>", self.wb[i])
       while m:
-        self.wb[i] = re.sub(re.escape(m.group(0)), "<span class='sni {}'><span class='hidev'>⓫</span>".format(m.group(2)), self.wb[i])
+        self.wb[i], count2 = re.subn(re.escape(m.group(0)), "<span class='sni {}'><span class='hidev'>⓫</span>".format(m.group(2)), self.wb[i])
+        count += count2
         m = re.search(r"<sn class=([\"'])(\w*)\1>", self.wb[i])
       self.wb[i] = re.sub("</sn>", "<span class='hidev'>⓫</span></span>", self.wb[i])
       if not self.snPresent and tmpline != self.wb[i]:
         self.snPresent = True
+      if count and (in_nf or in_ta or in_fn):
+        self.warn_w_context("Inline sidenote probably won't work well here:", i)
+
+    #
+    # Handle any .sr for HTML that have the b option specified
+    if self.filter_b:
+      self.dprint("processing .sr for HTML with b specified")
+      for i in range(len(self.srw)):
+        if ('h' in self.srw[i]) and ('b' in self.srw[i]): # if this one is for pre-processing and applies to HTML
+          self.process_SR(self.wb, i)
 
   # -------------------------------------------------------------------------------------
   # restore tokens in HTML text
@@ -5259,73 +5390,10 @@ class Pph(Book):
   # process saved search/replace strings, if any
   # but only if our output format matches something in the saved "which" value
   def doHTMLSr(self):
-    blobbed = False
+    self.dprint("processing .sr for HTML without b specified")
     for i in range(len(self.srw)):
-      if ('h' in self.srw[i]):       # if this one applies to HTML
-        k = 0
-        l = 0
-        ll = 0
-        if "\\n" in self.srs[i]: # did user use a regex containing \n ? If so, process all lines in one blob
-          if not blobbed:
-            text = '\n'.join(self.wb) # form lines into a blob of text
-            blobbed = True
-          try:
-            m = re.search(self.srs[i], text)   # search for current search string
-          except:
-            if 'd' in self.debug:
-              traceback.print_exc()
-              self.fatal("Above error occurred searching for {} in complete text blob".format(self.srs[i]))
-            else:
-              self.fatal("Error occurred searching for {} in complete text blob".format(self.srs[i]))
-          if m:                                             # if found
-            if 'r' in self.debug:
-              print("{} found in complete text blob".format(self.srs[i]))
-            try:
-              text, l = re.subn(self.srs[i], self.srr[i], text) # replace all occurrences in the blob of text
-              ll += l
-            except:
-              if 'd' in self.debug:
-                traceback.print_exc()
-                self.fatal("Above error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[i], self.srr[i]))
-              else:
-                self.fatal("Error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[i], self.srr[i]))
-            if 'r' in self.debug:
-              print("Replaced with: {}".format(self.srr[i]))
-          print("Search string {}:{} matched and replaced {} times in complete text blob.".format(i+1, self.srs[i], ll))
-
-        else:
-          if blobbed:
-            self.wb = text.splitlines() # restore individual lines from the blob
-            blobbed = False
-          for j in range(len(self.wb)):
-            try:
-              m = re.search(self.srs[i], self.wb[j])               # search for current search string
-            except:
-              if 'd' in self.debug:
-                traceback.print_exc()
-                self.fatal("Above error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.wb[j]))
-              else:
-                self.fatal("Error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.wb[j]))
-            if m:                                             # if found
-              k += 1
-              if 'r' in self.debug:
-                print("{} found in: {}".format(self.srs[i], self.wb[j]))
-              try:
-                self.wb[j], l = re.subn(self.srs[i], self.srr[i], self.wb[j])      # replace all occurrences in the line
-                ll += l
-              except:
-                if 'd' in self.debug:
-                  traceback.print_exc()
-                  self.fatal("Above error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.wb[j]))
-                else:
-                  self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.wb[j]))
-              if 'r' in self.debug:
-                print("Replaced: {}".format(self.wb[j]))
-          print("Search string {}:{} matched in {} lines, replaced {} times.".format(i+1, self.srs[i], k, ll))
-
-    if blobbed:
-      self.wb = text.splitlines() # restore individual lines from the blob
-      blobbed = False
+      if ('h' in self.srw[i]) and not ('b' in self.srw[i]): # if this one applies to HTML and was not already handled
+        self.process_SR(self.wb, i)
 
   # ----- process method group -----
 
@@ -5525,7 +5593,7 @@ class Pph(Book):
     rend = "" # default no rend
     align = "c" # default to centered heading
 
-    self.css.addcss("[1100] h2 { text-align:center;font-weight:normal;font-size:1.2em; }")
+    self.css.addcss("[1100] h2 { text-align:center;font-weight:normal;font-size:1.2em; page-break-before: auto}")
 
     m = re.match(r"\.h2 (.*)", self.wb[self.cl])
     if m: # modifier
@@ -5547,10 +5615,7 @@ class Pph(Book):
     elif align != "c":
       self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
 
-    if "nobreak" in rend:
-      hcss += "page-break-before:auto;"
-    else:
-      hcss += "page-break-before:always;"
+    # hcss += "page-break-before:auto;" # not needed, as we now have it in the CSS for h2. page-break is controlled by .chapter div
 
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
@@ -5576,10 +5641,11 @@ class Pph(Book):
     # new in 1.79
     # I always want a div. If it's not a no-break, give it class='chapter'
     if not "nobreak" in rend:
-      t.append("<div class='chapter'></div>") # will force file break
-      self.css.addcss("[1576] .chapter { clear:both; }")
+      t.append("<div class='chapter'>") # will force file break
+      self.css.addcss("[1576] .chapter { clear:both; page-break-before: always;}")
+    else:
+      t.append("<div>") # always want a div around the h2
     if pnum != "":
-      t.append("<div>")
       if self.pnshow:
         # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
         t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
@@ -5589,8 +5655,8 @@ class Pph(Book):
       t.append("  <h2 id='{}' style='{}'>{}</h2>".format(id, hcss, s))
     else:
       t.append("  <h2 style='{}'>{}</h2>".format(hcss, s))
-    if pnum != "":
-      t.append("</div>")
+
+    t.append("</div>") # always close the div
 
     self.wb[self.cl:self.cl+1] = t
     self.cl += len(t)
@@ -6347,10 +6413,13 @@ class Pph(Book):
       i += 1
     # at block end.
     if printable_lines_in_block == 0:
-        self.fatal("empty .nf block")
+        self.crash_w_context("empty .nf block", i)
     # there may be a pending mt at the block end.
     if pending_mt > 0:
-      t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(pending_mt), t[-1])
+      if "<div style='" not in t[-1]:
+        t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(pending_mt), t[-1])
+      else:
+        t[-1] = re.sub(r"<div style='", "<div style='margin-bottom:{}em; ".format(pending_mt), t[-1])
       pending_mt = 0
     t.append("  </div>")
     t.append("</div>")
@@ -6495,7 +6564,10 @@ class Pph(Book):
 
     # there may be a pending mt at the block end.
     if cpvs > 0:
-      t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(cpvs), t[-1])
+      if "style='" in t[-1]:
+        t[-1] = re.sub(r"style='", "style='margin-bottom:{}em; ".format(cpvs), t[-1])
+      else:
+        t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(cpvs), t[-1])
       cpvs = 0
 
     t.append("    </div>")
