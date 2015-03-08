@@ -22,7 +22,8 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.48"    # 7-Mar-2015     dev 3.47r migration to master
+VERSION="3.48a"    # 8-Mar-2015     bug fixes relating to reinitialization of some internal variables
+
 
 
 
@@ -73,6 +74,9 @@ class Book(object):
   wb = [] # working buffer
   eb = [] # emit buffer
   bb = [] # GG .bin file buffer
+  srw = [] # .sr "which" array
+  srs = [] #     "search" array
+  srr = [] #     "replace" array
   regLL = 72 # line length
   regIN = 0 # indent
   regTI = 0 # temporary indent
@@ -1365,6 +1369,19 @@ class Book(object):
   def __init__(self, args, renc):
     del self.wb[:]
     del self.eb[:]
+    del self.bb[:]
+    del self.gk_user[:]
+    del self.diacritics_user[:]
+    del self.srw[:]
+    del self.srs[:]
+    del self.srr[:]
+    del self.instack[:]
+    del self.llstack[:]
+    del self.psstack[:]
+    del self.nfstack[:]
+    del self.warnings[:]
+    del self.mal[:]
+    del self.mau[:]
     self.renc = renc.lower() # requested output encoding (t, u, or h)
     self.forceutf8 = (True) if (renc == "U") else (False)
     self.debug = args.debug
@@ -1686,6 +1703,7 @@ class Book(object):
           print("Replaced with {}".format(self.srr[srnum]))
       print("Search string {}:{} matched in complete text and replaced {} times.".format(srnum+1, self.srs[srnum], ll))
       buffer = text.splitlines() # break blob back into individual lines
+      text = ""
 
     else:
       quit = False
@@ -1831,6 +1849,7 @@ class Book(object):
 
       # insert the filter lines at the front of self.wb
       self.wb[0:0] = text
+      del text[:]
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # Remove comments and un-escape any escaped / characters in the text (\/ becomes /)
@@ -1876,13 +1895,6 @@ class Book(object):
           self.fatal("unterminated .ig command")
       else:
         i += 1
-    # if source file is UTF-8 and requested encoding is Latin-1, down-convert
-    if self.encoding == "utf_8" and self.renc == "l" and not self.cvgfilter:
-      for j,ch in enumerate(self.mau):
-        for i in range(len(self.wb)): # O=n^2
-          self.wb[i] = re.sub(ch, self.mal[j], self.wb[i])
-      # user-defined character mapping complete, now do default mapping to Latin-1
-      self.utoLat()
 
     # .if conditionals (moved to preProcessCommon 28-Aug-2014)
     if not self.cvgfilter:
@@ -1972,6 +1984,7 @@ class Book(object):
       text = re.sub(r"\[Greek: (.*?)]", gkrepl, text, flags=re.DOTALL)
 
       self.wb = text.splitlines()
+      text = ""
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # process diacritic markup in UTF-8 output if requested to via .cv command
@@ -2141,7 +2154,8 @@ class Book(object):
             print("Replaced {} {} times.".format(s[0], count))
       if self.log:
         header_needed = True
-        text2 = text
+        text2 = []
+        text2.extend(text)
         m = re.search(r"\[([^*\]].{1,7}?)]", text2)
         while m:
           matched = m.group(0)
@@ -2158,10 +2172,11 @@ class Book(object):
           m = re.search(r"\[([^*\]].{1,7}?)]", text2)
         if header_needed:
           print("No unconverted diacritics seem to remain after conversion.")
-        text2 = []
+        del text2[:]
 
     if dia_blobbed:
       self.wb = text.splitlines()
+      text = ""
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # capture and remove search/replace directives
@@ -2174,9 +2189,6 @@ class Book(object):
     #
     # Values gathered during preprocessCommon and saved for use during post-processing
     i = 0
-    self.srw = []    # "which" array
-    self.srs = []    # "search" array
-    self.srr = []    # "replace" array
     filter_sr = False
     self.filter_b = False
     sr_error = False
@@ -2235,8 +2247,6 @@ class Book(object):
     # process character mappings
     # character mappings are from the UTF-8 representation to Latin-1
     i = 0
-    del self.mau[:]
-    del self.mal[:]
     self.mau.append("—")   # maps a dash in UTF-8 to "--" in Latin-1
     self.mal.append("--")
     while i < len(self.wb):
@@ -2271,6 +2281,15 @@ class Book(object):
           continue
 
       i += 1
+
+    # Now that we've gathered mappings, apply them to down-convert
+    # if source file is UTF-8 and requested encoding is Latin-1
+    if self.encoding == "utf_8" and self.renc == "l":
+      for j,ch in enumerate(self.mau):
+        for i in range(len(self.wb)): # O=n^2
+          self.wb[i] = re.sub(ch, self.mal[j], self.wb[i])
+      # user-defined character mapping complete, now do default mapping to Latin-1
+      self.utoLat()
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # long caption lines may end with a single backslash (25-Jun-2014)
@@ -2880,6 +2899,8 @@ class Ppt(Book):
     # is a <target id...> to remove in the text version
     text = re.sub(r"<target.*?>", "", text)
     self.wb = text.splitlines()
+    text = ""
+
 
     # all page numbers deleted in text version
     i = 0
