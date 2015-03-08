@@ -3865,7 +3865,8 @@ class Ppt(Book):
         for t in self.fnlist:
           for s in t:
             self.eb.append(s)
-        self.fnlist = [] # remove everything we handled
+        del self.fnlist[:]  # remove everything we handled
+        self.fnlist = []
       else:
         self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
     self.cl += 1
@@ -4711,7 +4712,7 @@ class Pph(Book):
       # this is a reference in the text to a footnote, like this[14].
       # footnote references can be repeated. Back-link is to the first one only
       #
-      # non-numeric footnote references can only be recognized if we found a .fn 
+      # non-numeric footnote references can only be recognized if we found a .fn
       # for them in the earlier pass through the text
       m = re.search(r"\[(\d+)\]", self.wb[i])  # look for standard numeric footnote references
       while m:
@@ -6554,7 +6555,8 @@ class Pph(Book):
             else:
               self.wb.append(s)
             self.cl += 1
-        self.fnlist = [] # remove everything we handled
+        del self.fnlist[:]  # remove everything we handled
+        self.fnlist = []
       else:
         self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
 
