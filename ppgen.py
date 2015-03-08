@@ -22,6 +22,7 @@ import struct
 import imghdr
 import traceback
 
+VERSION="3.47pLZ"  # 4-Mar-2015    3.47p + Footnote Landing Zones
 VERSION="3.47LZ2"  # 24-Feb-2015    3.47 + Footnote Landing Zones
 # Trying to extend so paragraphs can flow around footnotes and
 # also provide an override to allow some footnotes to appear elsewhere, like
@@ -1379,11 +1380,13 @@ class Book(object):
     self.wrapper.break_long_words = False
     self.wrapper.break_on_hyphens = False
     self.nregs["psi"] = "0" # default above/below paragraph spacing for indented text
+    self.nregs["pti"] = "1em" # default paragraph indentation for indented text
     self.nregs["psb"] = "1.0em" # default above/below paragraph spacing for block text
     self.nregs["pnc"] = "silver" # use to define page number color in HTML
     self.nregs["lang"] = "en" # base language for the book (used in HTML header)
     self.nregs["Footnote"] = "Footnote" # English word for Footnote for text files
     self.nregs["Illustration"] = "Illustration" # English word for Illustration for text files
+    self.nregs["Sidenote"] = "Sidenote" # English word for Sidenote for text files
     self.nregs["dcs"] = "250%" # drop cap font size
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string
@@ -1420,12 +1423,13 @@ class Book(object):
     t = ""
     for c in s: # for every character on the line provided
       if c in self.d: # is it in the list of converting characters?
-        t += self.d[c] # yes, replace with converted Latin-1 character
+        c1 = self.d[c] # yes, replace with converted Latin-1 character
       else:
-        if ord(c) < 0x100:
-          t += c # no conversion, transfer character as is
-        else:
-          t += "*" # use an asterisk if not plain text
+        c1 = c
+      if len(c1) > 1 or ord(c1) < 0x80:
+        t += c1 # no conversion, transfer character as is
+      else:
+        t += "*" # use an asterisk if not plain text
     return t
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1607,20 +1611,24 @@ class Book(object):
       self.doNr()
     elif ".dv" == dotcmd: # user-specifice <div> for HTML
       self.doDiv()
+    elif ".sn" == dotcmd: # sidenote
+      self.doSidenote()
     else:
       self.crash_w_context("unhandled dot command: {}".format(self.wb[self.cl]), self.cl)
 
   def crash_w_context(self, msg, i, r=5):
-    print("{}\ncontext:".format(msg))
+    sys.stderr.write("\nERROR: {}\ncontext:\n".format(self.umap(msg)))
     startline = max(0,i-r)
     endline = min(len(self.wb),i+r)
+    sys.stderr.write(" -----\n")
     for j in range(startline,endline):
       s = self.umap(self.wb[j])
       if j == i:
-        print(">> {}".format(s))
+        sys.stderr.write(">> {}\n".format(s))
       else:
-        print("   {}".format(s))
-    self.fatal("exiting")
+        sys.stderr.write("   {}\n".format(s))
+    sys.stderr.write(" -----\n")
+    exit(1)
 
   def warn_w_context(self, msg, i, r=5):
     print("***Warning: {}\ncontext:".format(msg))
@@ -1652,33 +1660,13 @@ class Book(object):
   def doNr(self):
     m = re.match(r"\.nr (.+?) (.+)", self.wb[self.cl])
     if not m:
-      self.crash_w_context("malformed .nr command: {}".format(self.wb[self.cl]), self.cl)
+      self.crash_w_context("malformed .nr directive", self.cl)
     else:
       registerName = m.group(1)
       registerValue = m.group(2)
-      known_register = False
-      if registerName == "psi": # paragraph spacing, indented text
-        self.nregs["psi"] = m.group(2)
-        known_register = True
-      if registerName == "psb": # paragraph spacing, block text
-        self.nregs["psb"] = m.group(2)
-        known_register = True
-      if registerName == "pnc": # page number color
-        self.nregs["pnc"] = m.group(2)
-        known_register = True
-      if registerName == "lang": # base language
-        self.nregs["lang"] = m.group(2)
-        known_register = True
-      if registerName == "Footnote": # foreign language translation for "Footnote"
-        self.nregs["Footnote"] = self.deQuote(m.group(2), self.cl)
-        known_register = True
-      if registerName == "Illustration": # foreign language translation for "Illustration"
-        self.nregs["Illustration"] = self.deQuote(m.group(2), self.cl)
-        known_register = True
-      if registerName == "dcs": # drop cap font size
-        self.nregs["dcs"] = m.group(2)
-        known_register = True
-      if not known_register:
+      if registerName in self.nregs:
+        self.nregs[registerName] = self.deQuote(m.group(2), self.cl)
+      else:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
       del(self.wb[self.cl])
 
@@ -1756,6 +1744,40 @@ class Book(object):
     # Begin Pre-process Common
     #
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # Remove comments in pre-processor
+    # Also un-escape any escaped / characters in the text (\/ becomes /)
+    #
+    i = 0
+    while i < len(self.wb):
+      if  re.match(r"\/\/", self.wb[i]): # entire line is a comment
+        del self.wb[i]
+        continue
+      if re.search(r"\/\/.*$", self.wb[i]):
+        self.wb[i] = re.sub(r"\/\/.*$", "", self.wb[i])
+      #
+      # convert escaped / characters
+      #
+      self.wb[i] = re.sub(r"\\/", "/", self.wb[i])
+      self.wb[i] = self.wb[i].rstrip()
+      i += 1
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # ignored text removed in preprocessor
+    i = 0
+    while i < len(self.wb):
+      # one line
+      if re.match(r"\.ig ",self.wb[i]): # single line
+        del self.wb[i]
+      elif ".ig" == self.wb[i]: # multi-line
+        while i < len(self.wb) and self.wb[i] != ".ig-":
+          del self.wb[i]
+        if i < len(self.wb):
+          del self.wb[i] # the ".ig-"
+        else:
+          self.fatal("unterminated .ig command")
+      else:
+        i += 1
     # if source file is UTF-8 and requested encoding is Latin-1, down-convert
     if self.encoding == "utf_8" and self.renc == "l" and not self.cvgfilter:
       for j,ch in enumerate(self.mau):
@@ -1978,6 +2000,7 @@ class Book(object):
     if self.dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
       if not dia_blobbed:
         text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
+        dia_blobbed = True
       if not diatest:
         if len(self.diacritics_user) > 0:
           for s in self.diacritics_user:
@@ -2087,7 +2110,7 @@ class Book(object):
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # process search/replace strings
+    # capture and remove search/replace directives
     # .sr <which> /search/replace/
     # which is a string containing some combination of ulth (UTF-8, Latin-1, Text, HTML)
     # search is  reg-ex search string
@@ -2101,7 +2124,6 @@ class Book(object):
     self.srr = []    # "replace" array
     while i < len(self.wb):
       if self.wb[i].startswith(".sr"):
-
         m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
         if m:
           self.srw.append(m.group(1))
@@ -2152,18 +2174,6 @@ class Book(object):
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # other comments
-    i = 0
-    while i < len(self.wb):
-      if  re.match(r"\/\/", self.wb[i]): # entire line is a comment
-        del self.wb[i]
-        continue
-      if re.search(r"\/\/.*$", self.wb[i]):
-        self.wb[i] = re.sub(r"\/\/.*$", "", self.wb[i])
-        self.wb[i] = self.wb[i].rstrip()
-      i += 1
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # remaps of protected characters and escapes
     for i, line in enumerate(self.wb):
       # dots not part of dot directive
@@ -2180,6 +2190,7 @@ class Book(object):
       self.wb[i] = self.wb[i].replace(r"\>", "⑳")
       self.wb[i] = self.wb[i].replace(r"\:", "⑥")
       self.wb[i] = self.wb[i].replace(r"\-", "⑨")
+      self.wb[i] = self.wb[i].replace(r"\#", "⓪")
       # spacing
       self.wb[i] = self.wb[i].replace(r'\ ', "ⓢ") # non-breaking space
       self.wb[i] = self.wb[i].replace(r'\_', "ⓢ") # alternate non-breaking space
@@ -2321,7 +2332,7 @@ class Book(object):
           self.wb[i] = ".nf c"
           self.wb.insert(i+nlines+1, ".nf-")
         else:
-          self.fatal("malformed .ce directive: {}".format(self.wb[i]))
+          self.crash_w_context("malformed .ce directive", i)
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2348,22 +2359,6 @@ class Book(object):
           while nBlankLines > 0:
             self.wb.insert(i, "")
             nBlankLines -= 1
-      i += 1
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # ignored text removed in preprocessor
-    i = 0
-    while i < len(self.wb):
-      # one line
-      if re.match(r"\.ig ",self.wb[i]): # single line
-        del self.wb[i]
-      if ".ig" == self.wb[i]: # multi-line
-        while i < len(self.wb) and self.wb[i] != ".ig-":
-          del self.wb[i]
-        if i < len(self.wb):
-          del self.wb[i] # the ".ig-"
-        else:
-          self.fatal("unterminated .ig command")
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2404,14 +2399,23 @@ class Book(object):
     # .bn (GG-compatible .bin file maintenance)
     i = 0
     self.bnPresent = False
+    image_type = ""
     while i < len(self.wb):
       if self.wb[i].startswith(".bn"):
-        m = re.search("(\w+?)\.png",self.wb[i])
+        m = re.search("(\w+?)\.(png|jpg|jpeg)",self.wb[i])
         if m:
           self.bnPresent = True
           self.wb[i] = "⑱{}⑱".format(m.group(1))
+          temp = ("png" if m.group(2) == "png" else "jpg")
+          if image_type:
+            if image_type != temp:
+              self.warn("Project contains both png and jpg proofing images.\n" +
+                        "     Please check to ensure no high-res illustrations are missing;\n" +
+                        "     if any are missing please contact the PM or db-req for assistance.")
+          else:
+            image_type = temp
         else:
-          self.crash_w_context("malformed .bn command",i)
+          self.crash_w_context("malformed .bn directive", i)
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2714,10 +2718,12 @@ class Ppt(Book):
 
     ###should rewrite to exempt .li blocks from a bunch of this
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # <lang> tags ignored in text version.
+    # <lang> and <abbr> tags ignored in text version.
     for i in range(len(self.wb)):
       self.wb[i] = re.sub(r"<lang[^>]*>","",self.wb[i])
-      self.wb[i] = re.sub(r"<\/lang>","",self.wb[i])
+      self.wb[i] = re.sub(r"</lang>","",self.wb[i])
+      self.wb[i] = re.sub(r"<abbr[^>]*>","",self.wb[i])
+      self.wb[i] = re.sub(r"</abbr>","",self.wb[i])
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # look for <b>
@@ -2843,6 +2849,9 @@ class Ppt(Book):
     # inline markup processing (text)
     # sc small caps ; l large ; xl x-large ; s small ; xs s-small ; u underline
     # g gesperrt ; converted to text form: em, b, i
+    # sn: inline sidenote, converted to [Sidenote: text]
+
+    tempSidenote = self.nregs["Sidenote"] # grab initial value of Sidenote special register
 
     for i, line in enumerate(self.wb):
 
@@ -2874,9 +2883,6 @@ class Ppt(Book):
       # small caps ignored
       self.wb[i] = re.sub(r"<\/?SC>", "", self.wb[i])
 
-      # lang dropped (<i> would be separate)
-      self.wb[i] = re.sub(r"<\/?lang>", "", self.wb[i])
-
       # gesperrt in text
       self.wb[i] = re.sub(r"<\/?g>", "_", self.wb[i])
 
@@ -2886,6 +2892,17 @@ class Ppt(Book):
       # color dropped
       self.wb[i] = re.sub(r"<c=[^>]+>", "", self.wb[i])
       self.wb[i] = re.sub(r"<\/c>", "", self.wb[i])
+
+      # inline sidenotes <sn>text</sn>
+      # note: Must look for .nr Sidenote as most .nr processing happens after this, during process()
+      #       We cannot simply move the .nr processing earlier as (in theory) someone could change the
+      #       .nr settings multiple times during a run
+      if self.wb[i].startswith(".nr Sidenote"):
+        m = re.match(r"\.nr Sidenote (.+)", self.wb[i])
+        if m:
+          tempSidenote = m.group(1) # remember new Sidenote name value
+      self.wb[i] = re.sub("<sn(?: class=[^>]*)?>", "[{}: ".format(tempSidenote), self.wb[i])
+      self.wb[i] = re.sub("</sn>", "]", self.wb[i])
 
     # do small caps last since it could uppercase a tag.
     for i, line in enumerate(self.wb):
@@ -2981,6 +2998,7 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("⑳", ">")
       self.eb[i] = self.eb[i].replace("⑥", ":")
       self.eb[i] = self.eb[i].replace("⑨", "-")
+      self.eb[i] = self.eb[i].replace("⓪", "#")
       # text space replacement
       self.eb[i] = re.sub("ⓢ|Ⓢ", " ", self.eb[i]) # non-breaking space
       self.eb[i] = re.sub("ⓣ|Ⓣ", " ", self.eb[i]) # zero space
@@ -3318,7 +3336,7 @@ class Ppt(Book):
       howmany = int(m.group(1))
       self.eb.append(".RS {}".format(howmany))
     else:
-      self.fatal("malformed space directive: {}".format(self.wb[self.cl]))
+      self.crash_w_context("malformed .sp directive", self.cl)
     self.cl += 1
 
   # .fs
@@ -3454,7 +3472,7 @@ class Ppt(Book):
     if handled:
       self.cl += 1
     else:
-      self.fatal("malformed .in command: \"{}\"".format(self.wb[self.cl]))
+      self.crash_w_context("malformed .in directive", self.cl)
 
   # .ll line length
   def doLl(self):
@@ -3494,7 +3512,7 @@ class Ppt(Book):
       return
 
     # if here, has not been handled
-    self.fatal("malformed .ll command: \"{}\"".format(self.wb[self.cl]))
+    self.crash_w_context("malformed .ll directive", self.cl)
 
   # .ti temporary indent
   def doTi(self):
@@ -3525,7 +3543,7 @@ class Ppt(Book):
     # see if the block has hit the left margin
     need_pad = False
     for line in t:
-      if line[0] != " ":
+      if line and line[0] != " ":
         if bnInBlock and line[0] == "⑱":
           m =re.match("^⑱.*?⑱(.*)", line)
           if not (m and m.group(1) == ""):
@@ -3533,7 +3551,7 @@ class Ppt(Book):
         else:
           need_pad = True
     if need_pad:
-      self.warn("inserting leading space in wide .nf c")
+      self.warn("inserting leading space in wide .nf c (or .ce)")
       for i,line in enumerate(t):
         t[i] = " "+ t[i]
     t.insert(0, ".RS 1")
@@ -3690,7 +3708,7 @@ class Ppt(Book):
     # see if the block has hit the left margin
     need_pad = False
     for line in t:
-      if line[0] != " ":
+      if line and line[0] != " ":
         if bnInBlock and line[0] == "⑱":
           m =re.match("^⑱.*?⑱(.*)", line)
           if not (m and m.group(1) == ""):
@@ -3850,7 +3868,8 @@ class Ppt(Book):
         for t in self.fnlist:
           for s in t:
             self.eb.append(s)
-        self.fnlist = [] # remove everything we handled
+        del self.fnlist[:]  # remove everything we handled
+        self.fnlist = []
       else:
         self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
     self.cl += 1
@@ -3960,6 +3979,9 @@ class Ppt(Book):
     # margin to center table in 72 character text field
     if totalwidth >= 72:
       tindent = 0
+      if not autosize:
+        self.warn("PPer-supplied table width (including leading indent and space\n" + "           " +
+                  "between columns) of {} is greater than 72 characters:\n           {}".format(totalwidth+1, self.wb[self.cl]))
     else:
       tindent = (72 - totalwidth) // 2
 
@@ -4091,7 +4113,7 @@ class Ppt(Book):
         nlines -= 1
       self.eb.append(".RS 1")
     else:
-      self.fatal("malformed .rj directive: {}".format(self.wb[self.cl]))
+      self.crash_w_context("malformed .rj directive", self.cl)
 
   # .de CSS definition
   # ignore the directive in text
@@ -4103,16 +4125,32 @@ class Ppt(Book):
     else:
       self.fatal("source file ends with continued .de command: {}".format(self.wb[self.cl]))
 
+  def doSidenote(self):
+    # handle sidenotes outside paragraphs, sidenotes inside paragraphs are handled as <sn>-style markup
+    self.snPresent = True
+    m = re.match(r"\.sn (.*)", self.wb[self.cl])
+    if m:
+      self.eb.append(".RS 1") # request at least one space in text before sidenote
+      self.eb.append("[{}: {}]".format(self.nregs["Sidenote"], m.group(1)))
+      self.eb.append(".RS 1") # request at least one space in text after sidenote
+      self.cl += 1
+    else:
+      self.crash_w_context("malformed .sn directive", self.cl) # should never hit this as preprocesscommon() checked it
+
   def doPara(self):
     t = []
     bnt = []
     pstart = self.cl
 
     # grab the paragraph from the source file into t[]
+    # note: we will transform encoded sidenote information within the paragraph into
+    # its final format here, as it will affect wrapping. This differs from the handling
+    # for HTML where it is handled during post-processing, as our HTML processing for
+    # paragraphs does not wrap the text, leaving that to the browser or other rendering engine.
     j = pstart
     while (j < len(self.wb) and
            self.wb[j] and
-           not re.match("\.", self.wb[j])):
+           not self.wb[j].startswith(".")): # any blank line or dot directive ends paragraph
       t.append(self.wb[j])
       j += 1
     pend = j
@@ -4401,6 +4439,8 @@ class Pph(Book):
 
     self.preProcessCommon()
 
+    self.snPresent = False
+
     # protect PPer-supplied internal link information
     # two forms: #number# and #name:id-value#
     # also #RomanNumerals#
@@ -4426,6 +4466,7 @@ class Pph(Book):
           i += 1
         else:
           self.fatal("source file ends with continued .de command: {}".format(self.wb[i]))
+        continue
 
       self.wb[i] = re.sub(r"#(\d+)#", r"⑲\1⑲", self.wb[i])
       self.wb[i] = re.sub(r"#([iIvVxXlLcCdDmM]+)#", r"⑲\1⑲", self.wb[i])
@@ -4451,6 +4492,8 @@ class Pph(Book):
       m = re.match(r"\.pn \+(\d+)", self.wb[i])
       if m:
         increment_amount = int(m.group(1))
+        if increment_amount == 0: # can't have duplicate page numbers
+          self.crash_w_context("Invalid .pn increment amount, +0", i)
         if (self.pageno).isnumeric():
           self.pageno = "{}".format(int(self.pageno) + increment_amount)
         else: # Roman
@@ -4486,6 +4529,8 @@ class Pph(Book):
       m = re.match(r"\.h.*?pn=\+(\d+)", self.wb[i])
       if m:
         increment_amount = int(m.group(1))
+        if increment_amount == 0: # can't have duplicate page numbers
+          self.crash_w_context("Invalid pn increment amount, +0", i)
         if (self.pageno).isnumeric():
           self.pageno = "{}".format(int(self.pageno) + increment_amount)
         else: # Roman
@@ -4670,7 +4715,7 @@ class Pph(Book):
       # this is a reference in the text to a footnote, like this[14].
       # footnote references can be repeated. Back-link is to the first one only
       #
-      # non-numeric footnote references can only be recognized if we found a .fn 
+      # non-numeric footnote references can only be recognized if we found a .fn
       # for them in the earlier pass through the text
       m = re.search(r"\[(\d+)\]", self.wb[i])  # look for standard numeric footnote references
       while m:
@@ -4730,7 +4775,6 @@ class Pph(Book):
           tagstack = []
           i += 1 # step inside the .nf block
           while i < len(self.wb) and not self.wb[i].startswith(".nf-"): # as long as we are in a .nf
-            tmpline = self.wb[i]
             if self.wb[i].startswith(".nf "):
               self.crash_w_context("nested no-fill block:", i)
             # ignore .bn lines; just pass them through
@@ -4740,13 +4784,17 @@ class Pph(Book):
                 i += 1
                 continue
             # find all tags on this line; ignore <a and </a tags completely for this purpose
-            t = re.findall("<\/?[^a>]*>", self.wb[i])
+            tmpline = re.sub("<a [^>]*>", "", self.wb[i])
+            tmpline = re.sub("</a>", "", tmpline)
+            t = re.findall("<\/?[^>]*>", tmpline)
             sstart = "" # what to prepend to the line
             for s in tagstack: # build the start string
               sstart += s
             self.wb[i] = sstart + self.wb[i] # rewrite the line with new start
             for s in t: # we may have more tags on this line
-              if not s.startswith("</"): # it is of form <..> an opening tag
+              if s.endswith("/>"): # it is a self-closing tag
+                continue           # ignore it
+              elif not s.startswith("</"): # it is an opening tag
                 if s in tagstack:
                   self.warn("Nested {} tags in .nf block: {}".format(s, tmpline))
                 tagstack.append(s) # save it on the stack
@@ -4761,12 +4809,21 @@ class Pph(Book):
             send = "" # string end
             for s in reversed(tagstack): # if there is something left, tack it on end of line
               closetag =  re.sub("<","</", s) # make it into a closing tag
-              if closetag.startswith("</c"): # anything that had arguments closes without them
+              m = re.match(r"</(\w+) .*>", s) # is it a tag with parameters?
+              if m:                           # if so, drop them
+                s = "</m.group(1)>"
+              # next remove arguments from any ppgen inline tag that has arguments
+              # without a preceding space (e.g., <c=red> or <fs=120%>)
+              if closetag.startswith("</c"):
                 closetag = "</c>" # colors
               if closetag.startswith("</fs"):
                 closetag = "</fs>" # font size
               if closetag.startswith("</lang"):
                 closetag = "</lang>" # language
+              if closetag.startswith("</sn"):
+                closetag = "</sn>" # inline sidenote
+              if closetag.startswith("</abbr"):
+                closetag = "</abbr>" # abbreviation
               send += closetag
             self.wb[i] = self.wb[i] + send
             i += 1
@@ -4791,14 +4848,65 @@ class Pph(Book):
         m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
         while m:
           langspec = m.group(1)
-          self.wb[i] = re.sub(m.group(0), "ᒪ'{}'".format(langspec), self.wb[i], 1)
+          self.wb[i] = re.sub(re.escape(m.group(0)), "ᒪ'{}'".format(langspec), self.wb[i])
           # self.wb[i] = re.sub(m.group(0), "<span lang=\"{0}\" xml:lang=\"{0}\">".format(langspec), self.wb[i], 1)
           m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
-        if "lang=" in self.wb[i]:
+        if "<lang" in self.wb[i]:
           self.fatal("incorrect lang markup: {}".format(self.wb[i]))
-        self.wb[i] = re.sub(r"<\/lang>", "ᒧ",self.wb[i])
+        self.wb[i] = re.sub(r"</lang>", "ᒧ",self.wb[i])
         i += 1
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # <abbr> tags processed in HTML.
+    # (1) <abbr="Saint">St.</abbr> or <abbr=Saint>St.</abbr>
+    #       would generate <abbr title='Saint'>St.</abbr>
+    # (2) <abbr rend=arabic>XXX</abbr>
+    #       would generate <abbr title='30'>XXX</abbr>
+    # (3) <abbr rend=spell>Ph.D.</abbr>
+    #       would generate <abbr class='spell'>Ph.D.</abbr>
+    #       along with CSS: abbr.spell { speak: spell-out; }
+    # Any use of <abbr> will generate CSS: abbr { border-bottom-width: 1px; border-bottom-style: dotted; }
+    i = 0
+    abbrfound = False
+    while i < len(self.wb):
+      if self.wb[i] == ".li":         # ignore literal blocks
+        while i < len(self.wb) and self.wb[i] != ".li-":
+          i += 1
+        i += 1  # skip over .li- command
+      else:
+        temp = self.wb[i]
+        # look for form 1 of abbr tag
+        m = re.search(r"<abbr=[\"']?([^\"'>]+)[\"']?>",temp)
+        while m:
+          abbrfound = True
+          abbrtitle = re.sub("'","&#39;",m.group(1)) # escape any ' in the title string
+          temp = re.sub(re.escape(m.group(0)), "", temp) # remove the abbr tag from the temporary copy of the line
+          self.wb[i] = re.sub(re.escape(m.group(0)), "<abbr title='{}'>".format(abbrtitle), self.wb[i]) # replace in original line
+          m = re.search(r"<abbr=[\"']?([^\"'>]+)[\"']?>",temp) # search for more <abbr= tags in copy
+        # look for form 2 of abbr tag
+        m = re.search(r"<abbr rend=[\"']?arabic[\"']?>([iIvVxXlLcCdDmM]+)",temp)
+        while m:
+          abbrfound = True
+          abbrtitle = self.fromRoman(m.group(1).lower())
+          temp = re.sub(re.escape(m.group(0)), "", temp) # remove the abbr tag from the temporary copy of the line
+          self.wb[i] = re.sub(re.escape(m.group(0)), "<abbr title='{}'>{}".format(abbrtitle, m.group(1)), self.wb[i]) # replace in original line
+          m = re.search(r"<abbr rend=[\"']?arabic[\"']?>([iIvVxXlLcCdDmM]+)",temp) # search for more <abbr rend=arabic tags in copy
+        # look for form 3 of abbr tag
+        spellfound = False
+        m = re.search(r"<abbr rend=[\"']?spell[\"']?>",temp)
+        while m:
+          abbrfound = True
+          spellfound = True
+          temp = re.sub(re.escape(m.group(0)), "", temp) # remove the abbr tag from the temporary copy of the line
+          self.wb[i] = re.sub(re.escape(m.group(0)), "<abbr class='spell'>", self.wb[i]) # replace in original line
+          m = re.search(r"<abbr rend=[\"']?spell[\"']?>",temp) # search for more <abbr rend=spell tags in copy
+        if abbrfound:
+          self.css.addcss("[1210] abbr { border-bottom-width: 1px; border-bottom-style: dotted; }")
+        if spellfound:
+          self.css.addcss("[1210] abbr.spell { speak: spell-out; }")
+        if "<abbr" in temp: # should not have any <abbr tags left in the temp copy
+          self.crash_w_context("incorrect abbr markup: {}".format(temp), i)
+        i += 1
 
     # -------------------------------------------------------------------------
     # inline markup (HTML)
@@ -4909,9 +5017,9 @@ class Pph(Book):
         thecolor = m.group(1)
         safename = re.sub("#","", thecolor)
         self.css.addcss("[1209] .color_{0} {{ color:{1}; }}".format(safename,thecolor))
-        self.wb[i] = re.sub(re.escape(m.group(0)), "<span class='color_{0}'>".format(safename), self.wb[i], 1)
+        self.wb[i] = re.sub(re.escape(m.group(0)), "<span class='color_{0}'>".format(safename), self.wb[i])
         m = re.search(r"<c=[\"']?(.*?)[\"']?>", self.wb[i])
-      self.wb[i] = re.sub("<\/c>", "</span>", self.wb[i],1)
+      self.wb[i] = re.sub("<\/c>", "</span>", self.wb[i])
 
       # <g> is now a stylized em in HTML
       # using a @media handheld, in epub/mobi it is italicized, with normal letter spacing
@@ -4920,13 +5028,24 @@ class Pph(Book):
         self.wb[i] = re.sub(r"<g>", "<em class='gesperrt'>", self.wb[i])
         self.css.addcss("[1378] em.gesperrt { font-style: normal; letter-spacing: 0.2em; margin-right: -0.2em; }")
         self.css.addcss("[1379] @media handheld { em.gesperrt { font-style: italic; letter-spacing: 0; margin-right: 0;}}")
-      self.wb[i] = re.sub("<\/g>", "</em>", self.wb[i],1)
+      self.wb[i] = re.sub("<\/g>", "</em>", self.wb[i])
 
       m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
       while m:
         self.wb[i] = re.sub(m.group(0), "<span style='font-size:{}'>".format(m.group(1)), self.wb[i], 1)
         m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
       self.wb[i] = re.sub("<\/fs>", "</span>", self.wb[i])
+
+      # <sn>...</sn> becomes a span
+      tmpline = self.wb[i]
+      self.wb[i] = re.sub("<sn>", "<span class='sni'><span class='hidev'>⓫</span>", self.wb[i])
+      m = re.search(r"<sn class=([\"'])(\w*)\1>", self.wb[i])
+      while m:
+        self.wb[i] = re.sub(re.escape(m.group(0)), "<span class='sni {}'><span class='hidev'>⓫</span>".format(m.group(2)), self.wb[i])
+        m = re.search(r"<sn class=([\"'])(\w*)\1>", self.wb[i])
+      self.wb[i] = re.sub("</sn>", "<span class='hidev'>⓫</span></span>", self.wb[i])
+      if not self.snPresent and tmpline != self.wb[i]:
+        self.snPresent = True
 
   # -------------------------------------------------------------------------------------
   # restore tokens in HTML text
@@ -4939,6 +5058,8 @@ class Pph(Book):
     text = re.sub("④", "]", text)
     text = re.sub("⑤", "&lt;", text)
     text = re.sub("⑳", "&gt;", text)
+    text = re.sub("⓪", "#", text)
+    text = re.sub("⓫", "|", text)
     # text space replacement
     text = re.sub("ⓢ", "&nbsp;", text) # non-breaking space
     text = re.sub("ⓣ", "&#8203;", text) # zero space
@@ -5035,7 +5156,6 @@ class Pph(Book):
         m = re.search(r"ᒪ'(.+?)'", self.wb[i])
       self.wb[i] = re.sub("ᒧ", "</span>", self.wb[i])
 
-
   # -------------------------------------------------------------------------------------
   # save buffer to specified dstfile (HTML output)
   def saveFile(self, fn):
@@ -5073,6 +5193,20 @@ class Pph(Book):
       self.css.addcss("[1100] body { margin-left:8%;margin-right:8%; }")
 
     self.css.addcss("[1170] p { text-indent:0;margin-top:0.5em;margin-bottom:0.5em;text-align:justify; }") # para style
+
+    ### generate CSS for sidenotes if any are present in the text
+    if self.snPresent:
+      # CSS taken from http://www.pgdp.net/wiki/Sidenotes with changes.
+      self.css.addcss("[1500] .sidenote, .sni { text-indent: 0; text-align: left; width: 9em; min-width: 9em; " +
+                      "max-width: 9em; padding-bottom: .1em; padding-top: .1em; padding-left: .3em; " +
+                      "padding-right: .3em; margin-right: 3.5em; float: left; clear: left; margin-top: 0em; " +
+                      "margin-bottom: 0em; font-size: small; color: black; background-color: #eeeeee; " +
+                      "border: thin dotted gray; font-style: normal; font-weight: normal; font-variant: normal; " +
+                      "letter-spacing: 0em; text-decoration: none; }"
+                      )
+      self.css.addcss("[1501] @media handheld { .sidenote, .sni { float: left; clear: none; font-weight: bold; }}")
+      self.css.addcss("[1502] .sni { text-indent: -.2em; }")
+      self.css.addcss("[1503] .hidev { visibility: hidden; }")
 
     # HTML header
     t = []
@@ -5438,6 +5572,7 @@ class Pph(Book):
       t.append("<div class='chapter'></div>") # will force file break
       self.css.addcss("[1576] .chapter { clear:both; }")
     if pnum != "":
+      t.append("<div>")
       if self.pnshow:
         # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
         t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
@@ -5447,6 +5582,8 @@ class Pph(Book):
       t.append("  <h2 id='{}' style='{}'>{}</h2>".format(id, hcss, s))
     else:
       t.append("  <h2 style='{}'>{}</h2>".format(hcss, s))
+    if pnum != "":
+      t.append("</div>")
 
     self.wb[self.cl:self.cl+1] = t
     self.cl += len(t)
@@ -5751,7 +5888,7 @@ class Pph(Book):
       self.pvs = max(int(m.group(1)), self.pvs)  # honor if larger than current pvs
       del self.wb[self.cl]
     else:
-      self.fatal("malformed space directive: {}".format(self.wb[self.cl]))
+      self.crash_w_context("malformed .sp directive", self.cl)
 
   # .fs
   # change font size for following paragraphs
@@ -5772,7 +5909,7 @@ class Pph(Book):
       self.fsz = m.group(1) + "em"
       self.wb[self.cl] = ""
     if ".fs" in self.wb[self.cl]:
-      self.warn("font-size directive error: {}".format(self.wb[self.cl]))
+      self.crash_w_context("malformed .fs directive", self.cl)
     del self.wb[self.cl]
 
   # .il illustrations
@@ -6098,7 +6235,7 @@ class Pph(Book):
       return
 
     # should not get here
-    self.fatal("malformed .in command: \"{}\"".format(self.wb[self.cl]))
+    self.crash_w_context("malformed .in directive", self.cl)
 
   # .ll line length
   def doLl(self):
@@ -6138,7 +6275,7 @@ class Pph(Book):
       return
 
     # should not get here
-    self.fatal("malformed .ll directive: {}".format(self.wb[self.cl]))
+    self.crash_w_context("malformed .ll directive", self.cl)
 
   # .ti temporary indent
   def doTi(self):
@@ -6421,7 +6558,8 @@ class Pph(Book):
             else:
               self.wb.append(s)
             self.cl += 1
-        self.fnlist = [] # remove everything we handled
+        del self.fnlist[:]  # remove everything we handled
+        self.fnlist = []
       else:
         self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
 
@@ -6462,7 +6600,7 @@ class Pph(Book):
 
       self.css.addcss("[1430] div.footnote {}")
       self.css.addcss("[1431] div.footnote>:first-child { margin-top:1em; }")
-      self.css.addcss("[1432] div.footnote p {{ text-indent:1em;margin-top:{0}em;margin-bottom:{1}; }}".format(s2,s2))
+      self.css.addcss("[1432] div.footnote p {{ text-indent:1em;margin-top:{0}em;margin-bottom:{1}em; }}".format(s2,s2))
       self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
       if self.footnoteLzH: # if special footnote landing zone processing in effect
         self.footnoteStart = self.cl # remember where this footnote started
@@ -6772,7 +6910,7 @@ class Pph(Book):
         d_height = m.group(3)
         d_adj = m.group(4)
       else:
-        self.crash_w_context("malformed drop image directive", self.cl)
+        self.crash_w_context("malformed .di directive", self.cl)
 
     self.warn("CSS3 drop-cap. Please note in upload.")
     self.css.addcss("[1920] img.drop-capi { float:left;margin:0 0.5em 0 0;position:relative;z-index:1; }")
@@ -6959,7 +7097,21 @@ class Pph(Book):
         self.cl += 1
         nlines -= 1
     else:
-      self.warn("malformed .rj directive: {}".format(self.wb[i]))
+      self.crash_w_context("malformed .rj directive", self.cl)
+
+  def doSidenote(self):
+    # handle sidenotes outside paragraphs, sidenotes inside paragraphs are done in <sn>-style markup
+    self.snPresent = True  # remember we have sidenotes
+    m = re.match(r"\.sn (.*)", self.wb[self.cl])
+    if m:
+      if self.pvs > 0: # handle any pending vertical space before the .sn
+        self.wb[self.cl] = "<div class='sidenote' style='margin-top: {}em;'>{}</div>".format(self.pvs, m.group(1))
+        self.pvs = 0
+      else:
+        self.wb[self.cl] = "<div class='sidenote'>{}</div>".format(m.group(1))
+      self.cl += 1
+    else:
+      self.crash_w_context("malformed .sn directive", self.cl)
 
   def doPara(self):
     s = self.fetchStyle() # style line with current parameters
@@ -6968,7 +7120,7 @@ class Pph(Book):
     # if there is a text-indent already, don't change it
     # otherwise, add a text-indent if self.pindent is set.
     if self.pdc == ""  and self.pindent and 'text-indent' not in s:
-      s += 'text-indent:1em;'
+      s += 'text-indent:{};'.format(self.nregs["pti"])
 
     # apply either "psi" or "psb" spacing
     if self.pindent:
@@ -7016,10 +7168,9 @@ class Pph(Book):
       # it's a normal paragraph
       self.wb[self.cl] = "<p {}{}>".format(c_str,s_str) + self.wb[self.cl]
 
-    while ( self.cl < len(self.wb) \
-       # any blank line in source ends paragraph
-       and self.wb[self.cl] \
-       and self.wb[self.cl][0] != "." ): # any dot command in source ends paragraph
+    while ( self.cl < len(self.wb) and
+            self.wb[self.cl] and
+            not self.wb[self.cl].startswith(".")): # any blank line or dot command ends paragraph
       self.cl += 1
     i = self.cl - 1
     # if para ended with .bn info, place the </p> before it, not after it to avoid extra
@@ -7228,7 +7379,7 @@ if __name__ == '__main__':
 # \u2464  ⑤   CIRCLED DIGIT FIVE  # \<
 # \u2465  ⑥   CIRCLED DIGIT SIX   # \:
 # \u2466  ⑦   CIRCLED DIGIT SEVEN # used in footnote processing (along with circled 11/12/13/14)
-# \u2467 	⑧   CIRCLED DIGIT EIGHT # Used for leading nbsp in .ti processing
+# \u2467  ⑧   CIRCLED DIGIT EIGHT # Used for leading nbsp in .ti processing
 # \u2468  ⑨   CIRCLED DIGIT NINE  # \- (so it doesn't become an em-dash later)
 # \u2469  ⑩   CIRCLED NUMBER TEN  # temporarily protect \| during Greek conversion
 # \u246a  ⑪   CIRCLED NUMBER ELEVEN # used in footnote processing (along with 7/12/13/14)
@@ -7254,11 +7405,12 @@ if __name__ == '__main__':
 # \u24e3  ⓣ   CIRCLED LATIN SMALL LETTER T # zero space (\&)
 # \u24e4  ⓤ   CIRCLED LATIN SMALL LETTER U # thin space (\^)
 # \u24e5  ⓥ   CIRCLED LATIN SMALL LETTER V # thick space (\|)
-# \u24ea  ⓪   CIRCLED DIGIT 0 # \#
+# \u24ea  ⓪   CIRCLED DIGIT 0 # (\#)
+# \u24eb  ⓫   NEGATIVE CIRCLED NUMBER ELEVEN # temporary substitute for | in inline HTML sidenotes until postprocessing
 # \u25ee  ◮   UP-POINTING TRIANGLE WITH RIGHT HALF BLACK # <b> or <strong> (becomes =)
 # \u25f8  ◸   UPPER LEFT TRIANGLE # precedes superscripts
 # \u25f9  ◹   UPPER RIGHT TRIANGLE # follows superscripts
-# \u25fa  ◺  	LOWER LEFT TRIANGLE # precedes subscripts
+# \u25fa  ◺   LOWER LEFT TRIANGLE # precedes subscripts
 # \u25ff  ◿   LOWER RIGHT TRIANGLE # follows subscripts
 # \u2ac9  ⫉   SUBSET OF ABOVE ALMOST EQUAL TO # used temporarily during page number reference processing
 #
@@ -7286,6 +7438,7 @@ if __name__ == '__main__':
 # 1205      <xxs>
 # 1205      <u>
 # 1209      <c>     will duplicate for various colors
+# 1210      <abbr> and abbr.spell
 # 1215      .nf b: .lg-container-b
 # 1216             @media handheld
 # 1217      .nf l: .lg-container-l
@@ -7306,6 +7459,10 @@ if __name__ == '__main__':
 # 1432      div.footnote p (if indented paragraphs)
 # 1432      div.footnote .label (if block paragraphs)
 # 1465-1467 .pb (div.pbb, hr.pb, and handheld version)
+# 1500      .sidenote, .sni
+# 1501      @media handheld sidenote
+# 1502      .sni
+# 1503      .hidev
 # 1576      .chapter
 # 1600      .figcenter
 # 1600      .figleft
