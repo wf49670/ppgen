@@ -22,11 +22,13 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.48aLZ2"  # 8-Mar-2015    3.47p + Footnote Landing Zones
-# plus addtions:
-# Trying to extend so paragraphs can flow around footnotes and
-# also provide an override to allow some footnotes to appear elsewhere, like
-# within a table rather than at a normal landing zone
+VERSION="3.48aLZ2"  # 9-Mar-2015    3.48a + Footnote Landing Zones + additions:
+# added rendafter=n/y to .fm command
+# Provided an override to allow some footnotes to appear where they were created, rather than at a
+# normal landing zone. To do that, added [t|h]?lz=here to .fn:
+#      lz=here: footnote will appear in that location in both text and html
+#     tlz=here: footnote will appear in that location in text, and at a .fm landing zone in html
+#     hlz=here: footnote will appear in that location in html, and at a .fm landing zone in text
 
 
 
@@ -3924,23 +3926,30 @@ class Ppt(Book):
   def doFnote(self):
     m = re.match(r"\.fn-", self.wb[self.cl])
     if m: # footnote ends
-      if self.footnoteLzT: # if special footnote landing zone processing in effect
+      if self.footnoteLzT and not self.keepFnHere: # if special footnote landing zone in effect (and not disabled for this footnote)
         self.grabFootnoteT()
       self.wb[self.cl] = ".in -2"
       return
     else: # footnote begins
       fnname = ""
-      m = re.match(r"\.fn (\d+)( |$)", self.wb[self.cl]) # First look for numeric
+      m = re.match(r"\.fn (\d+)( |$)(lz=here|tlz=here)?", self.wb[self.cl]) # First look for numeric
       if m: # footnote start
         fnname = m.group(1)
+        self.keepFnHere = True if (m.group(3)) else False # test for lz=here and remember for .fn- processing
       else:                       # then check for named footnote
-        m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)", self.wb[self.cl])
+        m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)(lz=here|tlz=here)?", self.wb[self.cl])
         if m:
           fnname = m.group(1)
+          self.keepFnHere = True if (m.group(3)) else False # test for lz=here and remember for .fn- processing
         else:
           fnname = "<<Invalid footnote name; see messages>>"
       self.eb.append("{} {}:".format(self.nregs["Footnote"], fnname))
-      if self.footnoteLzT: # if special footnote landing zone processing in effect
+      if self.keepFnHere and not self.footnoteLzT:
+        if m.group(3).startswith("tlz"):
+          self.warn(".fn specifies tlz=here but landing zones not in effect for text output:{}".format(self.wb[self.cl]))
+        elif m.group(3).startswith("lz") and not self.footnoteLzT and not self.footnoteLzH:
+          self.warn(".fn specifies lz=here but no landing zones are in effect:{}".format(self.wb[self.cl]))
+      if self.footnoteLzT and not self.keepFnHere: # if special footnote landing zone processing in effect
         self.footnoteStart = len(self.eb) - 1 # remember where this footnote started
       self.wb[self.cl] = ".in +2"
 
@@ -3966,6 +3975,11 @@ class Ppt(Book):
         options, rendvalue = self.get_id("rend", options)
         if rendvalue == "no" or rendvalue == "norend" or not "t" in rendvalue:
           rend = False
+      rendafter = False
+      if "rendafter=" in options:
+        options, rendaval = self.get_id("rendafter", options)
+        if rendaval.startswith("y"):
+          rendafter = True
       if "lz=" in options:
         options, lzvalue = self.get_id("lz", options)
         if "t" in lzvalue:
@@ -3974,10 +3988,12 @@ class Ppt(Book):
           rend = False  # If this .fm is a landing zone for html but not text, don't do rend for it either
       if "=" in options:
         self.warn("Unrecognized option in .fm command: {}".format(self.wb[self.cl]))
-    if rend:
+    if rend and ((not lz) or (lz and len(self.fnlist))):
       self.eb.append(".RS 1")
       self.eb.append("-----")
       self.eb.append(".RS 1")
+    else:
+      rend = False
     if lz:
       # emit saved footnotes
       if len(self.fnlist): # make sure there's something to generate
@@ -3986,6 +4002,10 @@ class Ppt(Book):
             self.eb.append(s)
         del self.fnlist[:]  # remove everything we handled
         self.fnlist = []
+        if rend and rendafter:
+          self.eb.append(".RS 1")
+          self.eb.append("-----")
+          self.eb.append(".RS 1")
       else:
         self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
     self.cl += 1
@@ -4306,6 +4326,7 @@ class Ppt(Book):
     self.cl = pend
 
   def process(self):
+    self.keepFnHere = False
     self.cl = 0
     while self.cl < len(self.wb):
       if "a" in self.debug:
@@ -6614,6 +6635,11 @@ class Pph(Book):
         options, rendvalue = self.get_id("rend", options)
         if rendvalue == "no" or rendvalue == "norend" or not "h" in rendvalue:
           rend = False
+      rendafter = False
+      if "rendafter=" in options:
+        options, rendaval = self.get_id("rendafter", options)
+        if rendaval.startswith("y"):
+          rendafter = True
       if "lz=" in options:
         options, lzvalue = self.get_id("lz", options)
         if "h" in lzvalue:
@@ -6622,10 +6648,11 @@ class Pph(Book):
           rend = False  # If this .fm is a landing zone for text but not html, don't do rend for it either
       if "=" in options:
         self.warn("Unrecognized option in .fm command: {}".format(self.wb[self.cl]))
-    if rend:
+    if rend and ((not lz) or (lz and len(self.fnlist))):
       self.wb[self.cl] = "<hr style='border:none; border-bottom:1px solid; width:10%; margin-left:0; margin-top:1em; text-align:left;' />"
       self.cl += 1
     else:
+      rend = False
       del self.wb[self.cl]
     if lz:
       # emit saved footnotes
@@ -6639,6 +6666,9 @@ class Pph(Book):
             self.cl += 1
         del self.fnlist[:]  # remove everything we handled
         self.fnlist = []
+        if rend and rendafter:
+          self.wb.append("<hr style='border:none; border-bottom:1px solid; width:10%; margin-left:0; margin-top:1em; text-align:left;' />")
+          self.cl += 1
       else:
         self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
 
@@ -6655,19 +6685,26 @@ class Pph(Book):
     if m: # footnote ends
       self.wb[self.cl] = "</div>"
       self.cl += 1
-      if self.footnoteLzH: # if special footnote landing zone processing in effect
+      if self.footnoteLzH and not self.keepFnHere: # if special footnote landing zone in effect and not disabled for this footnote
         self.grabFootnoteH()
       return
 
-    m = re.match(r"\.fn (\d+)( |$)", self.wb[self.cl]) # First try numeric footnote
+    m = re.match(r"\.fn (\d+)( |$)(lz=here|hlz=here)?", self.wb[self.cl]) # First try numeric footnote
     if m: # footnote start
       fnname = m.group(1)
+      self.keepFnHere = True if (m.group(3)) else False # test for lz=here and remember for .fn- processing
     else:
-      m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)", self.wb[self.cl]) # then named
+      m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)(lz=here|hlz=here)?", self.wb[self.cl]) # then named
       if m:
         fnname = m.group(1)
+        self.keepFnHere = True if (m.group(3)) else False # test for lz=here and remember for .fn- processing
       else:
         fnname = "<<Invalid footnote name; see messages>>"
+    if self.keepFnHere and not self.footnoteLzH:
+      if m.group(3).startswith("hlz"):
+        self.warn(".fn specifies hlz=here but landing zones not in effect for HTML output:{}".format(self.wb[self.cl]))
+      elif m.group(3).startswith("lz") and not self.footnoteLzT and not self.footnoteLzH:
+        self.warn(".fn specifies lz=here but no landing zones are in effect:{}".format(self.wb[self.cl]))
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     if self.pindent: # indented paragraphs
@@ -7327,6 +7364,7 @@ class Pph(Book):
 
   def process(self):
 
+    self.keepFnHere = False
     self.cl = 0
     while self.cl < len(self.wb):
       if "a" in self.debug:
@@ -7394,7 +7432,7 @@ def main():
   parser.add_argument('-i', '--infile', help='UTF-8 or Latin-1 input file')
   parser.add_argument('-l', '--log', help="display Latin-1, diacritic, and Greek conversion logs", action="store_true")
   parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r)') # r = report regex results
-  parser.add_argument('-o', '--output_format', default="ht", help='output format (HTML:h, text:t, u or l)')
+  parser.add_argument('-o', '--output_format', default="hu", help='output format (HTML:h, text:t, u or l)')
   parser.add_argument('-a', '--anonymous', action='store_true', help='do not identify version/timestamp in HTML')
   parser.add_argument("-v", "--version", help="display version and exit", action="store_true")
   parser.add_argument("-cvg", "--listcvg", help="list Greek and diacritic table to file ppgen-cvglist.txt and exit", action="store_true")
