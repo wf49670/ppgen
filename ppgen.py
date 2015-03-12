@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.48bHe"    # 8-Mar-2015     Detect Hebrew language strings and properly calculate their length.
+VERSION="3.48bLZ2He2"    # 8-Mar-2015     Detect Hebrew language strings and properly calculate their length.
 
 
 
@@ -74,9 +74,12 @@ class Book(object):
   wb = [] # working buffer
   eb = [] # emit buffer
   bb = [] # GG .bin file buffer
-  srw = [] # .sr "which" array
-  srs = [] #     "search" array
-  srr = [] #     "replace" array
+  gk_user = [] # PPer-supplied Greek characters
+  diacritics_user = [] # PPer-supplied diacritic characters
+  srw = []    # .sr "which" array
+  srs = []    # .sr "search" array
+  srr = []    # .sr "replace" array
+  fnlist = [] # buffer for saved footnotes
   regLL = 72 # line length
   regIN = 0 # indent
   regTI = 0 # temporary indent
@@ -205,8 +208,6 @@ class Book(object):
      '\uFF5C':'|', '\uFF5D':'}', '\uFF5E':'~',
      '\u2042':'***'
     }
-
-  gk_user = []                          # PPer provided Greek transliterations will go here
 
   gk = [                              # builtin Greek transliterations
      ('ï/', 'i/\+', 'ï/'),            # i/u/y alternatives using dieresis
@@ -571,8 +572,6 @@ class Book(object):
      ('C',        '\u03E0', 'C (Sampi)'),
      ('c',        '\u03E1', 'c (sampi)'),
     ]
-
-  diacritics_user = []  # PPer-supplied diacritic markup will go here
 
   diacritics = [
     ('[=A]',    '\u0100', '\\u0100'), # LATIN CAPITAL LETTER A WITH MACRON    (Latin Extended-A)
@@ -1370,6 +1369,7 @@ class Book(object):
     del self.wb[:]
     del self.eb[:]
     del self.bb[:]
+    del self.fnlist[:]
     del self.gk_user[:]
     del self.diacritics_user[:]
     del self.srw[:]
@@ -1657,6 +1657,29 @@ class Book(object):
         sys.stderr.write("   {}\n".format(s))
     sys.stderr.write(" -----\n")
 
+  # Calculate "true" length of a string, accounting for <lang> markup and combining or non-spacing characters in Hebrew
+  def truelen(self,s):
+    l = len(s) # get simplistic length
+    #m = re.search(r"<lang=he>(.*?)</lang>", s) # Any Hebrew?
+    #while m:
+    #  l -= 16 # subtract length of <lang=he> and </lang>
+    #  hs = m.group(1) # get the Hebrew string
+    for c in s: # examine each character
+      cc = ord(c)
+      if cc > 767: # No non-spacing characters < \u0300 (768)
+        cat = unicodedata.category(c)
+        bidi = unicodedata.bidirectional(c)
+        #name = unicodedata.name(c)
+        if cat == "Cf" or (cat == "Mn" and bidi == "NSM"): # Control character, or Modifier Non-Spacing-Mark?
+          l -= 1 # if so, it doesn't take any space
+    #s = re.sub(re.escape(m.group(0)), "", s, 1) # remove the Hebrew and markup that we found
+    #m = re.search(r"<lang=he>(.*?)</lang>", s) # Repeat the search for Hebrew?
+    #s2 = s
+    #s2 = re.sub(r"<lang=[^>]*>", "", s2) # remove all the language tags
+    #s2 = re.sub(r"</lang>", "", s2)
+    #l -= (len(s) - len(s2)) # subtract out the length of everything we just removed
+    return l
+
 
   # extract content of an optionally quoted string
   # used in .nr
@@ -1922,6 +1945,7 @@ class Book(object):
             self.crash_w_context(".if- has no matching .if", i)
           keep = True
           keepType = None
+          inIf = False
           continue
 
         if keep:
@@ -1948,7 +1972,6 @@ class Book(object):
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # process [Greek: ...] in UTF-8 output if requested to via .gk command
     i = 0
-    self.gk_user = []
     self.gk_requested = False
     gk_done = False
     self.gkpre = ""
@@ -1998,7 +2021,6 @@ class Book(object):
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # process diacritic markup in UTF-8 output if requested to via .cv command
     i = 0
-    self.diacritics_user = []
     self.dia_requested = False
     dia_done = False
     dia_blobbed = False
@@ -2687,6 +2709,22 @@ class Book(object):
     if override:
       self.pnshow = False # disable visible page numbers
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # Examine footnote markers (.fm)
+    #   Look for .fm with lz=
+    #     If any found, set flags for later
+    self.footnoteLzT = False
+    self.footnoteLzH = False
+    for i, t in enumerate(self.wb):
+      if t.startswith(".fm"):
+        if "lz=" in t:
+          t, lz = self.get_id("lz", t)
+          if lz == "t" or lz == "th" or lz == "ht":
+           self.footnoteLzT = True
+          if lz == "h" or lz == "th" or lz == "ht":
+            self.footnoteLzH = True
+
+
 # ====== ppt ============================================================================
 
 # this class is used to generate UTF-8 or Latin-1 (ANSI) text
@@ -2695,9 +2733,6 @@ class Book(object):
 # a transliteration is provided by the post-processor
 
 class Ppt(Book):
-  eb = [] # emit buffer for generated text
-  wb = [] # working buffer
-  bb = [] # GG .bin buffer
 
   long_table_line_count = 0
 
@@ -2750,18 +2785,16 @@ class Ppt(Book):
       tline = line
       if self.bnPresent: # remove .bn info if any before doing calculation
         tline = re.sub("⑱.*?⑱","",tline)
-      shortest_line_len = min(shortest_line_len, len(tline))
+      shortest_line_len = min(shortest_line_len, self.truelen(tline))
     return shortest_line_len
 
   # wrap string into paragraph in t[]
   def wrap_para(self, s,  indent, ll, ti):
-    s = re.sub(r"</?lang[^>]*>", "", s) # remove any language tagging (Note: will not correctly calculate wrapping width)
+    #s = re.sub(r"</?lang[^>]*>", "", s) # remove any language tagging (Note: will not correctly calculate wrapping width)
     # if ti < 0, strip off characters that will be in the hanging margin
     hold = ""
     if ti < 0:
       howmany = -1 * ti
-      if m: # found one?
-        langoffset = len(m.group(1))
       if not self.bnPresent:
         hold = s[0:howmany]
         s = s[howmany:]
@@ -2787,9 +2820,10 @@ class Ppt(Book):
 
     # at this point, s is ready to wrap
     mywidth = ll - indent
-    t =[]
+    t = []
     twidth = mywidth
-    while len(s) > twidth:
+    true_len_s = self.truelen(s)
+    while true_len_s > twidth:
       twidth2 = 0
       if self.bnPresent:
         m = re.match("(.*?)(⑱.*?⑱)(.*)",s)
@@ -2799,9 +2833,9 @@ class Ppt(Book):
             twidth += len(m.group(2)) # allow wider split to account for .bn info
             stemp = m.group(3)
             m = re.match("(.*?)(⑱.*?⑱)(.*)",stemp)
-      if len(s) > twidth:
+      if true_len_s > twidth:
         try:
-          snip_at = s.rindex(" ", 0, twidth) # Plan A: snip at a last blank within first twidth characters
+          snip_at = s.rindex(" ", 0, twidth+1) # Plan A: snip at a last blank within first twidth+1 characters
         except:
           # could not find a place to wrap
           try: # this one might fail, too, so catch exceptions
@@ -2813,10 +2847,11 @@ class Ppt(Book):
           #else:
           #  self.warn("wide line: {}".format(s)) # else just include the current line.
         t.append(s[:snip_at])
-        if snip_at < len(s):
+        if snip_at < true_len_s:
           s = s[snip_at+1:]
         else:
           s = ""
+        true_len_s = self.truelen(s)
         twidth = mywidth
     if len(t) == 0 or len(s) > 0: #ensure t has something in it, but don't add a zero length s (blank line) to t unless t is empty
       t.append(s)
@@ -2868,8 +2903,8 @@ class Ppt(Book):
     # <lang> and <abbr> tags ignored in text version. But for now, keep lang as we may need it
     # to calculate lengths correctly later.
     for i in range(len(self.wb)):
-      #self.wb[i] = re.sub(r"<lang[^>]*>","",self.wb[i])
-      #self.wb[i] = re.sub(r"</lang>","",self.wb[i])
+      self.wb[i] = re.sub(r"<lang[^>]*>","",self.wb[i])
+      self.wb[i] = re.sub(r"</lang>","",self.wb[i])
       self.wb[i] = re.sub(r"<abbr[^>]*>","",self.wb[i])
       self.wb[i] = re.sub(r"</abbr>","",self.wb[i])
 
@@ -2977,10 +3012,9 @@ class Ppt(Book):
         if m:
           fncr = int(m.group(1)) + 1
 
-        elif ".fn #" == self.wb[i]:### test this spacing
-          self.wb[i:i+1] = [".sp 1",".fn {}".format(fncr)]
+        elif ".fn #" == self.wb[i]:### remember to generate footnote spacing in text
+          self.wb[i] = ".fn {}".format(fncr)
           fncr += 1
-          i += 1
 
         else:
           m=re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)", self.wb[i])
@@ -2992,7 +3026,7 @@ class Ppt(Book):
           self.crash_w_context("Error: .fn- has no opening .fn command", i)
         fnlevel -= 1
 
-      i += 1
+      i += 1###
     if fnlevel != 0:
       self.crash_w_context("Error: Unclosed .fn block", fn0)
 
@@ -3410,8 +3444,17 @@ class Ppt(Book):
         self.cl += 1                                           # and ignore it for handling this .h"n"
     h2a = self.wb[self.cl+1].split('|')
     for line in h2a:
-      line = re.sub(r"</?lang[^>]*>", "", line) # remove any language tagging
-      self.eb.append((fmt.format(line)).rstrip())
+      #line = re.sub(r"</?lang[^>]*>", "", line) # remove any language tagging
+      len1 = len(line)     # apparent length of line
+      len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+      padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+      if align == "c":
+        pad = " " * (padlen//2)
+      elif align == "r":
+        pad = " " * padlen
+      else:
+        pad = ""
+      self.eb.append((pad + fmt.format(line)).rstrip())
     self.eb.append(".RS 1")
     self.cl += 2
 
@@ -3493,7 +3536,7 @@ class Ppt(Book):
             self.eb.append("")
             i = self.cl        # remember where we started
             while (self.cl < len(self.wb)) and not (self.wb[self.cl]).startswith(".ca-"):
-              self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
+              #self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
               s = self.wb[self.cl]
               t = self.wrap(s, 4, self.regLL, -2)
               self.eb += t
@@ -3514,14 +3557,14 @@ class Ppt(Book):
               if re.search(ss,s): # if caption line has a $"n" marker in it, perform substitution
                 if self.wb[self.cl].startswith(".ca-"):
                   self.crash_w_context("End of caption before end of model(1).", i-1)
-                self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
+                #self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
                 s = re.sub(ss,self.wb[self.cl], s)
                 k += 1
                 self.cl += 1
-                if len(s) > self.regLL: # must wrap the string, and indent the leftover part
+                if self.truelen(s) > self.regLL: # must wrap the string, and indent the leftover part
                   m = re.match(r"(\s*)(.*)",s)
                   if m:
-                    tempindent = len(m.group(1)) + 2
+                    tempindent = self.truelen(m.group(1)) + 2
                     s = m.group(2)
                     t = self.wrap(s, tempindent, self.regLL, -2)
                   else:
@@ -3529,7 +3572,7 @@ class Ppt(Book):
                 else:
                   t.append(s) # no need to wrap, as it's short enough already
               else: # caption line does not have marker, so it's literal text, just wrap to LL if necessary and assume user knows what he's doing
-                if len(s) > self.regLL:
+                if self.truelen(s) > self.regLL:
                   t = self.wrap(s, 0, self.regLL, 0)
                 else: # no need to wrap if it's short enough
                   t.append(s)
@@ -3546,7 +3589,7 @@ class Ppt(Book):
           # single line
           if ia["cm"] != "": # if caption model specified
             self.warn("Caption model specified for a single-line caption: {}".format(self.wb[self.cl-1]))
-          self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
+          #self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
           caption = self.wb[self.cl][4:]
           s = "[{}: {}]".format(self.nregs["Illustration"],caption)
           t = self.wrap(s, 0, self.regLL, 0)
@@ -3656,8 +3699,13 @@ class Ppt(Book):
 
       xt = self.regLL - self.regIN # width of centered line
       xs = "{:^" + str(xt) + "}"
-      self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
-      t.append(" " * self.regIN + xs.format(self.wb[i].strip())) # centering won't be quite correct if line has combining characters
+      #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
+      line = self.wb[i].strip()
+      len1 = len(line)     # apparent length of line
+      len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+      padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+      pad = " " * (padlen//2)
+      t.append(" " * self.regIN + pad + xs.format(line)) # now centering should handle non-spacing Unicode characters
       i += 1
     self.cl = i + 1 # skip the closing .nf-
     # see if the block has hit the left margin
@@ -3684,7 +3732,7 @@ class Ppt(Book):
     startloc = i
     maxw = 0
     while i < len(self.wb) and not re.match(lookfor, self.wb[i]):
-      maxw = max(maxw, len(self.wb[i]))
+      maxw = max(maxw, self.truelen(self.wb[i]))
       i += 1
     if i == len(self.wb):
       # unterminated block
@@ -3718,7 +3766,14 @@ class Ppt(Book):
               i += 1
               continue
           xs = "{:^" + str(regBW) + "}"
-          self.eb.append(" " * self.regIN + xs.format(self.wb[i].strip()))
+          line = self.wb[i].strip()
+          len1 = len(line)     # apparent length of line
+          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+          pad = " " * (padlen//2)
+          #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
+          #self.eb.append(" " * self.regIN + pad + xs.format(self.wb[i].strip()))
+          self.eb.append(" " * self.regIN + pad + xs.format(line))
           i += 1
           count -= 1
         continue
@@ -3735,8 +3790,14 @@ class Ppt(Book):
               i += 1
               continue
           xs = "{:>" + str(regBW) + "}"
-          self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
-          self.eb.append(" " * self.regIN + xs.format(self.wb[i].strip())) # may not be quite correct if combining characters
+          line = self.wb[i].strip()
+          len1 = len(line)     # apparent length of line
+          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+          pad = " " * padlen
+          #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
+          #self.eb.append(" " * self.regIN + xs.format(self.wb[i].strip())) # may not be quite correct if combining characters
+          self.eb.append(" " * self.regIN + pad + xs.format(line)) # may not be quite correct if combining characters
           i += 1
           count -= 1
         continue
@@ -3762,7 +3823,7 @@ class Ppt(Book):
         for line in u:
           self.eb.append(line)
       else:
-        s = re.sub(r"</?lang[^>]*>", "", s) # remove any language tagging
+        #s = re.sub(r"</?lang[^>]*>", "", s) # remove any language tagging
         self.eb.append(s)
       i += 1
     self.eb.append(".RS 1")
@@ -3792,8 +3853,14 @@ class Ppt(Book):
               i += 1
               continue
           xs = "{:^" + str(regBW) + "}"
-          self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
-          t.append(" " * lmar + xs.format(self.wb[i].strip())) # won't be quite correct if any combining characters
+          #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
+          line = self.wb[i].strip()
+          len1 = len(line)     # apparent length of line
+          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+          pad = " " * (padlen//2)
+          #t.append(" " * lmar + xs.format(self.wb[i].strip())) # won't be quite correct if any combining characters
+          t.append(" " * lmar + pad + xs.format(line)) # won't be quite correct if any combining characters
           i += 1
           count -= 1
         continue
@@ -3811,8 +3878,14 @@ class Ppt(Book):
               i += 1
               continue
           xs = "{:>" + str(regBW) + "}"
-          self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
-          t.append(" " * lmar + xs.format(self.wb[i].strip())) # may not be quite right if any combining characters
+          #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
+          line = self.wb[i].strip()
+          len1 = len(line)     # apparent length of line
+          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+          pad = " " * padlen
+          #t.append(" " * lmar + xs.format(self.wb[i].strip())) # may not be quite right if any combining characters
+          t.append(" " * lmar + xs.format(line))
           i += 1
           count -= 1
         continue
@@ -3823,10 +3896,10 @@ class Ppt(Book):
           bnInBlock = True
           t.append(self.wb[i])
         else:
-          self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
+          #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
           t.append(" " * self.regIN + " " * lmar + self.wb[i].rstrip())
       else:
-        self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
+        #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
         t.append(" " * self.regIN + " " * lmar + self.wb[i].rstrip())
       i += 1
     self.cl = i + 1 # skip the closing .nf-
@@ -3870,8 +3943,14 @@ class Ppt(Book):
               i += 1
               continue
           xs = "{:^" + str(regBW) + "}"
-          self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
-          self.eb.append(" " * fixed_indent + xs.format(self.wb[i].strip())) # may not be quite right if any combining characters
+          line = self.wb[i].strip()
+          len1 = len(line)     # apparent length of line
+          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+          pad = " " * (padlen//2)
+          #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
+          #self.eb.append(" " * fixed_indent + xs.format(self.wb[i].strip())) # may not be quite right if any combining characters
+          self.eb.append(" " * fixed_indent + pad + xs.format(line))
           i += 1
           count -= 1
         continue
@@ -3888,13 +3967,19 @@ class Ppt(Book):
               i += 1
               continue
           xs = "{:>" + str(regBW) + "}"
-          self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
-          self.eb.append(" " * fixed_indent + xs.format(self.wb[i].strip())) # may not be quite right if any combining characters
+          line = self.wb[i].strip()
+          len1 = len(line)     # apparent length of line
+          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+          pad = " " * padlen
+          #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
+          #self.eb.append(" " * fixed_indent + xs.format(self.wb[i].strip())) # may not be quite right if any combining characters
+          self.eb.append(" " * fixed_indent + pad + xs.format(line))
           i += 1
           count -= 1
         continue
 
-      self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
+      #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
       self.eb.append(" " * fixed_indent + self.wb[i].strip()) # may not be quite right if any combining characters
       i += 1
     self.cl = i + 1 # skip the closing .nf-
@@ -3935,54 +4020,91 @@ class Ppt(Book):
   # note: in text do not check for duplicate footnotes. they occur in the wild
   # note: invalid footnote names generated warning messages earlier during pre-processing
   def doFnote(self):
-
     m = re.match(r"\.fn-", self.wb[self.cl])
     if m: # footnote ends
+      if self.footnoteLzT and not self.keepFnHere: # if special footnote landing zone in effect (and not disabled for this footnote)
+        self.grabFootnoteT()
       self.wb[self.cl] = ".in -2"
       return
-
-    fnname = ""
-    m = re.match(r"\.fn (\d+)( |$)", self.wb[self.cl]) # First look for numeric
-    if m: # footnote start
-      fnname = m.group(1)
-    else:                       # then check for named footnote
-      m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)", self.wb[self.cl])
-      if m:
+    else: # footnote begins
+      fnname = ""
+      m = re.match(r"\.fn (\d+)( |$)(lz=here|tlz=here)?", self.wb[self.cl]) # First look for numeric
+      if m: # footnote start
         fnname = m.group(1)
-      else:
-        fnname = "<<Invalid footnote name; see messages>>"
-    self.eb.append("{} {}:".format(self.nregs["Footnote"], fnname))
-    self.wb[self.cl] = ".in +2"
+        self.keepFnHere = True if (m.group(3)) else False # test for lz=here and remember for .fn- processing
+      else:                       # then check for named footnote
+        m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)(lz=here|tlz=here)?", self.wb[self.cl])
+        if m:
+          fnname = m.group(1)
+          self.keepFnHere = True if (m.group(3)) else False # test for lz=here and remember for .fn- processing
+        else:
+          fnname = "<<Invalid footnote name; see messages>>"
+      self.eb.append("{} {}:".format(self.nregs["Footnote"], fnname))
+      if self.keepFnHere and not self.footnoteLzT:
+        if m.group(3).startswith("tlz"):
+          self.warn(".fn specifies tlz=here but landing zones not in effect for text output:{}".format(self.wb[self.cl]))
+        elif m.group(3).startswith("lz") and not self.footnoteLzT and not self.footnoteLzH:
+          self.warn(".fn specifies lz=here but no landing zones are in effect:{}".format(self.wb[self.cl]))
+      if self.footnoteLzT and not self.keepFnHere: # if special footnote landing zone processing in effect
+        self.footnoteStart = len(self.eb) - 1 # remember where this footnote started
+      self.wb[self.cl] = ".in +2"
 
+  # grab a complete footnote out of self.eb and save it for later
+  def grabFootnoteT(self):
+    t = [] # buffer for the footnote label and text
+    i = self.footnoteStart
+    while i < len(self.eb):
+      t.append(self.eb[i]) # grab a line then delete it
+      del self.eb[i]
+    self.fnlist.append(t) # when done, append complete list into fnlist for later use
 
   # footnote mark
   def doFmark(self):
-    self.eb.append(".RS 1")
-    self.eb.append("-----")
-    self.eb.append(".RS 1")
+    rend = True
+    lz = False
+    m = re.match(r"\.fm (.*)", self.wb[self.cl])
+    if m:
+      options = m.group(1)
+      if "norend" in options:
+        rend = False
+      if "rend=" in options:
+        options, rendvalue = self.get_id("rend", options)
+        if rendvalue == "no" or rendvalue == "norend" or not "t" in rendvalue:
+          rend = False
+      rendafter = False
+      if "rendafter=" in options:
+        options, rendaval = self.get_id("rendafter", options)
+        if rendaval.startswith("y"):
+          rendafter = True
+      if "lz=" in options:
+        options, lzvalue = self.get_id("lz", options)
+        if "t" in lzvalue:
+          lz = True
+        else:
+          rend = False  # If this .fm is a landing zone for html but not text, don't do rend for it either
+      if "=" in options:
+        self.warn("Unrecognized option in .fm command: {}".format(self.wb[self.cl]))
+    if rend and ((not lz) or (lz and len(self.fnlist))):
+      self.eb.append(".RS 1")
+      self.eb.append("-----")
+      self.eb.append(".RS 1")
+    else:
+      rend = False
+    if lz:
+      # emit saved footnotes
+      if len(self.fnlist): # make sure there's something to generate
+        for t in self.fnlist:
+          for s in t:
+            self.eb.append(s)
+        del self.fnlist[:]  # remove everything we handled
+        self.fnlist = []
+        if rend and rendafter:
+          self.eb.append(".RS 1")
+          self.eb.append("-----")
+          self.eb.append(".RS 1")
+      else:
+        self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
     self.cl += 1
-
-  # Calculate "true" length of a string, accounting for <lang> markup and combining or non-spacing characters in Hebrew
-  def truelen(self,s):
-    l = len(s) # get simplistic length
-    m = re.search(r"<lang=he>(.*?)</lang>", s) # Any Hebrew?
-    while m:
-      l -= 16 # subtract length of <lang=he> and </lang>
-      hs = m.group(1) # get the Hebrew string
-      for c in hs: # examine each Hebrew character
-        cat = unicodedata.category(c)
-        bidi = unicodedata.bidirectional(c)
-        name = unicodedata.name(c)
-        if cat == "Cf" or (cat == "Mn" and bidi == "NSM"): # Control character, or Modifier Non-Spacing-Mark?
-          l -= 1 # if so, it doesn't take any space
-      s = re.sub(re.escape(m.group(0)), "", s, 1) # remove the Hebrew and markup that we found
-      m = re.search(r"<lang=he>(.*?)</lang>", s) # Repeat the search for Hebrew?
-    s2 = s
-    s2 = re.sub(r"<lang=[^>]*>", "", s2) # remove all the language tags
-    s2 = re.sub(r"</lang>", "", s2)
-    l -= (len(s) - len(s2)) # subtract out the length of everything we just removed
-    return l
-
 
   # Table code, text
   def doTable(self):
@@ -4112,9 +4234,9 @@ class Ppt(Book):
 
       t = self.wb[k1].split("|")
       for i in range(0,ncols):
-        t[i] = re.sub(r"</?lang[^>]*>", "", t[i]) # remove any language tagging
+        #t[i] = re.sub(r"</?lang[^>]*>", "", t[i]) # remove any language tagging
         #k2 = textwrap.wrap(t[i].strip(), widths[i]) # won't wrap quite right if any combining characters
-        k2 = self.wrap_para(t[i].strip(), 0, widths[i], 0) # won't wrap quite right if any combining characters
+        k2 = self.wrap_para(t[i].strip(), 0, widths[i], 0) # should handle combining characters properly
         if len(k2) > 1:
           rowspace = True
       k1 += 1
@@ -4137,12 +4259,18 @@ class Ppt(Book):
           self.cl += 1
           continue
 
-      self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
+      #self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
 
       # centered line
       # a line in source that has no vertical pipe
       if not "|" in self.wb[self.cl]:
-        self.eb.append("{:^72}".format(self.wb[self.cl]))
+        line = self.wb[self.cl].strip()
+        len1 = len(line)     # apparent length of line
+        len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+        padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+        pad = " " * (padlen//2)
+        #self.eb.append(pad + "{:^72}".format(self.wb[self.cl]))
+        self.eb.append(pad + "{:^72}".format(line))
         self.cl += 1
         continue
 
@@ -4153,10 +4281,10 @@ class Ppt(Book):
       w = [None] * ncols  # a list of lists for this row
       heights = [None] * ncols  # lines in each cell
       for i in range(0,ncols):
-        #w[i] = textwrap.wrap(t[i].strip(), widths[i])
-        w[i] = self.wrap_para(t[i].strip(), 0, widths[i], 0) # won't wrap quite right if any combining characters
+        #w[i] = textwrap.wrap(t[i].strip(), widths[i]) # won't wrap quite right if any combining characters
+        w[i] = self.wrap_para(t[i].strip(), 0, widths[i], 0) # should handle combining characters properly
         for j,line in enumerate(w[i]):
-          w[i][j] =line.strip()  # marginal whitespace
+          w[i][j] = line.strip()  # marginal whitespace
         heights[i] = len(w[i])
         maxheight = max(maxheight, heights[i])
 
@@ -4220,11 +4348,17 @@ class Ppt(Book):
       nlines = int(m.group(1))
       self.cl += 1
       self.eb.append(".RS 1")
+      t1 = self.regLL - self.regIN
+      xs = "{:>" + str(t1) + "}"
       while nlines > 0:
-        t1 = self.regLL - self.regIN
-        xs = "{:>" + str(t1) + "}"
-        self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
-        self.eb.append(" "*self.regIN + xs.format(self.wb[self.cl].strip()))
+        #self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
+        line = self.wb[self.cl].strip()
+        len1 = len(line)     # apparent length of line
+        len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+        padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+        pad = " " * padlen
+        #self.eb.append(" "*self.regIN + xs.format(self.wb[self.cl].strip()))
+        self.eb.append(" "*self.regIN + pad + xs.format(line))
         self.cl += 1
         nlines -= 1
       self.eb.append(".RS 1")
@@ -4307,6 +4441,7 @@ class Ppt(Book):
     self.cl = pend
 
   def process(self):
+    self.keepFnHere = False
     self.cl = 0
     while self.cl < len(self.wb):
       if "a" in self.debug:
@@ -4329,6 +4464,9 @@ class Ppt(Book):
         self.doDot()
         continue
       self.doPara()
+
+    if len(self.fnlist):  # any saved footnotes that didn't have a .fm to generate them?
+      self.warn("Footnotes encountered after last \".fm lz=t\" have not been generated. Missing a .fm somewhere?")
 
   def run(self): # Text
     self.loadFile(self.srcfile)
@@ -4361,6 +4499,7 @@ class Pph(Book):
   fsz = "100%" # font size for paragraphs
   pdc = "" # pending drop cap
   igc = 1 # illustration geometry counter
+  fnlist = [] # list of footnotes
 
   def __init__(self, args, renc):
     Book.__init__(self, args, renc)
@@ -6600,8 +6739,54 @@ class Pph(Book):
 
   # .fm footnote mark
   def doFmark(self):
-    self.wb[self.cl] = "<hr style='border:none; border-bottom:1px solid; width:10%; margin-left:0; margin-top:1em; text-align:left;' />"
-    self.cl += 1
+    rend = True
+    lz = False
+    m = re.match(r"\.fm (.*)", self.wb[self.cl])
+    if m:
+      options = m.group(1)
+      if "norend" in options:
+        rend = False
+      if "rend=" in options:
+        options, rendvalue = self.get_id("rend", options)
+        if rendvalue == "no" or rendvalue == "norend" or not "h" in rendvalue:
+          rend = False
+      rendafter = False
+      if "rendafter=" in options:
+        options, rendaval = self.get_id("rendafter", options)
+        if rendaval.startswith("y"):
+          rendafter = True
+      if "lz=" in options:
+        options, lzvalue = self.get_id("lz", options)
+        if "h" in lzvalue:
+          lz = True
+        else:
+          rend = False  # If this .fm is a landing zone for text but not html, don't do rend for it either
+      if "=" in options:
+        self.warn("Unrecognized option in .fm command: {}".format(self.wb[self.cl]))
+    if rend and ((not lz) or (lz and len(self.fnlist))):
+      self.wb[self.cl] = "<hr style='border:none; border-bottom:1px solid; width:10%; margin-left:0; margin-top:1em; text-align:left;' />"
+      self.cl += 1
+    else:
+      rend = False
+      del self.wb[self.cl]
+    if lz:
+      # emit saved footnotes
+      if len(self.fnlist): # make sure there's something to generate
+        for t in self.fnlist:
+          for s in t:
+            if self.cl < len(self.wb):
+              self.wb.insert(self.cl, s)
+            else:
+              self.wb.append(s)
+            self.cl += 1
+        del self.fnlist[:]  # remove everything we handled
+        self.fnlist = []
+        if rend and rendafter:
+          self.wb.append("<hr style='border:none; border-bottom:1px solid; width:10%; margin-left:0; margin-top:1em; text-align:left;' />")
+          self.cl += 1
+      else:
+        self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
+
 
   # .fn footnote
   # here on footnote start or end
@@ -6615,17 +6800,26 @@ class Pph(Book):
     if m: # footnote ends
       self.wb[self.cl] = "</div>"
       self.cl += 1
+      if self.footnoteLzH and not self.keepFnHere: # if special footnote landing zone in effect and not disabled for this footnote
+        self.grabFootnoteH()
       return
 
-    m = re.match(r"\.fn (\d+)( |$)", self.wb[self.cl]) # First try numeric footnote
+    m = re.match(r"\.fn (\d+)( |$)(lz=here|hlz=here)?", self.wb[self.cl]) # First try numeric footnote
     if m: # footnote start
       fnname = m.group(1)
+      self.keepFnHere = True if (m.group(3)) else False # test for lz=here and remember for .fn- processing
     else:
-      m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)", self.wb[self.cl]) # then named
+      m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)(lz=here|hlz=here)?", self.wb[self.cl]) # then named
       if m:
         fnname = m.group(1)
+        self.keepFnHere = True if (m.group(3)) else False # test for lz=here and remember for .fn- processing
       else:
         fnname = "<<Invalid footnote name; see messages>>"
+    if self.keepFnHere and not self.footnoteLzH:
+      if m.group(3).startswith("hlz"):
+        self.warn(".fn specifies hlz=here but landing zones not in effect for HTML output:{}".format(self.wb[self.cl]))
+      elif m.group(3).startswith("lz") and not self.footnoteLzT and not self.footnoteLzH:
+        self.warn(".fn specifies lz=here but no landing zones are in effect:{}".format(self.wb[self.cl]))
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     if self.pindent: # indented paragraphs
@@ -6639,6 +6833,8 @@ class Pph(Book):
       self.css.addcss("[1431] div.footnote>:first-child { margin-top:1em; }")
       self.css.addcss("[1432] div.footnote p {{ text-indent:1em;margin-top:{0}em;margin-bottom:{1}em; }}".format(s2,s2))
       self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
+      if self.footnoteLzH: # if special footnote landing zone processing in effect
+        self.footnoteStart = self.cl # remember where this footnote started
       self.cl += 1
       # self.wb[self.cl] = "<a href='#r{0}'>[{0}]</a> {1}".format(fnname, self.wb[self.cl])
       self.wb[self.cl] = "<a href='#r{0}'>{0}</a>. {1}".format(fnname, self.wb[self.cl])
@@ -6662,9 +6858,22 @@ class Pph(Book):
         self.wb[self.cl] = "<div class='footnote' id='f{}' style='{}'>".format(fnname, hcss)
       else:
         self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
+      if self.footnoteLzH: # if special footnote landing zone processing in effect
+        self.footnoteStart = self.cl # remember where this footnote started
       s = "<span class='label'><a href='#r{0}'>{0}</a>.&nbsp;&nbsp;</span>".format(fnname)
       self.cl += 1
       self.wb[self.cl] = s + self.wb[self.cl]
+
+  # grab a complete footnote out of self.wb and save it for later
+  def grabFootnoteH(self):
+    t = [] # buffer for the footnote label and text
+    i = self.footnoteStart
+    while i < self.cl:
+      t.append(self.wb[i]) # grab a line then delete it
+      del self.wb[i]
+      self.cl -= 1
+    self.fnlist.append(t) # when done, append complete list into fnlist for later use
+    #self.cl = i
 
 
   # tables .ta r:5 l:20 r:5 or .ta rlr
@@ -6691,7 +6900,7 @@ class Pph(Book):
         if len(u) != ncols:
             self.fatal("table has wrong number of columns:\n{}".format(self.wb[j]))
         t = re.sub(r"<.*?>", "", u[c].strip())  # adjust column width for inline tags
-        maxw = max(maxw, len(t))
+        maxw = max(maxw, self.truelen(t))
         j += 1
       return maxw
 
@@ -7270,6 +7479,7 @@ class Pph(Book):
 
   def process(self):
 
+    self.keepFnHere = False
     self.cl = 0
     while self.cl < len(self.wb):
       if "a" in self.debug:
@@ -7297,6 +7507,9 @@ class Pph(Book):
         continue
 
       self.doPara() # it's a paragraph to wrap
+
+    if len(self.fnlist):  # any saved footnotes that didn't have a .fm to generate them?
+      self.warn("Footnotes encountered after last \".fm lz=h\" have not been generated. Missing a .fm somewhere?")
 
   def makeHTML(self):
     self.doHeader()
@@ -7363,15 +7576,18 @@ def main():
     ppt = Ppt(args, "l")
     ppt.run()
 
+
   # UTF-8 only
   if 'u' in args.output_format:
     ppt = Ppt(args, "U")  # if PPer explicitly asked for utf-8 always create it, even if input is encoded in Latin-1 or ASCII
     ppt.run()
 
+
   # Latin-1 only
   if 'l' in args.output_format:
    ppt = Ppt(args, "l")
    ppt.run()
+
 
   if 'h' in args.output_format:
     print("creating HTML version")
