@@ -22,7 +22,8 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.48bLZ2He4"    # 12-Mar-2015     Detect Hebrew language strings and properly calculate their length.
+VERSION="3.48bLZ2He5"    # 12-Mar-2015     Detect Hebrew language strings and properly calculate their length.
+# + strip leading/trailing blanks from .hn text so it centers, left-aligns, or right-aligns properly in text output (like it does in HTML)
 
 
 
@@ -1660,10 +1661,6 @@ class Book(object):
   # Calculate "true" length of a string, accounting for <lang> markup and combining or non-spacing characters in Hebrew
   def truelen(self,s):
     l = len(s) # get simplistic length
-    #m = re.search(r"<lang=he>(.*?)</lang>", s) # Any Hebrew?
-    #while m:
-    #  l -= 16 # subtract length of <lang=he> and </lang>
-    #  hs = m.group(1) # get the Hebrew string
     for c in s: # examine each character
       cc = ord(c)
       if cc > 767: # No non-spacing characters < \u0300 (768)
@@ -1672,12 +1669,6 @@ class Book(object):
         name = unicodedata.name(c)
         if cat == "Cf" or (cat == "Mn" and bidi == "NSM"): # Control character, or Modifier Non-Spacing-Mark?
           l -= 1 # if so, it doesn't take any space
-    #s = re.sub(re.escape(m.group(0)), "", s, 1) # remove the Hebrew and markup that we found
-    #m = re.search(r"<lang=he>(.*?)</lang>", s) # Repeat the search for Hebrew?
-    #s2 = s
-    #s2 = re.sub(r"<lang=[^>]*>", "", s2) # remove all the language tags
-    #s2 = re.sub(r"</lang>", "", s2)
-    #l -= (len(s) - len(s2)) # subtract out the length of everything we just removed
     return l
 
 
@@ -2265,7 +2256,7 @@ class Book(object):
       self.fatal("Terminating due to the .sr issues listed previously.")
 
     if self.cvgfilter and filter_sr: # if user wants some .sr directives applied in filtering mode do them now
-      self.dprint("processing .sr for filtering")
+      #self.dprint("processing .sr for filtering")
       for i in range(len(self.srw)):
         if ('f' in self.srw[i]):     # if this one applies to filtering mode
           self.process_SR(self.wb, i)
@@ -2842,10 +2833,6 @@ class Ppt(Book):
             snip_at = s.index(" ") # Plan B: snip at any blank, even if line is wide
           except:
             snip_at = len(s) # Plan C: leave the line wide
-          #if len(t) == 0:
-          #  self.warn("wide line: {}".format(hold + s)) # include any "hold" characters if wrapping first line
-          #else:
-          #  self.warn("wide line: {}".format(s)) # else just include the current line.
         t.append(s[:snip_at])
         if snip_at < true_len_s:
           s = s[snip_at+1:]
@@ -2884,12 +2871,6 @@ class Ppt(Book):
         t = ta[i]
         longest_short = ts[i]
         besti = i
-
-    # z = self.meanstdv(t[0:-1])
-    # lld = self.line_len_diff(t[0:-1])
-    # zs = "b:{0:d}  t:{1:d}  std dev:{2:.1f}  max diff:{3:d}".format(besti, z[0],z[2],bestdiff)
-    # t.append(zs)
-
     return t
 
   # -------------------------------------------------------------------------------------
@@ -3130,7 +3111,7 @@ class Ppt(Book):
     #
     # Handle any .sr for text that have the b option specified
     if self.filter_b:
-      self.dprint("Processing .sr for text with b specified")
+      #self.dprint("Processing .sr for text with b specified")
       for i in range(len(self.srw)):
         if ((('t' in self.srw[i]) or (self.renc in self.srw[i])) and
             ('b' in self.srw[i])): # if this one is for pre-processing and applies to the text form we're generating
@@ -3253,7 +3234,7 @@ class Ppt(Book):
     # process saved search/replace strings for text, if any
     # but only if our output format matches something in the saved "which" value
 
-    self.dprint("processing .sr for text without b specified")
+    #self.dprint("processing .sr for text without b specified")
     for i in range(len(self.srw)):
       if ((('t' in self.srw[i]) or (self.renc in self.srw[i])) and not
           ('b' in self.srw[i])): # if this one is for post-processing and applies to the text form we're generating
@@ -3291,7 +3272,7 @@ class Ppt(Book):
     f1 = codecs.open(fn, "w", "utf-8")
     for index,t in enumerate(self.eb):
       s = t.rstrip()
-      if len(s) > self.linelimitwarning:
+      if self.truelen(s) > self.linelimitwarning:
         longcount += 1
         if longcount == 4:
           self.warn("additional long lines not reported")
@@ -3444,6 +3425,7 @@ class Ppt(Book):
         self.cl += 1                                           # and ignore it for handling this .h"n"
     h2a = self.wb[self.cl+1].split('|')
     for line in h2a:
+      line = line.strip()
       #line = re.sub(r"</?lang[^>]*>", "", line) # remove any language tagging
       len1 = len(line)     # apparent length of line
       len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
@@ -3557,7 +3539,6 @@ class Ppt(Book):
               if re.search(ss,s): # if caption line has a $"n" marker in it, perform substitution
                 if self.wb[self.cl].startswith(".ca-"):
                   self.crash_w_context("End of caption before end of model(1).", i-1)
-                #self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
                 s = re.sub(ss,self.wb[self.cl], s)
                 k += 1
                 self.cl += 1
@@ -3589,7 +3570,6 @@ class Ppt(Book):
           # single line
           if ia["cm"] != "": # if caption model specified
             self.warn("Caption model specified for a single-line caption: {}".format(self.wb[self.cl-1]))
-          #self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
           caption = self.wb[self.cl][4:]
           s = "[{}: {}]".format(self.nregs["Illustration"],caption)
           t = self.wrap(s, 0, self.regLL, 0)
@@ -3699,7 +3679,6 @@ class Ppt(Book):
 
       xt = self.regLL - self.regIN # width of centered line
       xs = "{:^" + str(xt) + "}"
-      #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
       line = self.wb[i].strip()
       len1 = len(line)     # apparent length of line
       len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
@@ -3771,8 +3750,6 @@ class Ppt(Book):
           len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
           padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
           pad = " " * (padlen//2)
-          #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
-          #self.eb.append(" " * self.regIN + pad + xs.format(self.wb[i].strip()))
           self.eb.append(" " * self.regIN + pad + xs.format(line))
           i += 1
           count -= 1
@@ -3795,9 +3772,8 @@ class Ppt(Book):
           len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
           padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
           pad = " " * padlen
-          #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
-          #self.eb.append(" " * self.regIN + xs.format(self.wb[i].strip())) # may not be quite correct if combining characters
-          self.eb.append(" " * self.regIN + pad + xs.format(line)) # may not be quite correct if combining characters
+          self.eb.append(" " * self.regIN + pad + xs.format(line)) # should be OK with combining characters now
+          # but it may look off with proportional fonts, esp. if the rj text is Hebrew or another rtl language
           i += 1
           count -= 1
         continue
@@ -3859,8 +3835,7 @@ class Ppt(Book):
           len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
           padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
           pad = " " * (padlen//2)
-          #t.append(" " * lmar + xs.format(self.wb[i].strip())) # won't be quite correct if any combining characters
-          t.append(" " * lmar + pad + xs.format(line)) # won't be quite correct if any combining characters
+          t.append(" " * lmar + pad + xs.format(line)) # should be OK with combining characters now
           i += 1
           count -= 1
         continue
@@ -3878,14 +3853,12 @@ class Ppt(Book):
               i += 1
               continue
           xs = "{:>" + str(regBW) + "}"
-          #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
           line = self.wb[i].strip()
           len1 = len(line)     # apparent length of line
           len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
           padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
           pad = " " * padlen
-          #t.append(" " * lmar + xs.format(self.wb[i].strip())) # may not be quite right if any combining characters
-          t.append(" " * lmar + xs.format(line))
+          t.append(" " * lmar + pad + xs.format(line))
           i += 1
           count -= 1
         continue
@@ -3896,10 +3869,8 @@ class Ppt(Book):
           bnInBlock = True
           t.append(self.wb[i])
         else:
-          #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
           t.append(" " * self.regIN + " " * lmar + self.wb[i].rstrip())
       else:
-        #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
         t.append(" " * self.regIN + " " * lmar + self.wb[i].rstrip())
       i += 1
     self.cl = i + 1 # skip the closing .nf-
@@ -3948,8 +3919,6 @@ class Ppt(Book):
           len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
           padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
           pad = " " * (padlen//2)
-          #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
-          #self.eb.append(" " * fixed_indent + xs.format(self.wb[i].strip())) # may not be quite right if any combining characters
           self.eb.append(" " * fixed_indent + pad + xs.format(line))
           i += 1
           count -= 1
@@ -3972,15 +3941,12 @@ class Ppt(Book):
           len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
           padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
           pad = " " * padlen
-          #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
-          #self.eb.append(" " * fixed_indent + xs.format(self.wb[i].strip())) # may not be quite right if any combining characters
           self.eb.append(" " * fixed_indent + pad + xs.format(line))
           i += 1
           count -= 1
         continue
 
-      #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
-      self.eb.append(" " * fixed_indent + self.wb[i].strip()) # may not be quite right if any combining characters
+      self.eb.append(" " * fixed_indent + self.wb[i].strip())
       i += 1
     self.cl = i + 1 # skip the closing .nf-
     self.eb.append(".RS 1")
@@ -4180,7 +4146,7 @@ class Ppt(Book):
           cwidth = getMaxWidth(i,ncols) # width
           s += "{}t:{} ".format(t0[i],cwidth)
         self.wb[self.cl] = s.strip()  # replace with widths specified
-    self.dprint("doTable (text), specified or calculated column widths: {}".format(self.wb[self.cl]))    
+    #self.dprint("doTable (text), specified or calculated column widths: {}".format(self.wb[self.cl]))
 
     # if vertical alignment not specified, default to "top" now
     # .ta l:6 r:22 => .ta lt:6 rt:22
@@ -4208,7 +4174,7 @@ class Ppt(Book):
       totalwidth += int(u[1]) + 1 # added space between columns
       j += 1
     totalwidth -= 1
-    self.dprint("doTable (text), total table width not including indent: {}".format(totalwidth))
+    #self.dprint("doTable (text), total table width not including indent: {}".format(totalwidth))
 
     # margin to center table in 72 character text field
     if totalwidth >= 72:
@@ -4218,7 +4184,7 @@ class Ppt(Book):
                   "between columns) of {} is greater than 72 characters:\n           {}".format(totalwidth+1, self.wb[self.cl]))
     else:
       tindent = (72 - totalwidth) // 2
-    self.dprint("doTable (text), table indent: {}".format(tindent))
+    #self.dprint("doTable (text), table indent: {}".format(tindent))
 
     self.eb.append(".RS 1")  # request blank line above table
 
@@ -4237,8 +4203,6 @@ class Ppt(Book):
 
       t = self.wb[k1].split("|")
       for i in range(0,ncols):
-        #t[i] = re.sub(r"</?lang[^>]*>", "", t[i]) # remove any language tagging
-        #k2 = textwrap.wrap(t[i].strip(), widths[i]) # won't wrap quite right if any combining characters
         k2 = self.wrap_para(t[i].strip(), 0, widths[i], 0) # should handle combining characters properly
         if len(k2) > 1:
           rowspace = True
@@ -4262,8 +4226,6 @@ class Ppt(Book):
           self.cl += 1
           continue
 
-      #self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
-
       # centered line
       # a line in source that has no vertical pipe
       if not "|" in self.wb[self.cl]:
@@ -4272,7 +4234,6 @@ class Ppt(Book):
         len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
         padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
         pad = " " * (padlen//2)
-        #self.eb.append(pad + "{:^72}".format(self.wb[self.cl]))
         self.eb.append(pad + "{:^72}".format(line))
         self.cl += 1
         continue
@@ -4284,7 +4245,6 @@ class Ppt(Book):
       w = [None] * ncols  # a list of lists for this row
       heights = [None] * ncols  # lines in each cell
       for i in range(0,ncols):
-        #w[i] = textwrap.wrap(t[i].strip(), widths[i]) # won't wrap quite right if any combining characters
         w[i] = self.wrap_para(t[i].strip(), 0, widths[i], 0) # should handle combining characters properly
         for j,line in enumerate(w[i]):
           w[i][j] = line.strip()  # marginal whitespace
@@ -4314,27 +4274,20 @@ class Ppt(Book):
           s = " " * tindent  # center the table
         for col in range(0,ncols):
           fmt = "{" + ":{}{}".format(haligns[col],widths[col]) + "}"
-          line = w[col][g] 
+          line = w[col][g]
           len1 = len(line)     # apparent length of line
           len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-          #padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
-          #if haligns[col] == "^":
-          #  pad = " " * (padlen//2)
-          #elif haligns[col] == ">":
-          #  pad = " " * padlen
-          #else:
-          #  pad = ""
           if len1 == len2:
             s += fmt.format(line)
           else: # have some non-spacing characters to account for
             if len2 == widths[col]:
               s += line
-            else: # must be less than width
+            else: # must be less than width (because we wrapped it to <= width)
               if haligns[col] == "^":
                 pad = " " * ((widths[col] - len2)//2) # use 1/2 the difference when centering
                 rem = (widths[col] - len2)%2 # but need to know if there's a remainder.
                 pad2 = " " if (rem) else ""
-                s += pad + line + pad # put extra space, if any, after the string
+                s += pad + line + pad + pad2 # put extra space, if any, after the string
               elif haligns[col] == ">":
                 pad = " " * (widths[col] - len2) # else if right-aligned use the full difference before
                 s += pad + line
@@ -4380,13 +4333,11 @@ class Ppt(Book):
       t1 = self.regLL - self.regIN
       xs = "{:>" + str(t1) + "}"
       while nlines > 0:
-        #self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
         line = self.wb[self.cl].strip()
         len1 = len(line)     # apparent length of line
         len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
         padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
         pad = " " * padlen
-        #self.eb.append(" "*self.regIN + xs.format(self.wb[self.cl].strip()))
         self.eb.append(" "*self.regIN + pad + xs.format(line))
         self.cl += 1
         nlines -= 1
@@ -5345,7 +5296,7 @@ class Pph(Book):
     #
     # Handle any .sr for HTML that have the b option specified
     if self.filter_b:
-      self.dprint("processing .sr for HTML with b specified")
+      #self.dprint("processing .sr for HTML with b specified")
       for i in range(len(self.srw)):
         if ('h' in self.srw[i]) and ('b' in self.srw[i]): # if this one is for pre-processing and applies to HTML
           self.process_SR(self.wb, i)
@@ -5555,7 +5506,7 @@ class Pph(Book):
   # process saved search/replace strings, if any
   # but only if our output format matches something in the saved "which" value
   def doHTMLSr(self):
-    self.dprint("processing .sr for HTML without b specified")
+    #self.dprint("processing .sr for HTML without b specified")
     for i in range(len(self.srw)):
       if ('h' in self.srw[i]) and not ('b' in self.srw[i]): # if this one applies to HTML and was not already handled
         self.process_SR(self.wb, i)
