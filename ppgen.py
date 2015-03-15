@@ -22,8 +22,8 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.48cDC"    # 15-Mar-2015  (Beware the Ides of March)
-# Fixup of the nfDropCaps experimental code to remove the .nf .di remnants
+VERSION="3.48d"    # 15-Mar-2015  (Beware the Ides of March)
+# Fixup of the nfDropCaps experimental code to remove the .nf .di remnants and merge into development branch
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
