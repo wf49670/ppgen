@@ -22,11 +22,11 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.48bLZ2He5"    # 12-Mar-2015     Detect Hebrew language strings and properly calculate their length.
-# + strip leading/trailing blanks from .hn text so it centers, left-aligns, or right-aligns properly in text output (like it does in HTML)
-
-
-
+VERSION="3.48c"    # 15-Mar-2015  (Beware the Ides of March)
+# Recognize non-spacing (combining) characters such as occur in Hebrew and calculate actual length of string properly
+# Strip leading/trailing blanks from .hn text so it centers, left-aligns, or right-aligns properly in text output (like it does in HTML)
+# Incorporate experimental Footnote handling
+# Incorporate experimental .dc handling within .nf b, l, r
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
