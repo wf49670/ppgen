@@ -22,7 +22,8 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.47aDC"  # 23-Feb-2015    Initial implementation of drop cap letters (not images) for .nf blocks
+VERSION="3.48cDC"    # 15-Mar-2015  (Beware the Ides of March)
+# Fixup of the nfDropCaps experimental code to remove the .nf .di remnants
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -72,6 +73,12 @@ class Book(object):
   wb = [] # working buffer
   eb = [] # emit buffer
   bb = [] # GG .bin file buffer
+  gk_user = [] # PPer-supplied Greek characters
+  diacritics_user = [] # PPer-supplied diacritic characters
+  srw = []    # .sr "which" array
+  srs = []    # .sr "search" array
+  srr = []    # .sr "replace" array
+  fnlist = [] # buffer for saved footnotes
   regLL = 72 # line length
   regIN = 0 # indent
   regTI = 0 # temporary indent
@@ -200,8 +207,6 @@ class Book(object):
      '\uFF5C':'|', '\uFF5D':'}', '\uFF5E':'~',
      '\u2042':'***'
     }
-
-  gk_user = []                          # PPer provided Greek transliterations will go here
 
   gk = [                              # builtin Greek transliterations
      ('ï/', 'i/\+', 'ï/'),            # i/u/y alternatives using dieresis
@@ -566,8 +571,6 @@ class Book(object):
      ('C',        '\u03E0', 'C (Sampi)'),
      ('c',        '\u03E1', 'c (sampi)'),
     ]
-
-  diacritics_user = []  # PPer-supplied diacritic markup will go here
 
   diacritics = [
     ('[=A]',    '\u0100', '\\u0100'), # LATIN CAPITAL LETTER A WITH MACRON    (Latin Extended-A)
@@ -1364,6 +1367,20 @@ class Book(object):
   def __init__(self, args, renc):
     del self.wb[:]
     del self.eb[:]
+    del self.bb[:]
+    del self.fnlist[:]
+    del self.gk_user[:]
+    del self.diacritics_user[:]
+    del self.srw[:]
+    del self.srs[:]
+    del self.srr[:]
+    del self.instack[:]
+    del self.llstack[:]
+    del self.psstack[:]
+    del self.nfstack[:]
+    del self.warnings[:]
+    del self.mal[:]
+    del self.mau[:]
     self.renc = renc.lower() # requested output encoding (t, u, or h)
     self.forceutf8 = (True) if (renc == "U") else (False)
     self.debug = args.debug
@@ -1372,15 +1389,17 @@ class Book(object):
     self.log = args.log
     self.listcvg = args.listcvg
     self.cvgfilter = args.filter
-    self.wrapper = textwrap.TextWrapper()
-    self.wrapper.break_long_words = False
-    self.wrapper.break_on_hyphens = False
+    #self.wrapper = textwrap.TextWrapper()
+    #self.wrapper.break_long_words = False
+    #self.wrapper.break_on_hyphens = False
     self.nregs["psi"] = "0" # default above/below paragraph spacing for indented text
+    self.nregs["pti"] = "1em" # default paragraph indentation for indented text
     self.nregs["psb"] = "1.0em" # default above/below paragraph spacing for block text
     self.nregs["pnc"] = "silver" # use to define page number color in HTML
     self.nregs["lang"] = "en" # base language for the book (used in HTML header)
     self.nregs["Footnote"] = "Footnote" # English word for Footnote for text files
     self.nregs["Illustration"] = "Illustration" # English word for Illustration for text files
+    self.nregs["Sidenote"] = "Sidenote" # English word for Sidenote for text files
     self.nregs["dcs"] = "250%" # drop cap font size
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string
@@ -1417,12 +1436,13 @@ class Book(object):
     t = ""
     for c in s: # for every character on the line provided
       if c in self.d: # is it in the list of converting characters?
-        t += self.d[c] # yes, replace with converted Latin-1 character
+        c1 = self.d[c] # yes, replace with converted Latin-1 character
       else:
-        if ord(c) < 0x100:
-          t += c # no conversion, transfer character as is
-        else:
-          t += "*" # use an asterisk if not plain text
+        c1 = c
+      if len(c1) > 1 or ord(c1) < 0x80:
+        t += c1 # no conversion, transfer character as is
+      else:
+        t += "*" # use an asterisk if not plain text
     return t
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1604,20 +1624,51 @@ class Book(object):
       self.doNr()
     elif ".dv" == dotcmd: # user-specifice <div> for HTML
       self.doDiv()
+    elif ".sn" == dotcmd: # sidenote
+      self.doSidenote()
     else:
       self.crash_w_context("unhandled dot command: {}".format(self.wb[self.cl]), self.cl)
 
   def crash_w_context(self, msg, i, r=5):
-    print("{}\ncontext:".format(msg))
+    sys.stderr.write("\nERROR: {}\ncontext:\n".format(self.umap(msg)))
     startline = max(0,i-r)
     endline = min(len(self.wb),i+r)
+    sys.stderr.write(" -----\n")
     for j in range(startline,endline):
       s = self.umap(self.wb[j])
       if j == i:
-        print(">> {}".format(s))
+        sys.stderr.write(">> {}\n".format(s))
       else:
-        print("   {}".format(s))
-    self.fatal("exiting")
+        sys.stderr.write("   {}\n".format(s))
+    sys.stderr.write(" -----\n")
+    exit(1)
+
+  def warn_w_context(self, msg, i, r=5):
+    sys.stderr.write("\n**warning: {}\ncontext:\n".format(self.umap(msg)))
+    startline = max(0,i-r)
+    endline = min(len(self.wb),i+r)
+    sys.stderr.write(" -----\n")
+    for j in range(startline,endline):
+      s = self.umap(self.wb[j])
+      if j == i:
+        sys.stderr.write(">> {}\n".format(s))
+      else:
+        sys.stderr.write("   {}\n".format(s))
+    sys.stderr.write(" -----\n")
+
+  # Calculate "true" length of a string, accounting for <lang> markup and combining or non-spacing characters in Hebrew
+  def truelen(self,s):
+    l = len(s) # get simplistic length
+    for c in s: # examine each character
+      cc = ord(c)
+      if cc > 767: # No non-spacing characters < \u0300 (768)
+        cat = unicodedata.category(c)
+        bidi = unicodedata.bidirectional(c)
+        name = unicodedata.name(c)
+        if cat == "Cf" or (cat == "Mn" and bidi == "NSM"): # Control character, or Modifier Non-Spacing-Mark?
+          l -= 1 # if so, it doesn't take any space
+    return l
+
 
   # extract content of an optionally quoted string
   # used in .nr
@@ -1631,39 +1682,112 @@ class Book(object):
     else:
       return s
 
+  #
+  # process saved .sr requests
+  #
+  def process_SR(self, buffer, srnum):
+    k = 0
+    l = 0
+    ll = 0
+    if "\\n" in self.srs[srnum]: # did user use a regex containing \n ? If so, process all lines in one blob
+      text = '\n'.join(buffer) # form lines into a blob
+      try:
+        m = re.search(self.srs[srnum], text) # search for current search string
+      except:
+        if 'd' in self.debug:
+          traceback.print_exc()
+          self.fatal("Above error occurred searching for {} in complete text blob".format(self.srs[srnum]))
+        else:
+          self.fatal("Error occurred searching for {} in complete text blob".format(self.srs[srnum]))
+      if m:                                             # if found
+        if 'r' in self.debug:
+          print("{} found in complete text blob".format(self.srs[srnum]))
+        try:
+          text, l = re.subn(self.srs[srnum], self.srr[srnum], text) # replace all occurrences in the blob
+          ll += l
+        except:
+          if 'd' in self.debug:
+            traceback.print_exc()
+            self.fatal("Above error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[srnum], self.srr[srnum]))
+          else:
+            self.fatal("Error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[srnum], self.srr[srnum]))
+        if 'r' in self.debug:
+          print("Replaced with {}".format(self.srr[srnum]))
+      print("Search string {}:{} matched in complete text and replaced {} times.".format(srnum+1, self.srs[srnum], ll))
+      buffer = text.splitlines() # break blob back into individual lines
+      text = ""
+
+    else:
+      quit = False
+      j = 0
+      while j < len(buffer) and not quit:
+        try:
+          m = re.search(self.srs[srnum], buffer[j]) # search for current search string
+        except:
+          if 'd' in self.debug:
+            traceback.print_exc()
+            self.fatal("Above error occurred searching for\n  {}\n in: {}".format(self.srs[srnum], buffer[j]))
+          else:
+            self.fatal("Error occurred searching for\n  {}\n in: {}".format(self.srs[srnum], buffer[j]))
+        if m:                                   # if found
+          k += 1
+          if 'r' in self.debug or 'p' in self.srw[srnum]: # if debugging, or if prompt requested
+            print("Search string {}:{} found in:\n    {}".format(srnum+1, self.srs[srnum], buffer[j]))
+          try:
+            if 'p' in self.srw[srnum]:                                           # prompting requested?
+              l = 0
+              temp = re.sub(self.srs[srnum], self.srr[srnum], buffer[j])
+              print("replacement will be:\n    {}".format(temp))
+              try:
+                reply = input("replace? (y/n/q/r)")
+              except EOFError:
+                print("EOF received on prompt; assuming q")
+                reply = "q"
+              good_reply = False
+              while not good_reply:
+                if reply == "y":                                               # if user replied y (yes)
+                  buffer[j], l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
+                  good_reply = True
+                elif reply == "r":                                             # else if user replied r (run)
+                  buffer[j], l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
+                  self.srw[srnum] = self.srw[srnum].replace("p","")                      # and stop prompting
+                  good_reply = True
+                elif reply == "n":                                             # else if user replied n (no)
+                  print("skipping that one")
+                  good_reply = True
+                elif reply == "q":                                             # else if user replied q (quit)
+                  print("exiting at user request")
+                  good_reply = True
+                  quit = True
+            else:                                                            # not prompting
+              buffer[j], l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
+            ll += l
+          except:
+            if 'd' in self.debug:
+              traceback.print_exc()
+              self.fatal("Above error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[srnum], self.srr[srnum], buffer[j]))
+            else:
+              self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[srnum], self.srr[srnum], buffer[j]))
+          if 'r' in self.debug:
+            print("Replaced: {}".format(buffer[j]))
+        j += 1
+      if quit:
+        exit(1)
+      print("Search string {}:{} matched in {} lines, replaced {} times.".format(srnum+1, self.srs[srnum], k, ll))
+
 
   # .nr named register
   # we are here if the line starts with .nr
   def doNr(self):
     m = re.match(r"\.nr (.+?) (.+)", self.wb[self.cl])
     if not m:
-      self.crash_w_context("malformed .nr command: {}".format(self.wb[self.cl]), self.cl)
+      self.crash_w_context("malformed .nr directive", self.cl)
     else:
       registerName = m.group(1)
       registerValue = m.group(2)
-      known_register = False
-      if registerName == "psi": # paragraph spacing, indented text
-        self.nregs["psi"] = m.group(2)
-        known_register = True
-      if registerName == "psb": # paragraph spacing, block text
-        self.nregs["psb"] = m.group(2)
-        known_register = True
-      if registerName == "pnc": # page number color
-        self.nregs["pnc"] = m.group(2)
-        known_register = True
-      if registerName == "lang": # base language
-        self.nregs["lang"] = m.group(2)
-        known_register = True
-      if registerName == "Footnote": # foreign language translation for "Footnote"
-        self.nregs["Footnote"] = self.deQuote(m.group(2), self.cl)
-        known_register = True
-      if registerName == "Illustration": # foreign language translation for "Illustration"
-        self.nregs["Illustration"] = self.deQuote(m.group(2), self.cl)
-        known_register = True
-      if registerName == "dcs": # drop cap font size
-        self.nregs["dcs"] = m.group(2)
-        known_register = True
-      if not known_register:
+      if registerName in self.nregs:
+        self.nregs[registerName] = self.deQuote(m.group(2), self.cl)
+      else:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
       del(self.wb[self.cl])
 
@@ -1733,30 +1857,70 @@ class Book(object):
       while text[-1] == "": # no trailing blank lines
         text.pop()
 
+      uncomment(text)  # remove comments and un-escape / characters
+
       # insert the filter lines at the front of self.wb
       self.wb[0:0] = text
+      del text[:]
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # Remove comments and un-escape any escaped / characters in the text (\/ becomes /)
+    #
+    def uncomment(buffer):
+      i = 0
+      while i < len(buffer):
+        if  re.match(r"\/\/", buffer[i]): # entire line is a comment
+          del buffer[i]
+          continue
+        if re.search(r"\/\/.*$", buffer[i]):
+          buffer[i] = re.sub(r"\/\/.*$", "", buffer[i])
+        #
+        # convert escaped / characters
+        #
+        buffer[i] = re.sub(r"\\/", "/", buffer[i])
+        buffer[i] = buffer[i].rstrip()
+        i += 1
 
     #
     # Begin Pre-process Common
     #
 
-    # if source file is UTF-8 and requested encoding is Latin-1, down-convert
-    if self.encoding == "utf_8" and self.renc == "l" and not self.cvgfilter:
-      for j,ch in enumerate(self.mau):
-        for i in range(len(self.wb)): # O=n^2
-          self.wb[i] = re.sub(ch, self.mal[j], self.wb[i])
-      # user-defined character mapping complete, now do default mapping to Latin-1
-      self.utoLat()
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # Remove comments in pre-processor
+    # Also un-escape any escaped / characters in the text (\/ becomes /)
+    #
+    uncomment(self.wb)
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # ignored text removed in preprocessor
+    i = 0
+    while i < len(self.wb):
+      # one line
+      if re.match(r"\.ig ",self.wb[i]): # single line
+        del self.wb[i]
+      elif ".ig" == self.wb[i]: # multi-line
+        while i < len(self.wb) and self.wb[i] != ".ig-":
+          del self.wb[i]
+        if i < len(self.wb):
+          del self.wb[i] # the ".ig-"
+        else:
+          self.fatal("unterminated .ig command")
+      else:
+        i += 1
 
     # .if conditionals (moved to preProcessCommon 28-Aug-2014)
     if not self.cvgfilter:
       text = []
       keep = True
-      for line in self.wb:
+      inIf = False
+      for i, line in enumerate(self.wb):
 
         m = re.match(r"\.if (\w)", line)  # start of conditional
         if m:
+          if inIf:
+            self.crash_w_context("Nested .if not supported", i)
+          inIf = True
+          ifloc = i
           keep = False
           keepType = m.group(1)
           if m.group(1) == 't' and self.renc in "lut":
@@ -1766,8 +1930,11 @@ class Book(object):
           continue
 
         if line == ".if-":
+          if not inIf:
+            self.crash_w_context(".if- has no matching .if", i)
           keep = True
           keepType = None
+          inIf = False
           continue
 
         if keep:
@@ -1782,8 +1949,10 @@ class Book(object):
               if m3:
                 self.warn(".sr command for text skipped by .if h: {}".format(self.umap(line)))
 
-    self.wb = text
-    text = []
+      if inIf: # unclosed .if?
+        self.crash_w_context("Unclosed .if directive", ifloc)
+      self.wb = text
+      text = []
 
     # load cvg filter file if specified
     if self.cvgfilter:
@@ -1792,7 +1961,6 @@ class Book(object):
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # process [Greek: ...] in UTF-8 output if requested to via .gk command
     i = 0
-    self.gk_user = []
     self.gk_requested = False
     gk_done = False
     self.gkpre = ""
@@ -1837,11 +2005,11 @@ class Book(object):
       text = re.sub(r"\[Greek: (.*?)]", gkrepl, text, flags=re.DOTALL)
 
       self.wb = text.splitlines()
+      text = ""
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # process diacritic markup in UTF-8 output if requested to via .cv command
     i = 0
-    self.diacritics_user = []
     self.dia_requested = False
     dia_done = False
     dia_blobbed = False
@@ -1963,6 +2131,7 @@ class Book(object):
     if self.dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
       if not dia_blobbed:
         text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
+        dia_blobbed = True
       if not diatest:
         if len(self.diacritics_user) > 0:
           for s in self.diacritics_user:
@@ -2005,7 +2174,8 @@ class Book(object):
             print("Replaced {} {} times.".format(s[0], count))
       if self.log:
         header_needed = True
-        text2 = text
+        text2 = []
+        text2.extend(text)
         m = re.search(r"\[([^*\]].{1,7}?)]", text2)
         while m:
           matched = m.group(0)
@@ -2022,20 +2192,81 @@ class Book(object):
           m = re.search(r"\[([^*\]].{1,7}?)]", text2)
         if header_needed:
           print("No unconverted diacritics seem to remain after conversion.")
-        text2 = []
+        del text2[:]
 
     if dia_blobbed:
       self.wb = text.splitlines()
+      text = ""
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # capture and remove search/replace directives
+    # .sr <which> /search/replace/
+    # which is a string containing some combination of ulthf (UTF-8, Latin-1, Text, HTML, filtering)
+    #   or b (before processing, rather than in postprocessing) or p (prompt whether to replace or not)
+    # search is  reg-ex search string
+    # replace is a reg-ex replace string
+    # / is any character not contained within either search or replace
+    #
+    # Values gathered during preprocessCommon and saved for use during post-processing
+    i = 0
+    filter_sr = False
+    self.filter_b = False
+    sr_error = False
+    while i < len(self.wb):
+      if self.wb[i].startswith(".sr"):
+        m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
+        if m:
+          if m.group(5) != "":           # if anything here then the user's expression was wrong, somehow
+            self.warn("Problem with .sr arguments: " +
+                      "1={} 2={} 3={} 4={} Unexpected 5={}\n             {}".format(
+                      m.group(1),m.group(2), m.group(3), m.group(4), m.group(5), self.wb[i]))
+            sr_error = True
+          if "f" in m.group(1):  # if request to do s/r during filtering
+            filter_sr = True     # remember the request
+            if ("u" in m.group(1) or "l" in m.group(1) or
+                "t" in m.group(1) or "h" in m.group(1) or "b" in m.group(1)):
+              self.warn(".sr f option can not be used with u, l, t, h, or b options:" +
+                        "\n             {}".format(self.wb[i]))
+              sr_error = True
+            if not self.cvgfilter:
+              self.warn(".sr f option can only be used with -f command line option:" +
+                        "\n             {}".format(self.wb[i]))
+              sr_error = True
+          if (("\\n" in m.group(3)) and
+              ("p" in m.group(1))): # Can't do prompting with \n in request
+            self.warn(".sr p option can not be used with \\n in search string:" +
+                      "\n             {}".format(self.wb[i]))
+            sr_error = True
+          if "b" in m.group(1):  # remember b option if specified on any .sr
+            self.filter_b = True
+          self.srw.append(m.group(1))
+          self.srs.append(m.group(3))
+          self.srr.append(m.group(4))
+
+          del self.wb[i]       # delete this record
+          continue
+        else:
+          self.crash_w_context("Problem parsing .sr arguments.", i)
+
+      i += 1
+
+    if sr_error: # if any .sr parsing problems noted
+      self.fatal("Terminating due to the .sr issues listed previously.")
+
+    if self.cvgfilter and filter_sr: # if user wants some .sr directives applied in filtering mode do them now
+      #self.dprint("processing .sr for filtering")
+      for i in range(len(self.srw)):
+        if ('f' in self.srw[i]):     # if this one applies to filtering mode
+          self.process_SR(self.wb, i)
+
 
     if gk_quit.lower().startswith("y") or dia_quit.lower().startswith("y") or self.cvgfilter:
-      self.cvgbailout()  # bail out after .cv/.gk processing if user requested early termination
+      self.cvgbailout()  # bail out after .cv/.gk or filter processing if user requested early termination
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # process character mappings
     # character mappings are from the UTF-8 representation to Latin-1
     i = 0
-    del self.mau[:]
-    del self.mal[:]
     self.mau.append("—")   # maps a dash in UTF-8 to "--" in Latin-1
     self.mal.append("--")
     while i < len(self.wb):
@@ -2071,36 +2302,14 @@ class Book(object):
 
       i += 1
 
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # process search/replace strings
-    # .sr <which> /search/replace/
-    # which is a string containing some combination of ulth (UTF-8, Latin-1, Text, HTML)
-    # search is  reg-ex search string
-    # replace is a reg-ex replace string
-    # / is any character not contained within either search or replace
-    #
-    # Values gathered during preprocessCommon and saved for use during post-processing
-    i = 0
-    self.srw = []    # "which" array
-    self.srs = []    # "search" array
-    self.srr = []    # "replace" array
-    while i < len(self.wb):
-      if self.wb[i].startswith(".sr"):
-
-        m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
-        if m:
-          self.srw.append(m.group(1))
-          self.srs.append(m.group(3))
-          self.srr.append(m.group(4))
-          if m.group(5) != "":           # if anything here then the user's expression was wrong, somehow
-            self.crash_w_context("Problem with .sr arguments: 1={} 2={} 3={} 4={} Unexpected 5={}".format(m.group(1),m.group(2), m.group(3), m.group(4), m.group(5)), i)
-          del self.wb[i]
-          continue
-        else:
-          self.crash_w_context("Problem parsing .sr arguments.", i)
-
-      i += 1
-
+    # Now that we've gathered mappings, apply them to down-convert
+    # if source file is UTF-8 and requested encoding is Latin-1
+    if self.encoding == "utf_8" and self.renc == "l":
+      for j,ch in enumerate(self.mau):
+        for i in range(len(self.wb)): # O=n^2
+          self.wb[i] = re.sub(ch, self.mal[j], self.wb[i])
+      # user-defined character mapping complete, now do default mapping to Latin-1
+      self.utoLat()
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # long caption lines may end with a single backslash (25-Jun-2014)
@@ -2137,18 +2346,6 @@ class Book(object):
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # other comments
-    i = 0
-    while i < len(self.wb):
-      if  re.match(r"\/\/", self.wb[i]): # entire line is a comment
-        del self.wb[i]
-        continue
-      if re.search(r"\/\/.*$", self.wb[i]):
-        self.wb[i] = re.sub(r"\/\/.*$", "", self.wb[i])
-        self.wb[i] = self.wb[i].rstrip()
-      i += 1
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # remaps of protected characters and escapes
     for i, line in enumerate(self.wb):
       # dots not part of dot directive
@@ -2165,6 +2362,7 @@ class Book(object):
       self.wb[i] = self.wb[i].replace(r"\>", "⑳")
       self.wb[i] = self.wb[i].replace(r"\:", "⑥")
       self.wb[i] = self.wb[i].replace(r"\-", "⑨")
+      self.wb[i] = self.wb[i].replace(r"\#", "⓪")
       # spacing
       self.wb[i] = self.wb[i].replace(r'\ ', "ⓢ") # non-breaking space
       self.wb[i] = self.wb[i].replace(r'\_', "ⓢ") # alternate non-breaking space
@@ -2306,7 +2504,7 @@ class Book(object):
           self.wb[i] = ".nf c"
           self.wb.insert(i+nlines+1, ".nf-")
         else:
-          self.fatal("malformed .ce directive: {}".format(self.wb[i]))
+          self.crash_w_context("malformed .ce directive", i)
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2333,22 +2531,6 @@ class Book(object):
           while nBlankLines > 0:
             self.wb.insert(i, "")
             nBlankLines -= 1
-      i += 1
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # ignored text removed in preprocessor
-    i = 0
-    while i < len(self.wb):
-      # one line
-      if re.match(r"\.ig ",self.wb[i]): # single line
-        del self.wb[i]
-      if ".ig" == self.wb[i]: # multi-line
-        while i < len(self.wb) and self.wb[i] != ".ig-":
-          del self.wb[i]
-        if i < len(self.wb):
-          del self.wb[i] # the ".ig-"
-        else:
-          self.fatal("unterminated .ig command")
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2389,40 +2571,49 @@ class Book(object):
     # .bn (GG-compatible .bin file maintenance)
     i = 0
     self.bnPresent = False
+    image_type = ""
     while i < len(self.wb):
       if self.wb[i].startswith(".bn"):
-        m = re.search("(\w+?)\.png",self.wb[i])
+        m = re.search("(\w+?)\.(png|jpg|jpeg)",self.wb[i])
         if m:
           self.bnPresent = True
           self.wb[i] = "⑱{}⑱".format(m.group(1))
+          temp = ("png" if m.group(2) == "png" else "jpg")
+          if image_type:
+            if image_type != temp:
+              self.warn("Project contains both png and jpg proofing images.\n" +
+                        "     Please check to ensure no high-res illustrations are missing;\n" +
+                        "     if any are missing please contact the PM or db-req for assistance.")
+          else:
+            image_type = temp
         else:
-          self.crash_w_context("malformed .bn command",i)
+          self.crash_w_context("malformed .bn directive", i)
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # superscripts, subscripts
+    pat1 = re.compile("\^([^\{])")   # single-character superscript
+    pat2 = re.compile("\^\{(.*?)\}") # multi-character superscript
+    pat3 = re.compile("_\{(.*?)\}")  # subscript
     for i in range(len(self.wb)):
 
-      pat = re.compile("\^([^\{])")
-      m = re.search(pat, self.wb[i]) # single character superscript
+      m = re.search(pat1, self.wb[i]) # single character superscript
       while m:
         suptext = m.group(1)
-        self.wb[i] = re.sub(pat, "◸{}◹".format(suptext), self.wb[i], 1)
-        m = re.search(pat, self.wb[i])
+        self.wb[i] = re.sub(pat1, "◸{}◹".format(suptext), self.wb[i], 1)
+        m = re.search(pat1, self.wb[i])
 
-      pat = re.compile("\^\{(.*?)\}")
-      m = re.search(pat, self.wb[i])
+      m = re.search(pat2, self.wb[i])
       while m:
         suptext = m.group(1)
-        self.wb[i] = re.sub(pat, "◸{}◹".format(suptext), self.wb[i], 1)
-        m = re.search(pat, self.wb[i])
+        self.wb[i] = re.sub(pat2, "◸{}◹".format(suptext), self.wb[i], 1)
+        m = re.search(pat2, self.wb[i])
 
-      pat = re.compile("_\{(.*?)\}")
-      m = re.search(pat, self.wb[i])
+      m = re.search(pat3, self.wb[i])
       while m:
         subtext = m.group(1)
-        self.wb[i] = re.sub(pat, "◺{}◿".format(subtext), self.wb[i], 1)
-        m = re.search(pat, self.wb[i])
+        self.wb[i] = re.sub(pat3, "◺{}◿".format(subtext), self.wb[i], 1)
+        m = re.search(pat3, self.wb[i])
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # map small caps to <sc> or <SC>
@@ -2507,6 +2698,22 @@ class Book(object):
     if override:
       self.pnshow = False # disable visible page numbers
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # Examine footnote markers (.fm)
+    #   Look for .fm with lz=
+    #     If any found, set flags for later
+    self.footnoteLzT = False
+    self.footnoteLzH = False
+    for i, t in enumerate(self.wb):
+      if t.startswith(".fm"):
+        if "lz=" in t:
+          t, lz = self.get_id("lz", t)
+          if lz == "t" or lz == "th" or lz == "ht":
+           self.footnoteLzT = True
+          if lz == "h" or lz == "th" or lz == "ht":
+            self.footnoteLzH = True
+
+
 # ====== ppt ============================================================================
 
 # this class is used to generate UTF-8 or Latin-1 (ANSI) text
@@ -2515,9 +2722,6 @@ class Book(object):
 # a transliteration is provided by the post-processor
 
 class Ppt(Book):
-  eb = [] # emit buffer for generated text
-  wb = [] # working buffer
-  bb = [] # GG .bin buffer
 
   long_table_line_count = 0
 
@@ -2551,17 +2755,17 @@ class Ppt(Book):
     f1.close()
     exit(1)
 
-  def line_len_diff(self, x):
-    """ calculate max diff between longest and shortest line of data x[] """
-    longest_line_len = 0
-    shortest_line_len = 1000
-    for line in x:
-      tline = line
-      if self.bnPresent:  # remove .bn info if any before doing calculation
-        tline = re.sub("⑱.*?⑱","",tline)
-      longest_line_len = max(longest_line_len, len(tline))
-      shortest_line_len = min(shortest_line_len, len(tline))
-    return longest_line_len - shortest_line_len
+  #def line_len_diff(self, x):
+  #  """ calculate max diff between longest and shortest line of data x[] """
+  #  longest_line_len = 0
+  #  shortest_line_len = 1000
+  #  for line in x:
+  #    tline = line
+  #    if self.bnPresent:  # remove .bn info if any before doing calculation
+  #      tline = re.sub("⑱.*?⑱","",tline)
+  #    longest_line_len = max(longest_line_len, len(tline))
+  #    shortest_line_len = min(shortest_line_len, len(tline))
+  #  return longest_line_len - shortest_line_len
 
   def shortest_line_len(self, x):
     """ return length of shotest line in x[] """
@@ -2570,11 +2774,12 @@ class Ppt(Book):
       tline = line
       if self.bnPresent: # remove .bn info if any before doing calculation
         tline = re.sub("⑱.*?⑱","",tline)
-      shortest_line_len = min(shortest_line_len, len(tline))
+      shortest_line_len = min(shortest_line_len, self.truelen(tline))
     return shortest_line_len
 
   # wrap string into paragraph in t[]
   def wrap_para(self, s,  indent, ll, ti):
+    #s = re.sub(r"</?lang[^>]*>", "", s) # remove any language tagging (Note: will not correctly calculate wrapping width)
     # if ti < 0, strip off characters that will be in the hanging margin
     hold = ""
     if ti < 0:
@@ -2604,9 +2809,10 @@ class Ppt(Book):
 
     # at this point, s is ready to wrap
     mywidth = ll - indent
-    t =[]
+    t = []
     twidth = mywidth
-    while len(s) > twidth:
+    true_len_s = self.truelen(s)
+    while true_len_s > twidth:
       twidth2 = 0
       if self.bnPresent:
         m = re.match("(.*?)(⑱.*?⑱)(.*)",s)
@@ -2616,24 +2822,21 @@ class Ppt(Book):
             twidth += len(m.group(2)) # allow wider split to account for .bn info
             stemp = m.group(3)
             m = re.match("(.*?)(⑱.*?⑱)(.*)",stemp)
-      if len(s) > twidth:
+      if true_len_s > twidth:
         try:
-          snip_at = s.rindex(" ", 0, twidth) # Plan A: snip at a last blank within first twidth characters
+          snip_at = s.rindex(" ", 0, twidth+1) # Plan A: snip at a last blank within first twidth+1 characters
         except:
           # could not find a place to wrap
           try: # this one might fail, too, so catch exceptions
             snip_at = s.index(" ") # Plan B: snip at any blank, even if line is wide
           except:
             snip_at = len(s) # Plan C: leave the line wide
-          #if len(t) == 0:
-          #  self.warn("wide line: {}".format(hold + s)) # include any "hold" characters if wrapping first line
-          #else:
-          #  self.warn("wide line: {}".format(s)) # else just include the current line.
         t.append(s[:snip_at])
-        if snip_at < len(s):
+        if snip_at < true_len_s:
           s = s[snip_at+1:]
         else:
           s = ""
+        true_len_s = self.truelen(s)
         twidth = mywidth
     if len(t) == 0 or len(s) > 0: #ensure t has something in it, but don't add a zero length s (blank line) to t unless t is empty
       t.append(s)
@@ -2666,12 +2869,6 @@ class Ppt(Book):
         t = ta[i]
         longest_short = ts[i]
         besti = i
-
-    # z = self.meanstdv(t[0:-1])
-    # lld = self.line_len_diff(t[0:-1])
-    # zs = "b:{0:d}  t:{1:d}  std dev:{2:.1f}  max diff:{3:d}".format(besti, z[0],z[2],bestdiff)
-    # t.append(zs)
-
     return t
 
   # -------------------------------------------------------------------------------------
@@ -2682,10 +2879,13 @@ class Ppt(Book):
 
     ###should rewrite to exempt .li blocks from a bunch of this
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # <lang> tags ignored in text version.
+    # <lang> and <abbr> tags ignored in text version. But for now, keep lang as we may need it
+    # to calculate lengths correctly later.
     for i in range(len(self.wb)):
       self.wb[i] = re.sub(r"<lang[^>]*>","",self.wb[i])
-      self.wb[i] = re.sub(r"<\/lang>","",self.wb[i])
+      self.wb[i] = re.sub(r"</lang>","",self.wb[i])
+      self.wb[i] = re.sub(r"<abbr[^>]*>","",self.wb[i])
+      self.wb[i] = re.sub(r"</abbr>","",self.wb[i])
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # look for <b>
@@ -2726,6 +2926,8 @@ class Ppt(Book):
     # is a <target id...> to remove in the text version
     text = re.sub(r"<target.*?>", "", text)
     self.wb = text.splitlines()
+    text = ""
+
 
     # all page numbers deleted in text version
     i = 0
@@ -2789,10 +2991,9 @@ class Ppt(Book):
         if m:
           fncr = int(m.group(1)) + 1
 
-        elif ".fn #" == self.wb[i]:### test this spacing
-          self.wb[i:i+1] = [".sp 1",".fn {}".format(fncr)]
+        elif ".fn #" == self.wb[i]:### remember to generate footnote spacing in text
+          self.wb[i] = ".fn {}".format(fncr)
           fncr += 1
-          i += 1
 
         else:
           m=re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)", self.wb[i])
@@ -2804,7 +3005,7 @@ class Ppt(Book):
           self.crash_w_context("Error: .fn- has no opening .fn command", i)
         fnlevel -= 1
 
-      i += 1
+      i += 1###
     if fnlevel != 0:
       self.crash_w_context("Error: Unclosed .fn block", fn0)
 
@@ -2812,6 +3013,12 @@ class Ppt(Book):
     # inline markup processing (text)
     # sc small caps ; l large ; xl x-large ; s small ; xs s-small ; u underline
     # g gesperrt ; converted to text form: em, b, i
+    # sn: inline sidenote, converted to [Sidenote: text]
+
+    tempSidenote = self.nregs["Sidenote"] # grab initial value of Sidenote special register
+    in_nf = False # flags to help determine whether inline sidenotes are inside of .nf blocks, tables, or footnotes
+    in_ta = False
+    in_fn = False
 
     for i, line in enumerate(self.wb):
 
@@ -2843,9 +3050,6 @@ class Ppt(Book):
       # small caps ignored
       self.wb[i] = re.sub(r"<\/?SC>", "", self.wb[i])
 
-      # lang dropped (<i> would be separate)
-      self.wb[i] = re.sub(r"<\/?lang>", "", self.wb[i])
-
       # gesperrt in text
       self.wb[i] = re.sub(r"<\/?g>", "_", self.wb[i])
 
@@ -2856,7 +3060,34 @@ class Ppt(Book):
       self.wb[i] = re.sub(r"<c=[^>]+>", "", self.wb[i])
       self.wb[i] = re.sub(r"<\/c>", "", self.wb[i])
 
+      # inline sidenotes <sn>text</sn>
+      # note: Must look for .nr Sidenote as most .nr processing happens after this, during process()
+      #       We cannot simply move the .nr processing earlier as (in theory) someone could change the
+      #       .nr settings multiple times during a run
+      if self.wb[i].startswith(".nf "):
+        in_nf = True
+      elif self.wb[i].startswith(".nf-"):
+        in_nf = False
+      elif self.wb[i].startswith(".ta "):
+        in_ta = True
+      elif self.wb[i].startswith(".ta-"):
+        in_ta = False
+      elif self.wb[i].startswith(".fn "):
+        in_fn = True
+      elif self.wb[i].startswith(".fn-"):
+        in_fn = False
+      elif self.wb[i].startswith(".nr Sidenote"):
+        m = re.match(r"\.nr Sidenote (.+)", self.wb[i])
+        if m:
+          tempSidenote = m.group(1) # remember new Sidenote name value
+      self.wb[i], l = re.subn("<sn(?: class=[^>]*)?>", "[{}: ".format(tempSidenote), self.wb[i])
+      self.wb[i] = re.sub("</sn>", "]", self.wb[i])
+      if l and (in_nf or in_ta or in_fn):
+        self.warn_w_context("Inline sidenote probably won't work well here:", i)
+
     # do small caps last since it could uppercase a tag.
+    re_scmult = re.compile(r"<sc>(.+?)<\/sc>", re.DOTALL)
+    re_scsing = re.compile(r"<sc>(.*?)<\/sc>")
     for i, line in enumerate(self.wb):
       def to_uppercase(m):
         return m.group(1).upper()
@@ -2869,13 +3100,20 @@ class Ppt(Book):
             del(self.wb[i])
           t.append(self.wb[i]) # last line
           ts = "\n".join(t) # make all one line
-          re_sc = re.compile(r"<sc>(.+?)<\/sc>", re.DOTALL)
-          ts = re.sub(re_sc, to_uppercase, ts)
+          ts = re.sub(re_scmult, to_uppercase, ts)
           t = ts.splitlines() # back to a series of lines
           self.wb[i:i+1] = t
         else: # single line
-          re_sc = re.compile(r"<sc>(.*?)<\/sc>")
-          self.wb[i] = re.sub(re_sc, to_uppercase, self.wb[i])
+          self.wb[i] = re.sub(re_scsing, to_uppercase, self.wb[i])
+
+    #
+    # Handle any .sr for text that have the b option specified
+    if self.filter_b:
+      #self.dprint("Processing .sr for text with b specified")
+      for i in range(len(self.srw)):
+        if ((('t' in self.srw[i]) or (self.renc in self.srw[i])) and
+            ('b' in self.srw[i])): # if this one is for pre-processing and applies to the text form we're generating
+          self.process_SR(self.wb, i)
 
   # -------------------------------------------------------------------------------------
   # post-process emit buffer (TEXT)
@@ -2950,6 +3188,7 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("⑳", ">")
       self.eb[i] = self.eb[i].replace("⑥", ":")
       self.eb[i] = self.eb[i].replace("⑨", "-")
+      self.eb[i] = self.eb[i].replace("⓪", "#")
       # text space replacement
       self.eb[i] = re.sub("ⓢ|Ⓢ", " ", self.eb[i]) # non-breaking space
       self.eb[i] = re.sub("ⓣ|Ⓣ", " ", self.eb[i]) # zero space
@@ -2990,76 +3229,14 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("◮", "=")
 
 
-    # process saved search/replace strings, if any
+    # process saved search/replace strings for text, if any
     # but only if our output format matches something in the saved "which" value
 
-    blobbed = False
+    #self.dprint("processing .sr for text without b specified")
     for i in range(len(self.srw)):
-      if ('t' in self.srw[i]) or (self.renc in self.srw[i]): # if this one applies to the text form we're generating
-        k = 0
-        l = 0
-        ll = 0
-        if "\\n" in self.srs[i]: # did user use a regex containing \n ? If so, process all lines in one blob
-          if not blobbed:
-            text = '\n'.join(self.eb) # form lines into a blob
-            blobbed = True
-          try:
-            m = re.search(self.srs[i], text) # search for current search string
-          except:
-            if 'd' in self.debug:
-              traceback.print_exc()
-              self.fatal("Above error occurred searching for {} in complete text blob".format(self.srs[i]))
-            else:
-              self.fatal("Error occurred searching for {} in complete text blob".format(self.srs[i]))
-          if m:                                             # if found
-            if 'r' in self.debug:
-              print("{} found in complete text blob".format(self.srs[i]))
-            try:
-              text, l = re.subn(self.srs[i], self.srr[i], text) # replace all occurrences in the blob
-              ll += l
-            except:
-              if 'd' in self.debug:
-                traceback.print_exc()
-                self.fatal("Above error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[i], self.srr[i]))
-              else:
-                self.fatal("Error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[i], self.srr[i]))
-            if 'r' in self.debug:
-              print("Replaced with {}".format(self.srr[i]))
-          print("Search string {}:{} matched in complete text and replaced {} times.".format(i+1, self.srs[i], ll))
-
-        else:
-          if blobbed:
-            self.eb = text.splitlines() # break blob back into individual lines
-            blobbed = False
-          for j in range(len(self.eb)):
-            try:
-              m = re.search(self.srs[i], self.eb[j])               # search for current search string
-            except:
-              if 'd' in self.debug:
-                traceback.print_exc()
-                self.fatal("Above error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.eb[j]))
-              else:
-                self.fatal("Error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.eb[j]))
-            if m:                                             # if found
-              k += 1
-              if 'r' in self.debug:
-                print("{} found in: {}".format(self.srs[i], self.eb[j]))
-              try:
-                self.eb[j], l = re.subn(self.srs[i], self.srr[i], self.eb[j])      # replace all occurrences in the line
-                ll += l
-              except:
-                if 'd' in self.debug:
-                  traceback.print_exc()
-                  self.fatal("Above error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.eb[j]))
-                else:
-                  self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.eb[j]))
-              if 'r' in self.debug:
-                print("Replaced: {}".format(self.eb[j]))
-          print("Search string {}:{} matched in {} lines, replaced {} times.".format(i+1, self.srs[i], k, ll))
-
-    if blobbed:
-      self.eb = text.splitlines() # break blob back into individual lines
-      blobbed = False
+      if ((('t' in self.srw[i]) or (self.renc in self.srw[i])) and not
+          ('b' in self.srw[i])): # if this one is for post-processing and applies to the text form we're generating
+        self.process_SR(self.eb, i)
 
     # build GG .bin info if needed
     if self.bnPresent:  # if any .bn were found
@@ -3093,7 +3270,7 @@ class Ppt(Book):
     f1 = codecs.open(fn, "w", "utf-8")
     for index,t in enumerate(self.eb):
       s = t.rstrip()
-      if len(s) > self.linelimitwarning:
+      if self.truelen(s) > self.linelimitwarning:
         longcount += 1
         if longcount == 4:
           self.warn("additional long lines not reported")
@@ -3246,7 +3423,18 @@ class Ppt(Book):
         self.cl += 1                                           # and ignore it for handling this .h"n"
     h2a = self.wb[self.cl+1].split('|')
     for line in h2a:
-      self.eb.append((fmt.format(line)).rstrip())
+      line = line.strip()
+      #line = re.sub(r"</?lang[^>]*>", "", line) # remove any language tagging
+      len1 = len(line)     # apparent length of line
+      len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+      padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+      if align == "c":
+        pad = " " * (padlen//2)
+      elif align == "r":
+        pad = " " * padlen
+      else:
+        pad = ""
+      self.eb.append((pad + fmt.format(line)).rstrip())
     self.eb.append(".RS 1")
     self.cl += 2
 
@@ -3287,7 +3475,7 @@ class Ppt(Book):
       howmany = int(m.group(1))
       self.eb.append(".RS {}".format(howmany))
     else:
-      self.fatal("malformed space directive: {}".format(self.wb[self.cl]))
+      self.crash_w_context("malformed .sp directive", self.cl)
     self.cl += 1
 
   # .fs
@@ -3328,6 +3516,7 @@ class Ppt(Book):
             self.eb.append("")
             i = self.cl        # remember where we started
             while (self.cl < len(self.wb)) and not (self.wb[self.cl]).startswith(".ca-"):
+              #self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
               s = self.wb[self.cl]
               t = self.wrap(s, 4, self.regLL, -2)
               self.eb += t
@@ -3351,10 +3540,10 @@ class Ppt(Book):
                 s = re.sub(ss,self.wb[self.cl], s)
                 k += 1
                 self.cl += 1
-                if len(s) > self.regLL: # must wrap the string, and indent the leftover part
+                if self.truelen(s) > self.regLL: # must wrap the string, and indent the leftover part
                   m = re.match(r"(\s*)(.*)",s)
                   if m:
-                    tempindent = len(m.group(1)) + 2
+                    tempindent = self.truelen(m.group(1)) + 2
                     s = m.group(2)
                     t = self.wrap(s, tempindent, self.regLL, -2)
                   else:
@@ -3362,7 +3551,7 @@ class Ppt(Book):
                 else:
                   t.append(s) # no need to wrap, as it's short enough already
               else: # caption line does not have marker, so it's literal text, just wrap to LL if necessary and assume user knows what he's doing
-                if len(s) > self.regLL:
+                if self.truelen(s) > self.regLL:
                   t = self.wrap(s, 0, self.regLL, 0)
                 else: # no need to wrap if it's short enough
                   t.append(s)
@@ -3423,7 +3612,7 @@ class Ppt(Book):
     if handled:
       self.cl += 1
     else:
-      self.fatal("malformed .in command: \"{}\"".format(self.wb[self.cl]))
+      self.crash_w_context("malformed .in directive", self.cl)
 
   # .ll line length
   def doLl(self):
@@ -3463,7 +3652,7 @@ class Ppt(Book):
       return
 
     # if here, has not been handled
-    self.fatal("malformed .ll command: \"{}\"".format(self.wb[self.cl]))
+    self.crash_w_context("malformed .ll directive", self.cl)
 
   # .ti temporary indent
   def doTi(self):
@@ -3485,14 +3674,19 @@ class Ppt(Book):
           t.append(self.wb[i])
           i += 1
           continue
-          
+
       if self.wb[i].startswith(".dc") or self.wb[i].startswith(".di"):
         del self.wb[i]
         continue
 
       xt = self.regLL - self.regIN # width of centered line
       xs = "{:^" + str(xt) + "}"
-      t.append(" " * self.regIN + xs.format(self.wb[i].strip()))
+      line = self.wb[i].strip()
+      len1 = len(line)     # apparent length of line
+      len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+      padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+      pad = " " * (padlen//2)
+      t.append(" " * self.regIN + pad + xs.format(line)) # now centering should handle non-spacing Unicode characters
       i += 1
     self.cl = i + 1 # skip the closing .nf-
     # see if the block has hit the left margin
@@ -3506,7 +3700,7 @@ class Ppt(Book):
         else:
           need_pad = True
     if need_pad:
-      self.warn("inserting leading space in wide .nf c")
+      self.warn("inserting leading space in wide .nf c (or .ce)")
       for i,line in enumerate(t):
         t[i] = " "+ t[i]
     t.insert(0, ".RS 1")
@@ -3519,7 +3713,7 @@ class Ppt(Book):
     startloc = i
     maxw = 0
     while i < len(self.wb) and not re.match(lookfor, self.wb[i]):
-      maxw = max(maxw, len(self.wb[i]))
+      maxw = max(maxw, self.truelen(self.wb[i]))
       i += 1
     if i == len(self.wb):
       # unterminated block
@@ -3557,7 +3751,12 @@ class Ppt(Book):
               i += 1
               continue
           xs = "{:^" + str(regBW) + "}"
-          self.eb.append(" " * self.regIN + xs.format(self.wb[i].strip()))
+          line = self.wb[i].strip()
+          len1 = len(line)     # apparent length of line
+          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+          pad = " " * (padlen//2)
+          self.eb.append(" " * self.regIN + pad + xs.format(line))
           i += 1
           count -= 1
         continue
@@ -3574,7 +3773,13 @@ class Ppt(Book):
               i += 1
               continue
           xs = "{:>" + str(regBW) + "}"
-          self.eb.append(" " * self.regIN + xs.format(self.wb[i].strip()))
+          line = self.wb[i].strip()
+          len1 = len(line)     # apparent length of line
+          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+          pad = " " * padlen
+          self.eb.append(" " * self.regIN + pad + xs.format(line)) # should be OK with combining characters now
+          # but it may look off with proportional fonts, esp. if the rj text is Hebrew or another rtl language
           i += 1
           count -= 1
         continue
@@ -3590,7 +3795,7 @@ class Ppt(Book):
       # if the line is shorter than 72 characters, just send it to emit buffer
       # if longer, calculate the leading spaces on line and use as shift amount.
       # a .ti lets it wrap
-      if len(s) > 72:
+      if self.truelen(s) > 72:
         wi = 0
         m = re.match("^(\s+)(.*)", s)
         if m:
@@ -3600,6 +3805,7 @@ class Ppt(Book):
         for line in u:
           self.eb.append(line)
       else:
+        #s = re.sub(r"</?lang[^>]*>", "", s) # remove any language tagging
         self.eb.append(s)
       i += 1
     self.eb.append(".RS 1")
@@ -3633,7 +3839,13 @@ class Ppt(Book):
               i += 1
               continue
           xs = "{:^" + str(regBW) + "}"
-          t.append(" " * lmar + xs.format(self.wb[i].strip()))
+          #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
+          line = self.wb[i].strip()
+          len1 = len(line)     # apparent length of line
+          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+          pad = " " * (padlen//2)
+          t.append(" " * lmar + pad + xs.format(line)) # should be OK with combining characters now
           i += 1
           count -= 1
         continue
@@ -3651,7 +3863,12 @@ class Ppt(Book):
               i += 1
               continue
           xs = "{:>" + str(regBW) + "}"
-          t.append(" " * lmar + xs.format(self.wb[i].strip()))
+          line = self.wb[i].strip()
+          len1 = len(line)     # apparent length of line
+          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+          pad = " " * padlen
+          t.append(" " * lmar + pad + xs.format(line))
           i += 1
           count -= 1
         continue
@@ -3711,7 +3928,12 @@ class Ppt(Book):
               i += 1
               continue
           xs = "{:^" + str(regBW) + "}"
-          self.eb.append(" " * fixed_indent + xs.format(self.wb[i].strip()))
+          line = self.wb[i].strip()
+          len1 = len(line)     # apparent length of line
+          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+          pad = " " * (padlen//2)
+          self.eb.append(" " * fixed_indent + pad + xs.format(line))
           i += 1
           count -= 1
         continue
@@ -3728,7 +3950,12 @@ class Ppt(Book):
               i += 1
               continue
           xs = "{:>" + str(regBW) + "}"
-          self.eb.append(" " * fixed_indent + xs.format(self.wb[i].strip()))
+          line = self.wb[i].strip()
+          len1 = len(line)     # apparent length of line
+          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+          pad = " " * padlen
+          self.eb.append(" " * fixed_indent + pad + xs.format(line))
           i += 1
           count -= 1
         continue
@@ -3773,31 +4000,90 @@ class Ppt(Book):
   # note: in text do not check for duplicate footnotes. they occur in the wild
   # note: invalid footnote names generated warning messages earlier during pre-processing
   def doFnote(self):
-
     m = re.match(r"\.fn-", self.wb[self.cl])
     if m: # footnote ends
+      if self.footnoteLzT and not self.keepFnHere: # if special footnote landing zone in effect (and not disabled for this footnote)
+        self.grabFootnoteT()
       self.wb[self.cl] = ".in -2"
       return
-
-    fnname = ""
-    m = re.match(r"\.fn (\d+)( |$)", self.wb[self.cl]) # First look for numeric
-    if m: # footnote start
-      fnname = m.group(1)
-    else:                       # then check for named footnote
-      m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)", self.wb[self.cl])
-      if m:
+    else: # footnote begins
+      fnname = ""
+      m = re.match(r"\.fn (\d+)( |$)(lz=here|tlz=here)?", self.wb[self.cl]) # First look for numeric
+      if m: # footnote start
         fnname = m.group(1)
-      else:
-        fnname = "<<Invalid footnote name; see messages>>"
-    self.eb.append("{} {}:".format(self.nregs["Footnote"], fnname))
-    self.wb[self.cl] = ".in +2"
+        self.keepFnHere = True if (m.group(3)) else False # test for lz=here and remember for .fn- processing
+      else:                       # then check for named footnote
+        m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)(lz=here|tlz=here)?", self.wb[self.cl])
+        if m:
+          fnname = m.group(1)
+          self.keepFnHere = True if (m.group(3)) else False # test for lz=here and remember for .fn- processing
+        else:
+          fnname = "<<Invalid footnote name; see messages>>"
+      self.eb.append("{} {}:".format(self.nregs["Footnote"], fnname))
+      if self.keepFnHere and not self.footnoteLzT:
+        if m.group(3).startswith("tlz"):
+          self.warn(".fn specifies tlz=here but landing zones not in effect for text output:{}".format(self.wb[self.cl]))
+        elif m.group(3).startswith("lz") and not self.footnoteLzT and not self.footnoteLzH:
+          self.warn(".fn specifies lz=here but no landing zones are in effect:{}".format(self.wb[self.cl]))
+      if self.footnoteLzT and not self.keepFnHere: # if special footnote landing zone processing in effect
+        self.footnoteStart = len(self.eb) - 1 # remember where this footnote started
+      self.wb[self.cl] = ".in +2"
 
+  # grab a complete footnote out of self.eb and save it for later
+  def grabFootnoteT(self):
+    t = [] # buffer for the footnote label and text
+    i = self.footnoteStart
+    while i < len(self.eb):
+      t.append(self.eb[i]) # grab a line then delete it
+      del self.eb[i]
+    self.fnlist.append(t) # when done, append complete list into fnlist for later use
 
   # footnote mark
   def doFmark(self):
-    self.eb.append(".RS 1")
-    self.eb.append("-----")
-    self.eb.append(".RS 1")
+    rend = True
+    lz = False
+    m = re.match(r"\.fm (.*)", self.wb[self.cl])
+    if m:
+      options = m.group(1)
+      if "norend" in options:
+        rend = False
+      if "rend=" in options:
+        options, rendvalue = self.get_id("rend", options)
+        if rendvalue == "no" or rendvalue == "norend" or not "t" in rendvalue:
+          rend = False
+      rendafter = False
+      if "rendafter=" in options:
+        options, rendaval = self.get_id("rendafter", options)
+        if rendaval.startswith("y"):
+          rendafter = True
+      if "lz=" in options:
+        options, lzvalue = self.get_id("lz", options)
+        if "t" in lzvalue:
+          lz = True
+        else:
+          rend = False  # If this .fm is a landing zone for html but not text, don't do rend for it either
+      if "=" in options:
+        self.warn("Unrecognized option in .fm command: {}".format(self.wb[self.cl]))
+    if rend and ((not lz) or (lz and len(self.fnlist))):
+      self.eb.append(".RS 1")
+      self.eb.append("-----")
+      self.eb.append(".RS 1")
+    else:
+      rend = False
+    if lz:
+      # emit saved footnotes
+      if len(self.fnlist): # make sure there's something to generate
+        for t in self.fnlist:
+          for s in t:
+            self.eb.append(s)
+        del self.fnlist[:]  # remove everything we handled
+        self.fnlist = []
+        if rend and rendafter:
+          self.eb.append(".RS 1")
+          self.eb.append("-----")
+          self.eb.append(".RS 1")
+      else:
+        self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
     self.cl += 1
 
   # Table code, text
@@ -3817,7 +4103,7 @@ class Ppt(Book):
         if len(u) != ncols:
             self.fatal("table has wrong number of columns:\n{}".format(self.wb[j]))
         t = u[c].strip()
-        maxw = max(maxw, len(t)) # ignore lead/trail whitespace
+        maxw = max(maxw, self.truelen(t)) # ignore lead/trail whitespace and account for lang markup
         j += 1
       return maxw
 
@@ -3874,6 +4160,7 @@ class Ppt(Book):
           cwidth = getMaxWidth(i,ncols) # width
           s += "{}t:{} ".format(t0[i],cwidth)
         self.wb[self.cl] = s.strip()  # replace with widths specified
+    #self.dprint("doTable (text), specified or calculated column widths: {}".format(self.wb[self.cl]))
 
     # if vertical alignment not specified, default to "top" now
     # .ta l:6 r:22 => .ta lt:6 rt:22
@@ -3901,22 +4188,27 @@ class Ppt(Book):
       totalwidth += int(u[1]) + 1 # added space between columns
       j += 1
     totalwidth -= 1
+    #self.dprint("doTable (text), total table width not including indent: {}".format(totalwidth))
 
     # margin to center table in 72 character text field
     if totalwidth >= 72:
       tindent = 0
+      if not autosize:
+        self.warn("PPer-supplied table width (including leading indent and space\n" + "           " +
+                  "between columns) of {} is greater than 72 characters:\n           {}".format(totalwidth+1, self.wb[self.cl]))
     else:
       tindent = (72 - totalwidth) // 2
+    #self.dprint("doTable (text), table indent: {}".format(tindent))
 
     self.eb.append(".RS 1")  # request blank line above table
 
     self.cl += 1 # move into the table rows
-    self.twrap = textwrap.TextWrapper()
+    #self.twrap = textwrap.TextWrapper()
 
     # if any cell wraps, put a vertical gap between rows
     rowspace = False
     k1 = self.cl
-    while self.wb[k1] != ".ta-":
+    while self.wb[k1] != ".ta-" and not rowspace:
 
       # lines that we don't check: centered or blank (or .bn info)
       if empty.match(self.wb[k1]) or not "|" in self.wb[k1]:
@@ -3925,7 +4217,7 @@ class Ppt(Book):
 
       t = self.wb[k1].split("|")
       for i in range(0,ncols):
-        k2 = textwrap.wrap(t[i].strip(), widths[i])
+        k2 = self.wrap_para(t[i].strip(), 0, widths[i], 0) # should handle combining characters properly
         if len(k2) > 1:
           rowspace = True
       k1 += 1
@@ -3951,7 +4243,12 @@ class Ppt(Book):
       # centered line
       # a line in source that has no vertical pipe
       if not "|" in self.wb[self.cl]:
-        self.eb.append("{:^72}".format(self.wb[self.cl]))
+        line = self.wb[self.cl].strip()
+        len1 = len(line)     # apparent length of line
+        len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+        padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+        pad = " " * (padlen//2)
+        self.eb.append(pad + "{:^72}".format(line))
         self.cl += 1
         continue
 
@@ -3962,9 +4259,9 @@ class Ppt(Book):
       w = [None] * ncols  # a list of lists for this row
       heights = [None] * ncols  # lines in each cell
       for i in range(0,ncols):
-        w[i] = textwrap.wrap(t[i].strip(), widths[i])
+        w[i] = self.wrap_para(t[i].strip(), 0, widths[i], 0) # should handle combining characters properly
         for j,line in enumerate(w[i]):
-          w[i][j] =line.strip()  # marginal whitespace
+          w[i][j] = line.strip()  # marginal whitespace
         heights[i] = len(w[i])
         maxheight = max(maxheight, heights[i])
 
@@ -3991,7 +4288,26 @@ class Ppt(Book):
           s = " " * tindent  # center the table
         for col in range(0,ncols):
           fmt = "{" + ":{}{}".format(haligns[col],widths[col]) + "}"
-          s += fmt.format(w[col][g])
+          line = w[col][g]
+          len1 = len(line)     # apparent length of line
+          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+          if len1 == len2:
+            s += fmt.format(line)
+          else: # have some non-spacing characters to account for
+            if len2 == widths[col]:
+              s += line
+            else: # must be less than width (because we wrapped it to <= width)
+              if haligns[col] == "^":
+                pad = " " * ((widths[col] - len2)//2) # use 1/2 the difference when centering
+                rem = (widths[col] - len2)%2 # but need to know if there's a remainder.
+                pad2 = " " if (rem) else ""
+                s += pad + line + pad + pad2 # put extra space, if any, after the string
+              elif haligns[col] == ">":
+                pad = " " * (widths[col] - len2) # else if right-aligned use the full difference before
+                s += pad + line
+              else:
+                pad = " " * (widths[col] - len2) # else if left-aligned use the full difference after
+                s += line + pad
           if col != ncols - 1:
             s += " "  # inter-column space so "rl" isn't contingent
         self.eb.append(s)
@@ -4028,15 +4344,20 @@ class Ppt(Book):
       nlines = int(m.group(1))
       self.cl += 1
       self.eb.append(".RS 1")
+      t1 = self.regLL - self.regIN
+      xs = "{:>" + str(t1) + "}"
       while nlines > 0:
-        t1 = self.regLL - self.regIN
-        xs = "{:>" + str(t1) + "}"
-        self.eb.append(" "*self.regIN + xs.format(self.wb[self.cl].strip()))
+        line = self.wb[self.cl].strip()
+        len1 = len(line)     # apparent length of line
+        len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+        padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
+        pad = " " * padlen
+        self.eb.append(" "*self.regIN + pad + xs.format(line))
         self.cl += 1
         nlines -= 1
       self.eb.append(".RS 1")
     else:
-      self.fatal("malformed .rj directive: {}".format(self.wb[self.cl]))
+      self.crash_w_context("malformed .rj directive", self.cl)
 
   # .de CSS definition
   # ignore the directive in text
@@ -4048,16 +4369,33 @@ class Ppt(Book):
     else:
       self.fatal("source file ends with continued .de command: {}".format(self.wb[self.cl]))
 
+  def doSidenote(self):
+    # handle sidenotes outside paragraphs, sidenotes inside paragraphs are handled as <sn>-style markup
+    self.snPresent = True
+    self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
+    m = re.match(r"\.sn (.*)", self.wb[self.cl])
+    if m:
+      self.eb.append(".RS 1") # request at least one space in text before sidenote
+      self.eb.append("[{}: {}]".format(self.nregs["Sidenote"], m.group(1)))
+      self.eb.append(".RS 1") # request at least one space in text after sidenote
+      self.cl += 1
+    else:
+      self.crash_w_context("malformed .sn directive", self.cl) # should never hit this as preprocesscommon() checked it
+
   def doPara(self):
     t = []
     bnt = []
     pstart = self.cl
 
     # grab the paragraph from the source file into t[]
+    # note: we will transform encoded sidenote information within the paragraph into
+    # its final format here, as it will affect wrapping. This differs from the handling
+    # for HTML where it is handled during post-processing, as our HTML processing for
+    # paragraphs does not wrap the text, leaving that to the browser or other rendering engine.
     j = pstart
     while (j < len(self.wb) and
            self.wb[j] and
-           not re.match("\.", self.wb[j])):
+           not self.wb[j].startswith(".")): # any blank line or dot directive ends paragraph
       t.append(self.wb[j])
       j += 1
     pend = j
@@ -4097,6 +4435,7 @@ class Ppt(Book):
     self.cl = pend
 
   def process(self):
+    self.keepFnHere = False
     self.cl = 0
     while self.cl < len(self.wb):
       if "a" in self.debug:
@@ -4119,6 +4458,9 @@ class Ppt(Book):
         self.doDot()
         continue
       self.doPara()
+
+    if len(self.fnlist):  # any saved footnotes that didn't have a .fm to generate them?
+      self.warn("Footnotes encountered after last \".fm lz=t\" have not been generated. Missing a .fm somewhere?")
 
   def run(self): # Text
     self.loadFile(self.srcfile)
@@ -4151,6 +4493,7 @@ class Pph(Book):
   fsz = "100%" # font size for paragraphs
   pdc = "" # pending drop cap
   igc = 1 # illustration geometry counter
+  fnlist = [] # list of footnotes
 
   def __init__(self, args, renc):
     Book.__init__(self, args, renc)
@@ -4343,6 +4686,8 @@ class Pph(Book):
 
     self.preProcessCommon()
 
+    self.snPresent = False
+
     # protect PPer-supplied internal link information
     # two forms: #number# and #name:id-value#
     # also #RomanNumerals#
@@ -4368,6 +4713,7 @@ class Pph(Book):
           i += 1
         else:
           self.fatal("source file ends with continued .de command: {}".format(self.wb[i]))
+        continue
 
       self.wb[i] = re.sub(r"#(\d+)#", r"⑲\1⑲", self.wb[i])
       self.wb[i] = re.sub(r"#([iIvVxXlLcCdDmM]+)#", r"⑲\1⑲", self.wb[i])
@@ -4393,6 +4739,8 @@ class Pph(Book):
       m = re.match(r"\.pn \+(\d+)", self.wb[i])
       if m:
         increment_amount = int(m.group(1))
+        if increment_amount == 0: # can't have duplicate page numbers
+          self.crash_w_context("Invalid .pn increment amount, +0", i)
         if (self.pageno).isnumeric():
           self.pageno = "{}".format(int(self.pageno) + increment_amount)
         else: # Roman
@@ -4428,6 +4776,8 @@ class Pph(Book):
       m = re.match(r"\.h.*?pn=\+(\d+)", self.wb[i])
       if m:
         increment_amount = int(m.group(1))
+        if increment_amount == 0: # can't have duplicate page numbers
+          self.crash_w_context("Invalid pn increment amount, +0", i)
         if (self.pageno).isnumeric():
           self.pageno = "{}".format(int(self.pageno) + increment_amount)
         else: # Roman
@@ -4612,7 +4962,7 @@ class Pph(Book):
       # this is a reference in the text to a footnote, like this[14].
       # footnote references can be repeated. Back-link is to the first one only
       #
-      # non-numeric footnote references can only be recognized if we found a .fn 
+      # non-numeric footnote references can only be recognized if we found a .fn
       # for them in the earlier pass through the text
       m = re.search(r"\[(\d+)\]", self.wb[i])  # look for standard numeric footnote references
       while m:
@@ -4672,7 +5022,6 @@ class Pph(Book):
           tagstack = []
           i += 1 # step inside the .nf block
           while i < len(self.wb) and not self.wb[i].startswith(".nf-"): # as long as we are in a .nf
-            tmpline = self.wb[i]
             if self.wb[i].startswith(".nf "):
               self.crash_w_context("nested no-fill block:", i)
             # ignore .bn lines; just pass them through
@@ -4682,13 +5031,17 @@ class Pph(Book):
                 i += 1
                 continue
             # find all tags on this line; ignore <a and </a tags completely for this purpose
-            t = re.findall("<\/?[^a>]*>", self.wb[i])
+            tmpline = re.sub("<a [^>]*>", "", self.wb[i])
+            tmpline = re.sub("</a>", "", tmpline)
+            t = re.findall("<\/?[^>]*>", tmpline)
             sstart = "" # what to prepend to the line
             for s in tagstack: # build the start string
               sstart += s
             self.wb[i] = sstart + self.wb[i] # rewrite the line with new start
             for s in t: # we may have more tags on this line
-              if not s.startswith("</"): # it is of form <..> an opening tag
+              if s.endswith("/>"): # it is a self-closing tag
+                continue           # ignore it
+              elif not s.startswith("</"): # it is an opening tag
                 if s in tagstack:
                   self.warn("Nested {} tags in .nf block: {}".format(s, tmpline))
                 tagstack.append(s) # save it on the stack
@@ -4703,12 +5056,21 @@ class Pph(Book):
             send = "" # string end
             for s in reversed(tagstack): # if there is something left, tack it on end of line
               closetag =  re.sub("<","</", s) # make it into a closing tag
-              if closetag.startswith("</c"): # anything that had arguments closes without them
+              m = re.match(r"</(\w+) .*>", s) # is it a tag with parameters?
+              if m:                           # if so, drop them
+                s = "</m.group(1)>"
+              # next remove arguments from any ppgen inline tag that has arguments
+              # without a preceding space (e.g., <c=red> or <fs=120%>)
+              if closetag.startswith("</c"):
                 closetag = "</c>" # colors
               if closetag.startswith("</fs"):
                 closetag = "</fs>" # font size
               if closetag.startswith("</lang"):
                 closetag = "</lang>" # language
+              if closetag.startswith("</sn"):
+                closetag = "</sn>" # inline sidenote
+              if closetag.startswith("</abbr"):
+                closetag = "</abbr>" # abbreviation
               send += closetag
             self.wb[i] = self.wb[i] + send
             i += 1
@@ -4733,14 +5095,65 @@ class Pph(Book):
         m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
         while m:
           langspec = m.group(1)
-          self.wb[i] = re.sub(m.group(0), "ᒪ'{}'".format(langspec), self.wb[i], 1)
+          self.wb[i] = re.sub(re.escape(m.group(0)), "ᒪ'{}'".format(langspec), self.wb[i])
           # self.wb[i] = re.sub(m.group(0), "<span lang=\"{0}\" xml:lang=\"{0}\">".format(langspec), self.wb[i], 1)
           m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
-        if "lang=" in self.wb[i]:
+        if "<lang" in self.wb[i]:
           self.fatal("incorrect lang markup: {}".format(self.wb[i]))
-        self.wb[i] = re.sub(r"<\/lang>", "ᒧ",self.wb[i])
+        self.wb[i] = re.sub(r"</lang>", "ᒧ",self.wb[i])
         i += 1
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # <abbr> tags processed in HTML.
+    # (1) <abbr="Saint">St.</abbr> or <abbr=Saint>St.</abbr>
+    #       would generate <abbr title='Saint'>St.</abbr>
+    # (2) <abbr rend=arabic>XXX</abbr>
+    #       would generate <abbr title='30'>XXX</abbr>
+    # (3) <abbr rend=spell>Ph.D.</abbr>
+    #       would generate <abbr class='spell'>Ph.D.</abbr>
+    #       along with CSS: abbr.spell { speak: spell-out; }
+    # Any use of <abbr> will generate CSS: abbr { border-bottom-width: 1px; border-bottom-style: dotted; }
+    i = 0
+    abbrfound = False
+    while i < len(self.wb):
+      if self.wb[i] == ".li":         # ignore literal blocks
+        while i < len(self.wb) and self.wb[i] != ".li-":
+          i += 1
+        i += 1  # skip over .li- command
+      else:
+        temp = self.wb[i]
+        # look for form 1 of abbr tag
+        m = re.search(r"<abbr=[\"']?([^\"'>]+)[\"']?>",temp)
+        while m:
+          abbrfound = True
+          abbrtitle = re.sub("'","&#39;",m.group(1)) # escape any ' in the title string
+          temp = re.sub(re.escape(m.group(0)), "", temp) # remove the abbr tag from the temporary copy of the line
+          self.wb[i] = re.sub(re.escape(m.group(0)), "<abbr title='{}'>".format(abbrtitle), self.wb[i]) # replace in original line
+          m = re.search(r"<abbr=[\"']?([^\"'>]+)[\"']?>",temp) # search for more <abbr= tags in copy
+        # look for form 2 of abbr tag
+        m = re.search(r"<abbr rend=[\"']?arabic[\"']?>([iIvVxXlLcCdDmM]+)",temp)
+        while m:
+          abbrfound = True
+          abbrtitle = self.fromRoman(m.group(1).lower())
+          temp = re.sub(re.escape(m.group(0)), "", temp) # remove the abbr tag from the temporary copy of the line
+          self.wb[i] = re.sub(re.escape(m.group(0)), "<abbr title='{}'>{}".format(abbrtitle, m.group(1)), self.wb[i]) # replace in original line
+          m = re.search(r"<abbr rend=[\"']?arabic[\"']?>([iIvVxXlLcCdDmM]+)",temp) # search for more <abbr rend=arabic tags in copy
+        # look for form 3 of abbr tag
+        spellfound = False
+        m = re.search(r"<abbr rend=[\"']?spell[\"']?>",temp)
+        while m:
+          abbrfound = True
+          spellfound = True
+          temp = re.sub(re.escape(m.group(0)), "", temp) # remove the abbr tag from the temporary copy of the line
+          self.wb[i] = re.sub(re.escape(m.group(0)), "<abbr class='spell'>", self.wb[i]) # replace in original line
+          m = re.search(r"<abbr rend=[\"']?spell[\"']?>",temp) # search for more <abbr rend=spell tags in copy
+        if abbrfound:
+          self.css.addcss("[1210] abbr { border-bottom-width: 1px; border-bottom-style: dotted; }")
+        if spellfound:
+          self.css.addcss("[1210] abbr.spell { speak: spell-out; }")
+        if "<abbr" in temp: # should not have any <abbr tags left in the temp copy
+          self.crash_w_context("incorrect abbr markup: {}".format(temp), i)
+        i += 1
 
     # -------------------------------------------------------------------------
     # inline markup (HTML)
@@ -4756,16 +5169,27 @@ class Pph(Book):
       self.wb[i] = re.sub(r"<B", "<b", self.wb[i])
       self.wb[i] = re.sub(r"<\/B", "</b", self.wb[i])
 
-    inNF = False
+    in_nf = False
+    in_ta = False
+    in_fn = False
     for i, line in enumerate(self.wb):
+
+      if self.wb[i].startswith(".nf "):
+        in_nf = True
+      elif self.wb[i].startswith(".nf-"):
+        in_nf = False
+      elif self.wb[i].startswith(".ta "):
+        in_ta = True
+      elif self.wb[i].startswith(".ta-"):
+        in_ta = False
+      if self.wb[i].startswith(".fn "):
+        in_fn = True
+      elif self.wb[i].startswith(".fn-"):
+        in_fn = False
 
       # if everything inside <sc>...</sc> markup is uppercase, then
       # use font-size:smaller, else use font-variant:small-caps
 
-      if self.wb[i].startswith(".nf "):
-        inNF = True
-      elif self.wb[i].startswith(".nf-"):
-        inNF = False
       m = re.search("<sc>", self.wb[i]) # opening small cap tag
       while m:
         use_class = "sc" # unless changed
@@ -4786,7 +5210,7 @@ class Pph(Book):
           # we will have replicated the <sc> tags that cross lines
           # of the .nf block, which could leave some all lower-case
           # line alone within the <sc> </sc>, but it's not an error
-          if not inNF and scstring == scstring.lower():
+          if not in_nf and scstring == scstring.lower():
             self.warn("all lower case inside small-caps markup: {}".format(self.wb[i]))
           if scstring == scstring.upper(): # all upper case
             use_class = "fss"
@@ -4851,9 +5275,9 @@ class Pph(Book):
         thecolor = m.group(1)
         safename = re.sub("#","", thecolor)
         self.css.addcss("[1209] .color_{0} {{ color:{1}; }}".format(safename,thecolor))
-        self.wb[i] = re.sub(re.escape(m.group(0)), "<span class='color_{0}'>".format(safename), self.wb[i], 1)
+        self.wb[i] = re.sub(re.escape(m.group(0)), "<span class='color_{0}'>".format(safename), self.wb[i])
         m = re.search(r"<c=[\"']?(.*?)[\"']?>", self.wb[i])
-      self.wb[i] = re.sub("<\/c>", "</span>", self.wb[i],1)
+      self.wb[i] = re.sub("<\/c>", "</span>", self.wb[i])
 
       # <g> is now a stylized em in HTML
       # using a @media handheld, in epub/mobi it is italicized, with normal letter spacing
@@ -4862,13 +5286,35 @@ class Pph(Book):
         self.wb[i] = re.sub(r"<g>", "<em class='gesperrt'>", self.wb[i])
         self.css.addcss("[1378] em.gesperrt { font-style: normal; letter-spacing: 0.2em; margin-right: -0.2em; }")
         self.css.addcss("[1379] @media handheld { em.gesperrt { font-style: italic; letter-spacing: 0; margin-right: 0;}}")
-      self.wb[i] = re.sub("<\/g>", "</em>", self.wb[i],1)
+      self.wb[i] = re.sub("<\/g>", "</em>", self.wb[i])
 
       m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
       while m:
         self.wb[i] = re.sub(m.group(0), "<span style='font-size:{}'>".format(m.group(1)), self.wb[i], 1)
         m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
       self.wb[i] = re.sub("<\/fs>", "</span>", self.wb[i])
+
+      # <sn>...</sn> becomes a span
+      tmpline = self.wb[i]
+      self.wb[i], count = re.subn("<sn>", "<span class='sni'><span class='hidev'>⓫</span>", self.wb[i])
+      m = re.search(r"<sn class=([\"'])(\w*)\1>", self.wb[i])
+      while m:
+        self.wb[i], count2 = re.subn(re.escape(m.group(0)), "<span class='sni {}'><span class='hidev'>⓫</span>".format(m.group(2)), self.wb[i])
+        count += count2
+        m = re.search(r"<sn class=([\"'])(\w*)\1>", self.wb[i])
+      self.wb[i] = re.sub("</sn>", "<span class='hidev'>⓫</span></span>", self.wb[i])
+      if not self.snPresent and tmpline != self.wb[i]:
+        self.snPresent = True
+      if count and (in_nf or in_ta or in_fn):
+        self.warn_w_context("Inline sidenote probably won't work well here:", i)
+
+    #
+    # Handle any .sr for HTML that have the b option specified
+    if self.filter_b:
+      #self.dprint("processing .sr for HTML with b specified")
+      for i in range(len(self.srw)):
+        if ('h' in self.srw[i]) and ('b' in self.srw[i]): # if this one is for pre-processing and applies to HTML
+          self.process_SR(self.wb, i)
 
   # -------------------------------------------------------------------------------------
   # restore tokens in HTML text
@@ -4881,6 +5327,8 @@ class Pph(Book):
     text = re.sub("④", "]", text)
     text = re.sub("⑤", "&lt;", text)
     text = re.sub("⑳", "&gt;", text)
+    text = re.sub("⓪", "#", text)
+    text = re.sub("⓫", "|", text)
     # text space replacement
     text = re.sub("ⓢ", "&nbsp;", text) # non-breaking space
     text = re.sub("ⓣ", "&#8203;", text) # zero space
@@ -4977,7 +5425,6 @@ class Pph(Book):
         m = re.search(r"ᒪ'(.+?)'", self.wb[i])
       self.wb[i] = re.sub("ᒧ", "</span>", self.wb[i])
 
-
   # -------------------------------------------------------------------------------------
   # save buffer to specified dstfile (HTML output)
   def saveFile(self, fn):
@@ -5015,6 +5462,20 @@ class Pph(Book):
       self.css.addcss("[1100] body { margin-left:8%;margin-right:8%; }")
 
     self.css.addcss("[1170] p { text-indent:0;margin-top:0.5em;margin-bottom:0.5em;text-align:justify; }") # para style
+
+    ### generate CSS for sidenotes if any are present in the text
+    if self.snPresent:
+      # CSS taken from http://www.pgdp.net/wiki/Sidenotes with changes.
+      self.css.addcss("[1500] .sidenote, .sni { text-indent: 0; text-align: left; width: 9em; min-width: 9em; " +
+                      "max-width: 9em; padding-bottom: .1em; padding-top: .1em; padding-left: .3em; " +
+                      "padding-right: .3em; margin-right: 3.5em; float: left; clear: left; margin-top: 0em; " +
+                      "margin-bottom: 0em; font-size: small; color: black; background-color: #eeeeee; " +
+                      "border: thin dotted gray; font-style: normal; font-weight: normal; font-variant: normal; " +
+                      "letter-spacing: 0em; text-decoration: none; }"
+                      )
+      self.css.addcss("[1501] @media handheld { .sidenote, .sni { float: left; clear: none; font-weight: bold; }}")
+      self.css.addcss("[1502] .sni { text-indent: -.2em; }")
+      self.css.addcss("[1503] .hidev { visibility: hidden; }")
 
     # HTML header
     t = []
@@ -5060,73 +5521,10 @@ class Pph(Book):
   # process saved search/replace strings, if any
   # but only if our output format matches something in the saved "which" value
   def doHTMLSr(self):
-    blobbed = False
+    #self.dprint("processing .sr for HTML without b specified")
     for i in range(len(self.srw)):
-      if ('h' in self.srw[i]):       # if this one applies to HTML
-        k = 0
-        l = 0
-        ll = 0
-        if "\\n" in self.srs[i]: # did user use a regex containing \n ? If so, process all lines in one blob
-          if not blobbed:
-            text = '\n'.join(self.wb) # form lines into a blob of text
-            blobbed = True
-          try:
-            m = re.search(self.srs[i], text)   # search for current search string
-          except:
-            if 'd' in self.debug:
-              traceback.print_exc()
-              self.fatal("Above error occurred searching for {} in complete text blob".format(self.srs[i]))
-            else:
-              self.fatal("Error occurred searching for {} in complete text blob".format(self.srs[i]))
-          if m:                                             # if found
-            if 'r' in self.debug:
-              print("{} found in complete text blob".format(self.srs[i]))
-            try:
-              text, l = re.subn(self.srs[i], self.srr[i], text) # replace all occurrences in the blob of text
-              ll += l
-            except:
-              if 'd' in self.debug:
-                traceback.print_exc()
-                self.fatal("Above error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[i], self.srr[i]))
-              else:
-                self.fatal("Error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[i], self.srr[i]))
-            if 'r' in self.debug:
-              print("Replaced with: {}".format(self.srr[i]))
-          print("Search string {}:{} matched and replaced {} times in complete text blob.".format(i+1, self.srs[i], ll))
-
-        else:
-          if blobbed:
-            self.wb = text.splitlines() # restore individual lines from the blob
-            blobbed = False
-          for j in range(len(self.wb)):
-            try:
-              m = re.search(self.srs[i], self.wb[j])               # search for current search string
-            except:
-              if 'd' in self.debug:
-                traceback.print_exc()
-                self.fatal("Above error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.wb[j]))
-              else:
-                self.fatal("Error occurred searching for\n  {}\n in: {}".format(self.srs[i], self.wb[j]))
-            if m:                                             # if found
-              k += 1
-              if 'r' in self.debug:
-                print("{} found in: {}".format(self.srs[i], self.wb[j]))
-              try:
-                self.wb[j], l = re.subn(self.srs[i], self.srr[i], self.wb[j])      # replace all occurrences in the line
-                ll += l
-              except:
-                if 'd' in self.debug:
-                  traceback.print_exc()
-                  self.fatal("Above error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.wb[j]))
-                else:
-                  self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[i], self.srr[i], self.wb[j]))
-              if 'r' in self.debug:
-                print("Replaced: {}".format(self.wb[j]))
-          print("Search string {}:{} matched in {} lines, replaced {} times.".format(i+1, self.srs[i], k, ll))
-
-    if blobbed:
-      self.wb = text.splitlines() # restore individual lines from the blob
-      blobbed = False
+      if ('h' in self.srw[i]) and not ('b' in self.srw[i]): # if this one applies to HTML and was not already handled
+        self.process_SR(self.wb, i)
 
   # ----- process method group -----
 
@@ -5326,7 +5724,7 @@ class Pph(Book):
     rend = "" # default no rend
     align = "c" # default to centered heading
 
-    self.css.addcss("[1100] h2 { text-align:center;font-weight:normal;font-size:1.2em; }")
+    self.css.addcss("[1100] h2 { text-align:center;font-weight:normal;font-size:1.2em; page-break-before: auto}")
 
     m = re.match(r"\.h2 (.*)", self.wb[self.cl])
     if m: # modifier
@@ -5348,10 +5746,7 @@ class Pph(Book):
     elif align != "c":
       self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
 
-    if "nobreak" in rend:
-      hcss += "page-break-before:auto;"
-    else:
-      hcss += "page-break-before:always;"
+    # hcss += "page-break-before:auto;" # not needed, as we now have it in the CSS for h2. page-break is controlled by .chapter div
 
     if self.pvs > 0:
       hcss += "margin-top:{}em;".format(self.pvs)
@@ -5377,8 +5772,10 @@ class Pph(Book):
     # new in 1.79
     # I always want a div. If it's not a no-break, give it class='chapter'
     if not "nobreak" in rend:
-      t.append("<div class='chapter'></div>") # will force file break
-      self.css.addcss("[1576] .chapter { clear:both; }")
+      t.append("<div class='chapter'>") # will force file break
+      self.css.addcss("[1576] .chapter { clear:both; page-break-before: always;}")
+    else:
+      t.append("<div>") # always want a div around the h2
     if pnum != "":
       if self.pnshow:
         # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
@@ -5389,6 +5786,8 @@ class Pph(Book):
       t.append("  <h2 id='{}' style='{}'>{}</h2>".format(id, hcss, s))
     else:
       t.append("  <h2 style='{}'>{}</h2>".format(hcss, s))
+
+    t.append("</div>") # always close the div
 
     self.wb[self.cl:self.cl+1] = t
     self.cl += len(t)
@@ -5693,7 +6092,7 @@ class Pph(Book):
       self.pvs = max(int(m.group(1)), self.pvs)  # honor if larger than current pvs
       del self.wb[self.cl]
     else:
-      self.fatal("malformed space directive: {}".format(self.wb[self.cl]))
+      self.crash_w_context("malformed .sp directive", self.cl)
 
   # .fs
   # change font size for following paragraphs
@@ -5714,7 +6113,7 @@ class Pph(Book):
       self.fsz = m.group(1) + "em"
       self.wb[self.cl] = ""
     if ".fs" in self.wb[self.cl]:
-      self.warn("font-size directive error: {}".format(self.wb[self.cl]))
+      self.crash_w_context("malformed .fs directive", self.cl)
     del self.wb[self.cl]
 
   # .il illustrations
@@ -6040,7 +6439,7 @@ class Pph(Book):
       return
 
     # should not get here
-    self.fatal("malformed .in command: \"{}\"".format(self.wb[self.cl]))
+    self.crash_w_context("malformed .in directive", self.cl)
 
   # .ll line length
   def doLl(self):
@@ -6080,7 +6479,7 @@ class Pph(Book):
       return
 
     # should not get here
-    self.fatal("malformed .ll directive: {}".format(self.wb[self.cl]))
+    self.crash_w_context("malformed .ll directive", self.cl)
 
   # .ti temporary indent
   def doTi(self):
@@ -6132,21 +6531,17 @@ class Pph(Book):
         if m and m.group(1) == "":
           i += 1
           continue
-      
+
       if self.wb[i].startswith(".dc"):
-        self.warn(".di not supported within .nf c block: {}".format(self.wb[i]))
-        #nf_pdc = True
-        #self.doDropcap(i, type="nf")
+        self.warn(".dc not supported within .nf c block: {}".format(self.wb[i]))
         del self.wb[i]
         continue
-        
+
       if self.wb[i].startswith(".di"):
         self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
-        #nf_pdi = True
-        #di = self.doDropimageGuts(i, type="nf")
         del self.wb[i]
         continue
-          
+
       if "" == self.wb[i]:
         pending_mt += 1
         i += 1
@@ -6155,10 +6550,6 @@ class Pph(Book):
         if nf_pdc:
           nf_pdc = False
           t.append("    <div  class='{}' style='margin-top:{}em'>".format(self.pdc, pending_mt) + self.wb[i].strip() + "</div>")
-        #elif nf_pdi:
-        #  nf_pdi = False
-        #  s = "<img class='drop-capinf' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"])
-        #  t.append("    <div class='drop-capinf{}' style='margin-top:{}em'>".format(di["s_adj"], pending_mt) + s + self.wb[i].strip() + "</div>")
         else:
           t.append("    <div style='margin-top:{}em'>".format(pending_mt) + self.wb[i].strip() + "</div>")
         printable_lines_in_block += 1
@@ -6167,20 +6558,19 @@ class Pph(Book):
         if nf_pdc:
           nf_pdc = False
           t.append("    <div  class='{}'>".format(self.pdc) + self.wb[i].strip() + "</div>")
-        #elif nf_pdi:
-        #  nf_pdi = False
-        #  s = "<img class='drop-capinf' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"])
-        #  t.append("    <div class='drop-capinf{}'>".format(di["s_adj"]) + s + self.wb[i].strip() + "</div>")
         else:
           t.append("    <div>" + self.wb[i].strip() + "</div>")
         printable_lines_in_block += 1
       i += 1
     # at block end.
     if printable_lines_in_block == 0:
-        self.fatal("empty .nf block")
+        self.crash_w_context("empty .nf block", i)
     # there may be a pending mt at the block end.
     if pending_mt > 0:
-      t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(pending_mt), t[-1])
+      if "<div style='" not in t[-1]:
+        t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(pending_mt), t[-1])
+      else:
+        t[-1] = re.sub(r"<div style='", "<div style='margin-bottom:{}em; ".format(pending_mt), t[-1])
       pending_mt = 0
     t.append("  </div>")
     t.append("</div>")
@@ -6261,7 +6651,12 @@ class Pph(Book):
               i += 1
               continue
           pst = "text-align: center;"
-          t.append("    <div style='{}'>{}</div>".format(pst, self.wb[i]))
+          if self.wb[i].startswith(".dc"):
+            self.warn(".dc not supported on centered line within .nf block: {}".format(self.wb[i]))
+          elif self.wb[i].startswith(".di"):
+            self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
+          else:
+            t.append("    <div style='{}'>{}</div>".format(pst, self.wb[i]))
           i += 1
           count -= 1
         continue
@@ -6278,7 +6673,12 @@ class Pph(Book):
               i += 1
               continue
           pst = "text-align: right;"
-          t.append("    <div style='{}'>{}</div>".format(pst, self.wb[i]))
+          if self.wb[i].startswith(".dc"):
+            self.warn(".dc not supported on right-justified line within .nf block: {}".format(self.wb[i]))
+          elif self.wb[i].startswith(".di"):
+            self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
+          else:
+            t.append("    <div style='{}'>{}</div>".format(pst, self.wb[i]))
           i += 1
           count -= 1
         continue
@@ -6287,11 +6687,9 @@ class Pph(Book):
         nf_pdc = True
         self.doDropcap(i, type="nf")
         continue
-        
+
       if self.wb[i].startswith(".di"):
         self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
-        #nf_pdi = True
-        #di = self.doDropimageGuts(i, type="nf")
         del self.wb[i]
         continue
 
@@ -6317,18 +6715,14 @@ class Pph(Book):
         else:
           spvs = ""
         if leadsp > 0: # (Note: support for drop-cap not fully implemented for indented lines)
-          #if nf_pdc: # or nf_pdi, eventually
-          #  self.warn("drop-cap not supported on indented line in .nf block: {}".format(ss+tmp))
-          #  nf_pdc = False
-          #  nf_pdi = False
-          # create an indent class
           if nf_pdc:
+            self.warn("drop-cap may not work well on indented line in .nf block: {}".format(ss+tmp))
             nf_pdc = False
-            iclass = "in{}dc".format(leadsp)
+            iclass = "in{}dc".format(leadsp)  # create an indent class
             iamt = "0"
             t.append("      <div class='linedc {0} {1}' {2}>{3}</div>".format(iclass, self.pdc, spvs, ss+tmp.lstrip()))
           else:
-            iclass = "in{}".format(leadsp)
+            iclass = "in{}".format(leadsp)  # create an indent class
             iamt = str(-3 + leadsp/2) # calculate based on -3 base
             t.append("      <div class='line {0}' {1}>{2}</div>".format(iclass, spvs, ss+tmp.lstrip()))
           self.css.addcss("[1227] .linegroup .{} {{ text-indent: {}em; }}".format(iclass, iamt))
@@ -6337,10 +6731,6 @@ class Pph(Book):
           if nf_pdc:
             nf_pdc = False
             t.append("    <div  class='linedc {0}' {1}>{2}</div>".format(self.pdc, spvs, ss+tmp))
-          #elif nf_pdi:
-          #  nf_pdi = False
-          #  simg = "<img class='drop-capinf' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"])
-          #  t.append("    <div  class='line' {0}>{1}{2}</div>".format(spvs, simg, ss+tmp))
           else:
             t.append("      <div class='line' {0}>{1}</div>".format(spvs, ss+tmp))
           printable_lines_in_block += 1
@@ -6353,7 +6743,10 @@ class Pph(Book):
 
     # there may be a pending mt at the block end.
     if cpvs > 0:
-      t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(cpvs), t[-1])
+      if "style='" in t[-1]:
+        t[-1] = re.sub(r"style='", "style='margin-bottom:{}em; ".format(cpvs), t[-1])
+      else:
+        t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(cpvs), t[-1])
       cpvs = 0
 
     t.append("    </div>")
@@ -6389,8 +6782,54 @@ class Pph(Book):
 
   # .fm footnote mark
   def doFmark(self):
-    self.wb[self.cl] = "<hr style='border:none; border-bottom:1px solid; width:10%; margin-left:0; margin-top:1em; text-align:left;' />"
-    self.cl += 1
+    rend = True
+    lz = False
+    m = re.match(r"\.fm (.*)", self.wb[self.cl])
+    if m:
+      options = m.group(1)
+      if "norend" in options:
+        rend = False
+      if "rend=" in options:
+        options, rendvalue = self.get_id("rend", options)
+        if rendvalue == "no" or rendvalue == "norend" or not "h" in rendvalue:
+          rend = False
+      rendafter = False
+      if "rendafter=" in options:
+        options, rendaval = self.get_id("rendafter", options)
+        if rendaval.startswith("y"):
+          rendafter = True
+      if "lz=" in options:
+        options, lzvalue = self.get_id("lz", options)
+        if "h" in lzvalue:
+          lz = True
+        else:
+          rend = False  # If this .fm is a landing zone for text but not html, don't do rend for it either
+      if "=" in options:
+        self.warn("Unrecognized option in .fm command: {}".format(self.wb[self.cl]))
+    if rend and ((not lz) or (lz and len(self.fnlist))):
+      self.wb[self.cl] = "<hr style='border:none; border-bottom:1px solid; width:10%; margin-left:0; margin-top:1em; text-align:left;' />"
+      self.cl += 1
+    else:
+      rend = False
+      del self.wb[self.cl]
+    if lz:
+      # emit saved footnotes
+      if len(self.fnlist): # make sure there's something to generate
+        for t in self.fnlist:
+          for s in t:
+            if self.cl < len(self.wb):
+              self.wb.insert(self.cl, s)
+            else:
+              self.wb.append(s)
+            self.cl += 1
+        del self.fnlist[:]  # remove everything we handled
+        self.fnlist = []
+        if rend and rendafter:
+          self.wb.append("<hr style='border:none; border-bottom:1px solid; width:10%; margin-left:0; margin-top:1em; text-align:left;' />")
+          self.cl += 1
+      else:
+        self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
+
 
   # .fn footnote
   # here on footnote start or end
@@ -6404,17 +6843,26 @@ class Pph(Book):
     if m: # footnote ends
       self.wb[self.cl] = "</div>"
       self.cl += 1
+      if self.footnoteLzH and not self.keepFnHere: # if special footnote landing zone in effect and not disabled for this footnote
+        self.grabFootnoteH()
       return
 
-    m = re.match(r"\.fn (\d+)( |$)", self.wb[self.cl]) # First try numeric footnote
+    m = re.match(r"\.fn (\d+)( |$)(lz=here|hlz=here)?", self.wb[self.cl]) # First try numeric footnote
     if m: # footnote start
       fnname = m.group(1)
+      self.keepFnHere = True if (m.group(3)) else False # test for lz=here and remember for .fn- processing
     else:
-      m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)", self.wb[self.cl]) # then named
+      m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)(lz=here|hlz=here)?", self.wb[self.cl]) # then named
       if m:
         fnname = m.group(1)
+        self.keepFnHere = True if (m.group(3)) else False # test for lz=here and remember for .fn- processing
       else:
         fnname = "<<Invalid footnote name; see messages>>"
+    if self.keepFnHere and not self.footnoteLzH:
+      if m.group(3).startswith("hlz"):
+        self.warn(".fn specifies hlz=here but landing zones not in effect for HTML output:{}".format(self.wb[self.cl]))
+      elif m.group(3).startswith("lz") and not self.footnoteLzT and not self.footnoteLzH:
+        self.warn(".fn specifies lz=here but no landing zones are in effect:{}".format(self.wb[self.cl]))
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     if self.pindent: # indented paragraphs
@@ -6426,8 +6874,10 @@ class Pph(Book):
 
       self.css.addcss("[1430] div.footnote {}")
       self.css.addcss("[1431] div.footnote>:first-child { margin-top:1em; }")
-      self.css.addcss("[1432] div.footnote p {{ text-indent:1em;margin-top:{0}em;margin-bottom:{1}; }}".format(s2,s2))
+      self.css.addcss("[1432] div.footnote p {{ text-indent:1em;margin-top:{0}em;margin-bottom:{1}em; }}".format(s2,s2))
       self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
+      if self.footnoteLzH: # if special footnote landing zone processing in effect
+        self.footnoteStart = self.cl # remember where this footnote started
       self.cl += 1
       # self.wb[self.cl] = "<a href='#r{0}'>[{0}]</a> {1}".format(fnname, self.wb[self.cl])
       self.wb[self.cl] = "<a href='#r{0}'>{0}</a>. {1}".format(fnname, self.wb[self.cl])
@@ -6451,9 +6901,22 @@ class Pph(Book):
         self.wb[self.cl] = "<div class='footnote' id='f{}' style='{}'>".format(fnname, hcss)
       else:
         self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
+      if self.footnoteLzH: # if special footnote landing zone processing in effect
+        self.footnoteStart = self.cl # remember where this footnote started
       s = "<span class='label'><a href='#r{0}'>{0}</a>.&nbsp;&nbsp;</span>".format(fnname)
       self.cl += 1
       self.wb[self.cl] = s + self.wb[self.cl]
+
+  # grab a complete footnote out of self.wb and save it for later
+  def grabFootnoteH(self):
+    t = [] # buffer for the footnote label and text
+    i = self.footnoteStart
+    while i < self.cl:
+      t.append(self.wb[i]) # grab a line then delete it
+      del self.wb[i]
+      self.cl -= 1
+    self.fnlist.append(t) # when done, append complete list into fnlist for later use
+    #self.cl = i
 
 
   # tables .ta r:5 l:20 r:5 or .ta rlr
@@ -6480,7 +6943,7 @@ class Pph(Book):
         if len(u) != ncols:
             self.fatal("table has wrong number of columns:\n{}".format(self.wb[j]))
         t = re.sub(r"<.*?>", "", u[c].strip())  # adjust column width for inline tags
-        maxw = max(maxw, len(t))
+        maxw = max(maxw, self.truelen(t))
         j += 1
       return maxw
 
@@ -6703,7 +7166,7 @@ class Pph(Book):
     self.cl = startloc + len(t)
 
   # Guts of doDropimage
-  # also needed in nf processing
+  # (split out during development of drop caps for .nf blocks)
   def doDropimageGuts(self, line, type="p"):
     di={}
     m = re.match(r"\.di (\S+) (\d+) (\S+)$",self.wb[line]) # 3 argument version: image, width, adjust
@@ -6752,7 +7215,7 @@ class Pph(Book):
   # two formats:
   #   .di i_b_009.jpg 100 170 1.3 (width, height, adjust specified)
   #   .di i_b_009.jpg 100 1.3 (width, adjust specified)
-  def doDropimage(self):    
+  def doDropimage(self):
 
     di = self.doDropimageGuts(self.cl)
     t = []
@@ -6930,7 +7393,21 @@ class Pph(Book):
         self.cl += 1
         nlines -= 1
     else:
-      self.warn("malformed .rj directive: {}".format(self.wb[i]))
+      self.crash_w_context("malformed .rj directive", self.cl)
+
+  def doSidenote(self):
+    # handle sidenotes outside paragraphs, sidenotes inside paragraphs are done in <sn>-style markup
+    self.snPresent = True  # remember we have sidenotes
+    m = re.match(r"\.sn (.*)", self.wb[self.cl])
+    if m:
+      if self.pvs > 0: # handle any pending vertical space before the .sn
+        self.wb[self.cl] = "<div class='sidenote' style='margin-top: {}em;'>{}</div>".format(self.pvs, m.group(1))
+        self.pvs = 0
+      else:
+        self.wb[self.cl] = "<div class='sidenote'>{}</div>".format(m.group(1))
+      self.cl += 1
+    else:
+      self.crash_w_context("malformed .sn directive", self.cl)
 
   def doPara(self):
     s = self.fetchStyle() # style line with current parameters
@@ -6939,7 +7416,7 @@ class Pph(Book):
     # if there is a text-indent already, don't change it
     # otherwise, add a text-indent if self.pindent is set.
     if self.pdc == ""  and self.pindent and 'text-indent' not in s:
-      s += 'text-indent:1em;'
+      s += 'text-indent:{};'.format(self.nregs["pti"])
 
     # apply either "psi" or "psb" spacing
     if self.pindent:
@@ -6987,10 +7464,9 @@ class Pph(Book):
       # it's a normal paragraph
       self.wb[self.cl] = "<p {}{}>".format(c_str,s_str) + self.wb[self.cl]
 
-    while ( self.cl < len(self.wb) \
-       # any blank line in source ends paragraph
-       and self.wb[self.cl] \
-       and self.wb[self.cl][0] != "." ): # any dot command in source ends paragraph
+    while ( self.cl < len(self.wb) and
+            self.wb[self.cl] and
+            not self.wb[self.cl].startswith(".")): # any blank line or dot command ends paragraph
       self.cl += 1
     i = self.cl - 1
     # if para ended with .bn info, place the </p> before it, not after it to avoid extra
@@ -7068,6 +7544,7 @@ class Pph(Book):
 
   def process(self):
 
+    self.keepFnHere = False
     self.cl = 0
     while self.cl < len(self.wb):
       if "a" in self.debug:
@@ -7095,6 +7572,9 @@ class Pph(Book):
         continue
 
       self.doPara() # it's a paragraph to wrap
+
+    if len(self.fnlist):  # any saved footnotes that didn't have a .fm to generate them?
+      self.warn("Footnotes encountered after last \".fm lz=h\" have not been generated. Missing a .fm somewhere?")
 
   def makeHTML(self):
     self.doHeader()
@@ -7132,7 +7612,7 @@ def main():
   parser.add_argument('-i', '--infile', help='UTF-8 or Latin-1 input file')
   parser.add_argument('-l', '--log', help="display Latin-1, diacritic, and Greek conversion logs", action="store_true")
   parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r)') # r = report regex results
-  parser.add_argument('-o', '--output_format', default="ht", help='output format (HTML:h, text:t, u or l)')
+  parser.add_argument('-o', '--output_format', default="hu", help='output format (HTML:h, text:t, u or l)')
   parser.add_argument('-a', '--anonymous', action='store_true', help='do not identify version/timestamp in HTML')
   parser.add_argument("-v", "--version", help="display version and exit", action="store_true")
   parser.add_argument("-cvg", "--listcvg", help="list Greek and diacritic table to file ppgen-cvglist.txt and exit", action="store_true")
@@ -7161,15 +7641,18 @@ def main():
     ppt = Ppt(args, "l")
     ppt.run()
 
+
   # UTF-8 only
   if 'u' in args.output_format:
     ppt = Ppt(args, "U")  # if PPer explicitly asked for utf-8 always create it, even if input is encoded in Latin-1 or ASCII
     ppt.run()
 
+
   # Latin-1 only
   if 'l' in args.output_format:
    ppt = Ppt(args, "l")
    ppt.run()
+
 
   if 'h' in args.output_format:
     print("creating HTML version")
@@ -7196,7 +7679,7 @@ if __name__ == '__main__':
 # \u2464  ⑤   CIRCLED DIGIT FIVE  # \<
 # \u2465  ⑥   CIRCLED DIGIT SIX   # \:
 # \u2466  ⑦   CIRCLED DIGIT SEVEN # used in footnote processing (along with circled 11/12/13/14)
-# \u2467 	⑧   CIRCLED DIGIT EIGHT # Used for leading nbsp in .ti processing
+# \u2467  ⑧   CIRCLED DIGIT EIGHT # Used for leading nbsp in .ti processing
 # \u2468  ⑨   CIRCLED DIGIT NINE  # \- (so it doesn't become an em-dash later)
 # \u2469  ⑩   CIRCLED NUMBER TEN  # temporarily protect \| during Greek conversion
 # \u246a  ⑪   CIRCLED NUMBER ELEVEN # used in footnote processing (along with 7/12/13/14)
@@ -7222,11 +7705,12 @@ if __name__ == '__main__':
 # \u24e3  ⓣ   CIRCLED LATIN SMALL LETTER T # zero space (\&)
 # \u24e4  ⓤ   CIRCLED LATIN SMALL LETTER U # thin space (\^)
 # \u24e5  ⓥ   CIRCLED LATIN SMALL LETTER V # thick space (\|)
-# \u24ea  ⓪   CIRCLED DIGIT 0 # \#
+# \u24ea  ⓪   CIRCLED DIGIT 0 # (\#)
+# \u24eb  ⓫   NEGATIVE CIRCLED NUMBER ELEVEN # temporary substitute for | in inline HTML sidenotes until postprocessing
 # \u25ee  ◮   UP-POINTING TRIANGLE WITH RIGHT HALF BLACK # <b> or <strong> (becomes =)
 # \u25f8  ◸   UPPER LEFT TRIANGLE # precedes superscripts
 # \u25f9  ◹   UPPER RIGHT TRIANGLE # follows superscripts
-# \u25fa  ◺  	LOWER LEFT TRIANGLE # precedes subscripts
+# \u25fa  ◺   LOWER LEFT TRIANGLE # precedes subscripts
 # \u25ff  ◿   LOWER RIGHT TRIANGLE # follows subscripts
 # \u2ac9  ⫉   SUBSET OF ABOVE ALMOST EQUAL TO # used temporarily during page number reference processing
 #
@@ -7254,6 +7738,7 @@ if __name__ == '__main__':
 # 1205      <xxs>
 # 1205      <u>
 # 1209      <c>     will duplicate for various colors
+# 1210      <abbr> and abbr.spell
 # 1215      .nf b: .lg-container-b
 # 1216             @media handheld
 # 1217      .nf l: .lg-container-l
@@ -7274,6 +7759,10 @@ if __name__ == '__main__':
 # 1432      div.footnote p (if indented paragraphs)
 # 1432      div.footnote .label (if block paragraphs)
 # 1465-1467 .pb (div.pbb, hr.pb, and handheld version)
+# 1500      .sidenote, .sni
+# 1501      @media handheld sidenote
+# 1502      .sni
+# 1503      .hidev
 # 1576      .chapter
 # 1600      .figcenter
 # 1600      .figleft
