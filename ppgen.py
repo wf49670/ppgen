@@ -22,8 +22,10 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.48d"    # 15-Mar-2015  (Beware the Ides of March)
-# Fixup of the nfDropCaps experimental code to remove the .nf .di remnants and merge into development branch
+VERSION="3.48e"    # 19-Mar-2015  (Beware the Ides of March)
+# Better context for problems with id= or name= values
+# Improve handling for longer strings with non-spacing characters
+# Complain and terminate if a .ig is found while already ignoring; probably means a .ig- is missing.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1658,6 +1660,7 @@ class Book(object):
 
   # Calculate "true" length of a string, accounting for <lang> markup and combining or non-spacing characters in Hebrew
   def truelen(self,s):
+    self.dprint("entered")
     l = len(s) # get simplistic length
     for c in s: # examine each character
       cc = ord(c)
@@ -1665,9 +1668,36 @@ class Book(object):
         cat = unicodedata.category(c)
         bidi = unicodedata.bidirectional(c)
         name = unicodedata.name(c)
+        self.dprint("name: {}; cat: {}; bidi: {}".format(name, cat, bidi))###
         if cat == "Cf" or (cat == "Mn" and bidi == "NSM"): # Control character, or Modifier Non-Spacing-Mark?
           l -= 1 # if so, it doesn't take any space
     return l
+
+  # truefmt: .format() replacement for strings that contain combining or non-spacing characters
+  # fmtspec: a simplified form of normal format specification, :[^<>]len{}
+  def truefmt(self, fmtspec, s):
+    self.dprint("entered")
+    m = re.match(r"{:([\^<>])(\d+)}", fmtspec)
+    if m:
+      align = m.group(1)
+      width = int(m.group(2))
+      len = self.truelen(s)
+      if len >= width:
+        return s
+      elif align == "^":  # centering
+        pad = " " * ((width - len)//2) # 1/2 the blanks before & after the string
+        padextra = " " * ((width - len)%2) # plus possibly 1 more after
+        s2 = pad + s + pad + padextra
+      elif align == "<":  # left-aligned
+        pad = " " * (width-len)  # all the blanks after
+        s2 = s + pad
+      else: # right-aligned
+        pad = " " * (width-len)  # all the blanks before
+        s2 = pad + s
+      return s2
+    else:
+      raise Exception("ppgen: internal error, unexpected truefmt argument")
+
 
 
   # extract content of an optionally quoted string
@@ -1899,7 +1929,10 @@ class Book(object):
       if re.match(r"\.ig ",self.wb[i]): # single line
         del self.wb[i]
       elif ".ig" == self.wb[i]: # multi-line
+        del self.wb[i]
         while i < len(self.wb) and self.wb[i] != ".ig-":
+          if self.wb[i].startswith(".ig"): # hit a .ig while looking for a .ig-?
+            self.crash_w_context("Missing .ig- directive: found another .ig inside a .ig block", i)
           del self.wb[i]
         if i < len(self.wb):
           del self.wb[i] # the ".ig-"
@@ -3424,17 +3457,13 @@ class Ppt(Book):
     h2a = self.wb[self.cl+1].split('|')
     for line in h2a:
       line = line.strip()
-      #line = re.sub(r"</?lang[^>]*>", "", line) # remove any language tagging
       len1 = len(line)     # apparent length of line
       len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-      padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
-      if align == "c":
-        pad = " " * (padlen//2)
-      elif align == "r":
-        pad = " " * padlen
+      if len1 == len2:
+        self.eb.append(fmt.format(line).rstrip())
       else:
-        pad = ""
-      self.eb.append((pad + fmt.format(line)).rstrip())
+        self.eb.append(self.truefmt(fmt, line).rstrip())
+
     self.eb.append(".RS 1")
     self.cl += 2
 
@@ -3684,9 +3713,11 @@ class Ppt(Book):
       line = self.wb[i].strip()
       len1 = len(line)     # apparent length of line
       len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-      padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
-      pad = " " * (padlen//2)
-      t.append(" " * self.regIN + pad + xs.format(line)) # now centering should handle non-spacing Unicode characters
+      if len1 == len2:
+        t.append(" " * self.regIN + xs.format(line))
+      else:
+        t.append(" " * self.regIN + self.truefmt(xs, line))
+
       i += 1
     self.cl = i + 1 # skip the closing .nf-
     # see if the block has hit the left margin
@@ -3754,9 +3785,10 @@ class Ppt(Book):
           line = self.wb[i].strip()
           len1 = len(line)     # apparent length of line
           len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
-          pad = " " * (padlen//2)
-          self.eb.append(" " * self.regIN + pad + xs.format(line))
+          if len1 == len2:
+            self.eb.append(" " * self.regIN + xs.format(line))
+          else:
+            self.eb.append(" " * self.regIN + self.truefmt(line))
           i += 1
           count -= 1
         continue
@@ -3776,9 +3808,10 @@ class Ppt(Book):
           line = self.wb[i].strip()
           len1 = len(line)     # apparent length of line
           len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
-          pad = " " * padlen
-          self.eb.append(" " * self.regIN + pad + xs.format(line)) # should be OK with combining characters now
+          if len1 == len2:
+            self.eb.append(" " * self.regIN + xs.format(line))
+          else:
+            self.eb.append(" " * self.regIN + self.truefmt(xs, line))
           # but it may look off with proportional fonts, esp. if the rj text is Hebrew or another rtl language
           i += 1
           count -= 1
@@ -3843,9 +3876,10 @@ class Ppt(Book):
           line = self.wb[i].strip()
           len1 = len(line)     # apparent length of line
           len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
-          pad = " " * (padlen//2)
-          t.append(" " * lmar + pad + xs.format(line)) # should be OK with combining characters now
+          if len1 == len2:
+            t.append(" " * lmar + xs.format(line))
+          else:
+            t.append(" " * lmar + self.truefmt(line))
           i += 1
           count -= 1
         continue
@@ -3866,9 +3900,10 @@ class Ppt(Book):
           line = self.wb[i].strip()
           len1 = len(line)     # apparent length of line
           len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
-          pad = " " * padlen
-          t.append(" " * lmar + pad + xs.format(line))
+          if len1 == len2:
+            t.append(" " * lmar + xs.format(line))
+          else:
+            t.append(" " * lmar + self.truefmt(xs, line))
           i += 1
           count -= 1
         continue
@@ -3931,9 +3966,10 @@ class Ppt(Book):
           line = self.wb[i].strip()
           len1 = len(line)     # apparent length of line
           len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
-          pad = " " * (padlen//2)
-          self.eb.append(" " * fixed_indent + pad + xs.format(line))
+          if len1 == len2:
+            self.eb.append(" " * fixed_indent + xs.format(line))
+          else:
+            self.eb.append(" " * fixed_indent + self.truefmt(xs, line))
           i += 1
           count -= 1
         continue
@@ -3953,9 +3989,10 @@ class Ppt(Book):
           line = self.wb[i].strip()
           len1 = len(line)     # apparent length of line
           len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-          padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
-          pad = " " * padlen
-          self.eb.append(" " * fixed_indent + pad + xs.format(line))
+          if len1 == len2:
+            self.eb.append(" " * fixed_indent + xs.format(line))
+          else:
+            self.eb.append(" " * fixed_indent + self.truefmt(xs, line))
           i += 1
           count -= 1
         continue
@@ -4246,9 +4283,10 @@ class Ppt(Book):
         line = self.wb[self.cl].strip()
         len1 = len(line)     # apparent length of line
         len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-        padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
-        pad = " " * (padlen//2)
-        self.eb.append(pad + "{:^72}".format(line))
+        if len1 == len2:
+          self.eb.append("{:^72}".format(line))
+        else:
+          self.eb.append(self.truefmt("{:^72}", line))
         self.cl += 1
         continue
 
@@ -4294,20 +4332,7 @@ class Ppt(Book):
           if len1 == len2:
             s += fmt.format(line)
           else: # have some non-spacing characters to account for
-            if len2 == widths[col]:
-              s += line
-            else: # must be less than width (because we wrapped it to <= width)
-              if haligns[col] == "^":
-                pad = " " * ((widths[col] - len2)//2) # use 1/2 the difference when centering
-                rem = (widths[col] - len2)%2 # but need to know if there's a remainder.
-                pad2 = " " if (rem) else ""
-                s += pad + line + pad + pad2 # put extra space, if any, after the string
-              elif haligns[col] == ">":
-                pad = " " * (widths[col] - len2) # else if right-aligned use the full difference before
-                s += pad + line
-              else:
-                pad = " " * (widths[col] - len2) # else if left-aligned use the full difference after
-                s += line + pad
+            s += self.truefmt(fmt, line)
           if col != ncols - 1:
             s += " "  # inter-column space so "rl" isn't contingent
         self.eb.append(s)
@@ -4350,9 +4375,10 @@ class Ppt(Book):
         line = self.wb[self.cl].strip()
         len1 = len(line)     # apparent length of line
         len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-        padlen = len1 - len2 # amount of padding to account for diff between apparent and actual lengths
-        pad = " " * padlen
-        self.eb.append(" "*self.regIN + pad + xs.format(line))
+        if len1 == len2:
+          self.eb.append(" " * self.regIN + xs.format(line))
+        else:
+          self.eb.append(" " * self.regIN + self.truefmt(xs, line))
         self.cl += 1
         nlines -= 1
       self.eb.append(".RS 1")
@@ -4663,7 +4689,7 @@ class Pph(Book):
   # of letters, digits ([0-9]), hyphens ("-"), underscores ("_"), colons (":"), and periods (".").
   def checkId(self, s):
     if not re.match(r"[A-Za-z][A-Za-z0-9\-_\:\.]*", s):
-      self.warn("illegal identifier: {}".format(s))
+      self.warn_w_context("illegal identifier: {}".format(s), self.id_loc)
 
   # -------------------------------------------------------------------------------------
   # preprocess working buffer (HTML)
@@ -4994,6 +5020,7 @@ class Pph(Book):
     # target references
     i = 0
     while i < len(self.wb):
+      self.id_loc = i # save location for possible error message about id= value
       if "<target id" in self.wb[i]:
         m = re.search("<target id='(.*?)'>", self.wb[i])
         while m:
@@ -5393,6 +5420,7 @@ class Pph(Book):
     # which at this point are actually using ⑲ instead of the # signs
     for i in range(len(self.wb)):
 
+      self.id_loc = i # save location for possible error message about id= value
       m = re.search(r"⑲(\d+?)⑲", self.wb[i])
       while m: # page number reference
         s = "<a href='⫉Page_{0}'>{0}</a>".format(m.group(1)) # link to it
@@ -6255,6 +6283,7 @@ class Pph(Book):
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # entry point to process illustration (HTML)
 
+    self.id_loc = self.cl # save location for possible error message about id= value
     ia = parse_illo(self.wb[self.cl]) # parse .il line
 
     caption_present = False
