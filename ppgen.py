@@ -22,10 +22,8 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.48e"    # 19-Mar-2015  (Beware the Ides of March)
-# Better context for problems with id= or name= values
-# Improve handling for longer strings with non-spacing characters
-# Complain and terminate if a .ig is found while already ignoring; probably means a .ig- is missing.
+VERSION="3.48f"    # 20-Mar-2015
+# Proper spacing when .nf l/b/r block contains successive blank lines
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1696,7 +1694,7 @@ class Book(object):
         s2 = pad + s
       return s2
     else:
-      raise Exception("ppgen: internal error, unexpected truefmt argument")
+      raise RuntimeError("ppgen: internal error, unexpected truefmt argument")
 
 
 
@@ -6726,6 +6724,7 @@ class Pph(Book):
         if cpvs == 0:
           t.append("    </div>")
           t.append("    <div class='group'>")
+          cpvs += 1
         else:
           cpvs += 1
       else:
@@ -6788,7 +6787,7 @@ class Pph(Book):
 
   # .nf no-fill blocks, all types
   def doNf(self):
-    m = re.match(r"\.nf-", self.wb[self.cl])
+    m = re.match(r"\.nf-", self.wb[self.cl]) ### this can't happen, can it?  Also, HTML processing doesn't verify .nf- occurs
     if m:
       self.crash_w_context("attempting to close an unopened block with {}".format(self.wb[self.cl]),self.cl)
     nf_handled = False
