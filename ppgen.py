@@ -22,9 +22,10 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.48f"    # 20-Mar-2015
+VERSION="3.48f"    # 21-Mar-2015
 # Proper spacing when .nf l/b/r block contains successive blank lines
-
+# Allow long lines in .nf c and .nf b to wrap in text as .nf l allows
+# Properly recognize .bn information in .nf b blocks
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3711,10 +3712,26 @@ class Ppt(Book):
       line = self.wb[i].strip()
       len1 = len(line)     # apparent length of line
       len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-      if len1 == len2:
+      if (len1 == len2) and (len2 <= xt):
         t.append(" " * self.regIN + xs.format(line))
-      else:
+      elif len2 <= xt:
         t.append(" " * self.regIN + self.truefmt(xs, line))
+      else:
+        s = line
+        wi = 0
+        m = re.match("^(\s+)(.*)", s)
+        if m:
+          wi = len(m.group(1))
+          s = m.group(2)
+        u = self.wrap(s, wi+3, xt, -3)
+        line = u[0]
+        u[0] = " " * self.regIN + self.truefmt(xs, line)
+        t.append(u[0]) # output first line
+        bcnt = 0
+        while bcnt < len(u[0]) and u[0][bcnt] == " ": bcnt += 1 # count leading blanks in first line
+        blanks = " " * bcnt
+        for line in u[1:]: # then output other lines, padded with that number of blanks
+          t.append(blanks + line)
 
       i += 1
     self.cl = i + 1 # skip the closing .nf-
@@ -3759,7 +3776,7 @@ class Ppt(Book):
       self.warn("no-fill, left block at left margin starting:\n  {}".format(self.wb[self.cl+1]))
 
     self.eb.append(".RS 1")
-    regBW = self.calculateBW(".nf-")
+    regBW = min(self.calculateBW(".nf-"), self.regLL)
     i = self.cl + 1 # skip the .nf l line
     while self.wb[i] != ".nf-":
 
@@ -3823,10 +3840,10 @@ class Ppt(Book):
           continue
 
       s = (" " * self.regIN + self.wb[i])
-      # if the line is shorter than 72 characters, just send it to emit buffer
+      # if the line is shorter than 72 characters (really, the line length), just send it to emit buffer
       # if longer, calculate the leading spaces on line and use as shift amount.
       # a .ti lets it wrap
-      if self.truelen(s) > 72:
+      if self.truelen(s) > self.regLL:
         wi = 0
         m = re.match("^(\s+)(.*)", s)
         if m:
@@ -3836,7 +3853,6 @@ class Ppt(Book):
         for line in u:
           self.eb.append(line)
       else:
-        #s = re.sub(r"</?lang[^>]*>", "", s) # remove any language tagging
         self.eb.append(s)
       i += 1
     self.eb.append(".RS 1")
@@ -3845,7 +3861,7 @@ class Ppt(Book):
   # no-fill, block (text)
   def doNfb(self, mo):
     t = []
-    regBW = self.calculateBW(".nf-")
+    regBW = min(self.calculateBW(".nf-"), self.regLL)
     i = self.cl + 1 # skip the .nf b line
     xt = self.regLL - self.regIN
     lmar = (xt - regBW)//2
@@ -3870,7 +3886,6 @@ class Ppt(Book):
               i += 1
               continue
           xs = "{:^" + str(regBW) + "}"
-          #self.wb[i] = re.sub(r"</?lang[^>]*>", "", self.wb[i]) # remove any language tagging
           line = self.wb[i].strip()
           len1 = len(line)     # apparent length of line
           len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
@@ -3911,10 +3926,21 @@ class Ppt(Book):
         if m and m.group(1) == "":
           bnInBlock = True
           t.append(self.wb[i])
-        else:
-          t.append(" " * self.regIN + " " * lmar + self.wb[i].rstrip())
+          i += 1
+          continue
+
+      s = (" " * self.regIN + " " * lmar + self.wb[i].rstrip())
+      if self.truelen(s) > self.regLL:
+        wi = 0
+        m = re.match("^(\s+)(.*)", s)
+        if m:
+          wi = len(m.group(1))
+          s = m.group(2)
+        u = self.wrap(s, wi+3, self.regLL, -3)
+        for line in u:
+          t.append(line)
       else:
-        t.append(" " * self.regIN + " " * lmar + self.wb[i].rstrip())
+        t.append(s)
       i += 1
     self.cl = i + 1 # skip the closing .nf-
 
@@ -3939,7 +3965,7 @@ class Ppt(Book):
   # no-fill, right (text)
   def doNfr(self, mo):
     self.eb.append(".RS 1")
-    regBW = self.calculateBW(".nf-")
+    regBW = min(self.calculateBW(".nf-"), self.regLL)
     fixed_indent = self.regIN + (self.regLL - regBW)
     i = self.cl + 1 # skip the .nf r line
     while self.wb[i] != ".nf-":
@@ -3995,7 +4021,25 @@ class Ppt(Book):
           count -= 1
         continue
 
-      self.eb.append(" " * fixed_indent + self.wb[i].strip())
+      if self.bnPresent and self.wb[i].startswith("⑱"):   #just copy .bn info lines, don't change them at all
+        m =re.match("^⑱.*?⑱(.*)", self.wb[i])
+        if m and m.group(1) == "":
+          self.eb.append(self.wb[i])
+          i += 1
+          continue
+
+      s = (" " * fixed_indent + self.wb[i].strip())
+      if self.truelen(self.wb[i].strip()) > self.regLL:
+        wi = 0
+        m = re.match("^(\s+)(.*)", s)
+        if m:
+          wi = len(m.group(1))
+          s = m.group(2)
+        u = self.wrap(s, wi+3, self.regLL, -3)
+        for line in u:
+          self.eb.append(line)
+      else:
+        self.eb.append(s)
       i += 1
     self.cl = i + 1 # skip the closing .nf-
     self.eb.append(".RS 1")
@@ -6678,12 +6722,17 @@ class Pph(Book):
               i += 1
               continue
           pst = "text-align: center;"
+          if cpvs > 1:
+            spvs = " margin-top:{}em; ".format(cpvs)
+          else:
+            spvs = ""
+          cpvs = 0;
           if self.wb[i].startswith(".dc"):
             self.warn(".dc not supported on centered line within .nf block: {}".format(self.wb[i]))
           elif self.wb[i].startswith(".di"):
             self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
           else:
-            t.append("    <div style='{}'>{}</div>".format(pst, self.wb[i]))
+            t.append("    <div style='{}{}'>{}</div>".format(pst, spvs, self.wb[i]))
           i += 1
           count -= 1
         continue
@@ -6700,12 +6749,17 @@ class Pph(Book):
               i += 1
               continue
           pst = "text-align: right;"
+          if cpvs > 1:
+            spvs = " margin-top:{}em; ".format(cpvs)
+          else:
+            spvs = ""
+          cpvs = 0;
           if self.wb[i].startswith(".dc"):
             self.warn(".dc not supported on right-justified line within .nf block: {}".format(self.wb[i]))
           elif self.wb[i].startswith(".di"):
             self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
           else:
-            t.append("    <div style='{}'>{}</div>".format(pst, self.wb[i]))
+            t.append("    <div style='{}{}'>{}</div>".format(pst, spvs, self.wb[i]))
           i += 1
           count -= 1
         continue
@@ -6738,7 +6792,7 @@ class Pph(Book):
           tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp, 1)
           m = re.match(r"^<[^>]+>|⑯\w+⑰", tmp)
         leadsp = len(tmp) - len(tmp.lstrip())
-        if cpvs > 0:
+        if cpvs > 1:
           spvs = " style='margin-top:{}em' ".format(cpvs)
         else:
           spvs = ""
@@ -6770,7 +6824,7 @@ class Pph(Book):
         self.fatal("empty .nf block")
 
     # there may be a pending mt at the block end.
-    if cpvs > 0:
+    if cpvs > 1:
       if "style='" in t[-1]:
         t[-1] = re.sub(r"style='", "style='margin-bottom:{}em; ".format(cpvs), t[-1])
       else:
