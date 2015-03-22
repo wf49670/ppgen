@@ -22,10 +22,9 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.48f"    # 21-Mar-2015
-# Proper spacing when .nf l/b/r block contains successive blank lines
-# Allow long lines in .nf c and .nf b to wrap in text as .nf l allows
-# Properly recognize .bn information in .nf b blocks
+VERSION="3.48g"    # 22-Mar-2015
+# replace .format with self.truefmt where appropriate to simplify code
+
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1659,7 +1658,7 @@ class Book(object):
 
   # Calculate "true" length of a string, accounting for <lang> markup and combining or non-spacing characters in Hebrew
   def truelen(self,s):
-    self.dprint("entered")
+    #self.dprint("entered: {}".format(s))
     l = len(s) # get simplistic length
     for c in s: # examine each character
       cc = ord(c)
@@ -1667,15 +1666,14 @@ class Book(object):
         cat = unicodedata.category(c)
         bidi = unicodedata.bidirectional(c)
         name = unicodedata.name(c)
-        self.dprint("name: {}; cat: {}; bidi: {}".format(name, cat, bidi))###
+        #self.dprint("name: {}; cat: {}; bidi: {}".format(name, cat, bidi))
         if cat == "Cf" or (cat == "Mn" and bidi == "NSM"): # Control character, or Modifier Non-Spacing-Mark?
           l -= 1 # if so, it doesn't take any space
     return l
 
-  # truefmt: .format() replacement for strings that contain combining or non-spacing characters
+  # truefmt: .format() replacement for strings that may contain combining or non-spacing characters
   # fmtspec: a simplified form of normal format specification, :[^<>]len{}
   def truefmt(self, fmtspec, s):
-    self.dprint("entered")
     m = re.match(r"{:([\^<>])(\d+)}", fmtspec)
     if m:
       align = m.group(1)
@@ -1695,7 +1693,7 @@ class Book(object):
         s2 = pad + s
       return s2
     else:
-      raise RuntimeError("ppgen: internal error, unexpected truefmt argument")
+      raise RuntimeError("ppgen: internal error, unexpected truefmt argument: {}".format(fmtspec))
 
 
 
@@ -3456,12 +3454,7 @@ class Ppt(Book):
     h2a = self.wb[self.cl+1].split('|')
     for line in h2a:
       line = line.strip()
-      len1 = len(line)     # apparent length of line
-      len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-      if len1 == len2:
-        self.eb.append(fmt.format(line).rstrip())
-      else:
-        self.eb.append(self.truefmt(fmt, line).rstrip())
+      self.eb.append(self.truefmt(fmt, line).rstrip())
 
     self.eb.append(".RS 1")
     self.cl += 2
@@ -3710,13 +3703,10 @@ class Ppt(Book):
       xt = self.regLL - self.regIN # width of centered line
       xs = "{:^" + str(xt) + "}"
       line = self.wb[i].strip()
-      len1 = len(line)     # apparent length of line
       len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-      if (len1 == len2) and (len2 <= xt):
-        t.append(" " * self.regIN + xs.format(line))
-      elif len2 <= xt:
-        t.append(" " * self.regIN + self.truefmt(xs, line))
-      else:
+      if len2 <= xt:
+        t.append(" " * self.regIN + self.truefmt(xs, line)) # just format it if it fits within the wideh
+      else:                                                 # else wrap it with a hanging indent
         s = line
         wi = 0
         m = re.match("^(\s+)(.*)", s)
@@ -3758,7 +3748,7 @@ class Ppt(Book):
     i = self.cl + 1
     startloc = i
     maxw = 0
-    while i < len(self.wb) and not re.match(lookfor, self.wb[i]):
+    while i < len(self.wb) and not self.wb[i] == lookfor:
       maxw = max(maxw, self.truelen(self.wb[i]))
       i += 1
     if i == len(self.wb):
@@ -3798,12 +3788,7 @@ class Ppt(Book):
               continue
           xs = "{:^" + str(regBW) + "}"
           line = self.wb[i].strip()
-          len1 = len(line)     # apparent length of line
-          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-          if len1 == len2:
-            self.eb.append(" " * self.regIN + xs.format(line))
-          else:
-            self.eb.append(" " * self.regIN + self.truefmt(line))
+          self.eb.append(" " * self.regIN + self.truefmt(line))
           i += 1
           count -= 1
         continue
@@ -3821,12 +3806,7 @@ class Ppt(Book):
               continue
           xs = "{:>" + str(regBW) + "}"
           line = self.wb[i].strip()
-          len1 = len(line)     # apparent length of line
-          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-          if len1 == len2:
-            self.eb.append(" " * self.regIN + xs.format(line))
-          else:
-            self.eb.append(" " * self.regIN + self.truefmt(xs, line))
+          self.eb.append(" " * self.regIN + self.truefmt(xs, line))
           # but it may look off with proportional fonts, esp. if the rj text is Hebrew or another rtl language
           i += 1
           count -= 1
@@ -3887,12 +3867,7 @@ class Ppt(Book):
               continue
           xs = "{:^" + str(regBW) + "}"
           line = self.wb[i].strip()
-          len1 = len(line)     # apparent length of line
-          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-          if len1 == len2:
-            t.append(" " * lmar + xs.format(line))
-          else:
-            t.append(" " * lmar + self.truefmt(line))
+          t.append(" " * lmar + self.truefmt(line))
           i += 1
           count -= 1
         continue
@@ -3911,12 +3886,7 @@ class Ppt(Book):
               continue
           xs = "{:>" + str(regBW) + "}"
           line = self.wb[i].strip()
-          len1 = len(line)     # apparent length of line
-          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-          if len1 == len2:
-            t.append(" " * lmar + xs.format(line))
-          else:
-            t.append(" " * lmar + self.truefmt(xs, line))
+          t.append(" " * lmar + self.truefmt(xs, line))
           i += 1
           count -= 1
         continue
@@ -3988,12 +3958,7 @@ class Ppt(Book):
               continue
           xs = "{:^" + str(regBW) + "}"
           line = self.wb[i].strip()
-          len1 = len(line)     # apparent length of line
-          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-          if len1 == len2:
-            self.eb.append(" " * fixed_indent + xs.format(line))
-          else:
-            self.eb.append(" " * fixed_indent + self.truefmt(xs, line))
+          self.eb.append(" " * fixed_indent + self.truefmt(xs, line))
           i += 1
           count -= 1
         continue
@@ -4011,12 +3976,7 @@ class Ppt(Book):
               continue
           xs = "{:>" + str(regBW) + "}"
           line = self.wb[i].strip()
-          len1 = len(line)     # apparent length of line
-          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-          if len1 == len2:
-            self.eb.append(" " * fixed_indent + xs.format(line))
-          else:
-            self.eb.append(" " * fixed_indent + self.truefmt(xs, line))
+          self.eb.append(" " * fixed_indent + self.truefmt(xs, line))
           i += 1
           count -= 1
         continue
@@ -4166,6 +4126,7 @@ class Ppt(Book):
     self.cl += 1
 
   # Table code, text
+  # Note: tables center in a 72-character line. Should they instead center in the PPer-specified line width?
   def doTable(self):
 
     # get maximum width of specified cell by scanning all rows in table
@@ -4323,12 +4284,7 @@ class Ppt(Book):
       # a line in source that has no vertical pipe
       if not "|" in self.wb[self.cl]:
         line = self.wb[self.cl].strip()
-        len1 = len(line)     # apparent length of line
-        len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-        if len1 == len2:
-          self.eb.append("{:^72}".format(line))
-        else:
-          self.eb.append(self.truefmt("{:^72}", line))
+        self.eb.append(self.truefmt("{:^72}", line))
         self.cl += 1
         continue
 
@@ -4369,12 +4325,7 @@ class Ppt(Book):
         for col in range(0,ncols):
           fmt = "{" + ":{}{}".format(haligns[col],widths[col]) + "}"
           line = w[col][g]
-          len1 = len(line)     # apparent length of line
-          len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-          if len1 == len2:
-            s += fmt.format(line)
-          else: # have some non-spacing characters to account for
-            s += self.truefmt(fmt, line)
+          s += self.truefmt(fmt, line)
           if col != ncols - 1:
             s += " "  # inter-column space so "rl" isn't contingent
         self.eb.append(s)
@@ -4415,12 +4366,7 @@ class Ppt(Book):
       xs = "{:>" + str(t1) + "}"
       while nlines > 0:
         line = self.wb[self.cl].strip()
-        len1 = len(line)     # apparent length of line
-        len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
-        if len1 == len2:
-          self.eb.append(" " * self.regIN + xs.format(line))
-        else:
-          self.eb.append(" " * self.regIN + self.truefmt(xs, line))
+        self.eb.append(" " * self.regIN + self.truefmt(xs, line))
         self.cl += 1
         nlines -= 1
       self.eb.append(".RS 1")
