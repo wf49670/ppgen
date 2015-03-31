@@ -22,10 +22,10 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.48g"    # 22-Mar-2015
-# replace .format with self.truefmt where appropriate to simplify code
-# centralize checking for lines that contain encoded .bn information
-
+VERSION="3.48h"    # 30-Mar-2015
+# Enhance sidenote processing:
+#   (a) allow | to signal original line breaks (both in .sn and <sn>) in HTML, but remove (change to blank) in <sn> form in text
+#   (b) wrap long .sn-style sidenotes in text if no | in them
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2801,7 +2801,6 @@ class Ppt(Book):
 
   # wrap string into paragraph in t[]
   def wrap_para(self, s,  indent, ll, ti):
-    #s = re.sub(r"</?lang[^>]*>", "", s) # remove any language tagging (Note: will not correctly calculate wrapping width)
     # if ti < 0, strip off characters that will be in the hanging margin
     hold = ""
     if ti < 0:
@@ -2901,8 +2900,7 @@ class Ppt(Book):
 
     ###should rewrite to exempt .li blocks from a bunch of this
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # <lang> and <abbr> tags ignored in text version. But for now, keep lang as we may need it
-    # to calculate lengths correctly later.
+    # <lang> and <abbr> tags ignored in text version.
     for i in range(len(self.wb)):
       self.wb[i] = re.sub(r"<lang[^>]*>","",self.wb[i])
       self.wb[i] = re.sub(r"</lang>","",self.wb[i])
@@ -3102,7 +3100,13 @@ class Ppt(Book):
         m = re.match(r"\.nr Sidenote (.+)", self.wb[i])
         if m:
           tempSidenote = m.group(1) # remember new Sidenote name value
-      self.wb[i], l = re.subn("<sn(?: class=[^>]*)?>", "[{}: ".format(tempSidenote), self.wb[i])
+      m = re.match("(.*?<sn(?: class=[^>]+)?>)(.*?\|.*?)(</sn>.*?)$", self.wb[i])
+      while m:
+        tmp = m.group(2)
+        tmp = re.sub(r"\s*\|\s*", " ", tmp)
+        self.wb[i] = m.group(1) + tmp + m.group(3)
+        m = re.match("(.*?<sn(?: class=[^>]+)?>)(.*?\|.*?)(</sn>.*?)$", self.wb[i])
+      self.wb[i], l = re.subn("<sn(?: class=[^>]+)?>", "[{}: ".format(tempSidenote), self.wb[i])
       self.wb[i] = re.sub("</sn>", "]", self.wb[i])
       if l and (in_nf or in_ta or in_fn):
         self.warn_w_context("Inline sidenote probably won't work well here:", i)
@@ -4340,11 +4344,23 @@ class Ppt(Book):
   def doSidenote(self):
     # handle sidenotes outside paragraphs, sidenotes inside paragraphs are handled as <sn>-style markup
     self.snPresent = True
-    self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
     m = re.match(r"\.sn (.*)", self.wb[self.cl])
     if m:
       self.eb.append(".RS 1") # request at least one space in text before sidenote
-      self.eb.append("[{}: {}]".format(self.nregs["Sidenote"], m.group(1)))
+      t = m.group(1).split("|") # split the sidenote on | characters, if any
+      t[0] = t[0].strip()
+      header_len = len(self.nregs["Sidenote"]) + 3
+      for i in range(1, len(t)): # offset subsequent lines of the sidenote for alignment with first line of sidenote text
+          t[i] = (' ' * header_len + t[i].strip()).rstrip()
+      if len(t) > 1: # handle a multi-line sidenote
+        self.eb.append("[{}: {}".format(self.nregs["Sidenote"], t[0]))
+        t[-1] += "]"
+        self.eb.extend(t[1:])
+      else: # single, possibly long, sidenote
+        self.eb.extend(self.wrap_para("[{}: {}]".format(self.nregs["Sidenote"], t[0]), # string to wrap
+                                      header_len, # indent
+                                      self.regLL, # line length
+                                      (0 - header_len))) # ti
       self.eb.append(".RS 1") # request at least one space in text after sidenote
       self.cl += 1
     else:
@@ -5259,14 +5275,22 @@ class Pph(Book):
 
       # <sn>...</sn> becomes a span
       tmpline = self.wb[i]
-      self.wb[i], count = re.subn("<sn>", "<span class='sni'><span class='hidev'>⓫</span>", self.wb[i])
-      m = re.search(r"<sn class=([\"'])(\w*)\1>", self.wb[i])
+      m = re.search(r"<sn[^>]*>.*?</sn>", tmpline) # find sidenote contents and replace any | with <br/>
       while m:
-        self.wb[i], count2 = re.subn(re.escape(m.group(0)), "<span class='sni {}'><span class='hidev'>⓫</span>".format(m.group(2)), self.wb[i])
+        sn = m.group(0).replace('|', '<br/>')
+        self.wb[i] = re.sub(re.escape(m.group(0)), sn, self.wb[i])
+        tmpline = re.sub(re.escape(m.group(0)), "", tmpline)
+        m = re.search(r"<sn[^>]*>.*?</sn>", tmpline)
+      self.wb[i], count = re.subn("<sn>", "<span class='sni'><span class='hidev'>⓫</span>", self.wb[i]) # replace <sn>
+      m = re.search(r"<sn class=([\"'])(\w*)\1>", self.wb[i])  # replace <sn class=...>
+      while m:
+        self.wb[i], count2 = re.subn(re.escape(m.group(0)), "<span class='sni {}'><span class='hidev'>⓫</span>".format(m.group(2)),
+                                     self.wb[i])
         count += count2
         m = re.search(r"<sn class=([\"'])(\w*)\1>", self.wb[i])
-      self.wb[i] = re.sub("</sn>", "<span class='hidev'>⓫</span></span>", self.wb[i])
-      if not self.snPresent and tmpline != self.wb[i]:
+      self.wb[i] = re.sub("</sn>", "<span class='hidev'>⓫</span></span>", self.wb[i]) # replace </sn>
+      #if not self.snPresent and tmpline != self.wb[i]:
+      if count:
         self.snPresent = True
       if count and (in_nf or in_ta or in_fn):
         self.warn_w_context("Inline sidenote probably won't work well here:", i)
@@ -7354,11 +7378,15 @@ class Pph(Book):
     self.snPresent = True  # remember we have sidenotes
     m = re.match(r"\.sn (.*)", self.wb[self.cl])
     if m:
+      t = m.group(1).split("|") # split sidenote on | characters if any
+      for i in range(len(t)):
+        t[i] = t[i].strip()
+      t = "<br/>".join(t)
       if self.pvs > 0: # handle any pending vertical space before the .sn
-        self.wb[self.cl] = "<div class='sidenote' style='margin-top: {}em;'>{}</div>".format(self.pvs, m.group(1))
+        self.wb[self.cl] = "<div class='sidenote' style='margin-top: {}em;'>{}</div>".format(self.pvs, t)
         self.pvs = 0
       else:
-        self.wb[self.cl] = "<div class='sidenote'>{}</div>".format(m.group(1))
+        self.wb[self.cl] = "<div class='sidenote'>{}</div>".format(t)
       self.cl += 1
     else:
       self.crash_w_context("malformed .sn directive", self.cl)
