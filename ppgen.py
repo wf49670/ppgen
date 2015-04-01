@@ -30,6 +30,8 @@ VERSION="3.48i"    # 1-Apr-2015
 #   (d) fixed error with processing of -l command-line option
 #   (e) revised logging for Greek conversions to reduce the number of generated messages
 #       (also, added a new debugging flag, -dl (el, for log) to show the more detailed Greek messages)
+#   (f) moved filtering code so it happens before any other changes are made to the file, so the output of filtering
+#       is a complete copy, including any comments, lines that would be excluded by .ig or .if, etc.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1844,7 +1846,7 @@ class Book(object):
       if self.log:
         try:
           print("Processing: {}".format(gkstring))
-        except: 
+        except:
           print(self.umap("Processing: {}".format(gkstring)))
       count = 0 # count of built-in Greek characters converted
       count1 = 0 # count of PPer-provided Greek characters converted
@@ -1941,9 +1943,324 @@ class Book(object):
         buffer[i] = buffer[i].rstrip()
         i += 1
 
+    def doGreek():
+      # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+      # process [Greek: ...] in UTF-8 output if requested to via .gk command
+      i = 0
+      self.gk_requested = False
+      gk_done = False
+      self.gkpre = ""
+      self.gksuf = ""
+      self.gkkeep = "n"
+      self.gk_quit = "n"
+      while i < len(self.wb) and not gk_done:
+        if self.wb[i].startswith(".gk"):
+          gkin = ""
+          gkout = ""
+          if "pre=" in self.wb[i]:
+            self.wb[i], self.gkpre = self.get_id("pre", self.wb[i])
+            self.gkpre = re.sub(r"\\n", "\n", self.gkpre)
+          if "suf=" in self.wb[i]:
+            self.wb[i], self.gksuf = self.get_id("suf", self.wb[i])
+            self.gksuf = re.sub(r"\\n", "\n", self.gksuf)
+          if "keep=" in self.wb[i]:
+            self.wb[i], self.gkkeep = self.get_id("keep", self.wb[i])
+          if "in=" in self.wb[i]:
+            self.wb[i], gkin = self.get_id("in", self.wb[i])
+          if "out=" in self.wb[i]:
+            self.wb[i], gkout = self.get_id("out", self.wb[i])
+          if "quit=" in self.wb[i]:
+            self.wb[i], self.gk_quit = self.get_id("quit", self.wb[i])
+          if "done" in self.wb[i]:
+            gk_done = True
+          del self.wb[i]
+          self.gk_requested = True
+
+          if gkin and gkout:
+            m = re.search(r"\\u[0-9a-fA-F]{4}", gkout) # find any characters defined by unicode constants in output string
+            while m:
+              found = m.group(0)
+              rep = bytes(m.group(0),"utf-8").decode('unicode-escape')
+              gkout = re.sub(re.escape(found), rep, gkout)
+              m = re.search(r"\\u[0-9a-fA-F]{4}", gkout)
+            self.gk_user.append((gkin, gkout))
+          continue
+        i += 1
+      if self.gk_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
+        text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
+        text = re.sub(r"\[Greek: (.*?)]", gkrepl, text, flags=re.DOTALL)
+
+        self.wb = text.splitlines()
+        text = ""
+
+    def doDiacritics():
+      # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+      # process diacritic markup in UTF-8 output if requested to via .cv command
+      i = 0
+      self.dia_requested = False
+      dia_done = False
+      dia_blobbed = False
+      diapre = ""
+      diasuf = ""
+      diakeep = "n"
+      diatest = False
+      self.dia_quit = "n"
+      dia_italic = "n"
+      dia_bold = "n"
+      while i < len(self.wb) and not dia_done:
+        if self.wb[i].startswith(".cv"):
+          self.dia_requested = True
+          orig = self.wb[i]
+          diain = ""
+          diaout = ""
+          if "pre=" in self.wb[i]:
+            self.wb[i], diapre = self.get_id("pre", self.wb[i])
+            diapre = re.sub(r"\\n", "\n", diapre)
+            if diapre:
+              diatest = True
+          if "suf=" in self.wb[i]:
+            self.wb[i], diasuf = self.get_id("suf", self.wb[i])
+            diasuf = re.sub(r"\\n", "\n", diasuf)
+            if diasuf:
+              diatest = True
+          if "keep=" in self.wb[i]:
+            self.wb[i], diakeep = self.get_id("keep", self.wb[i])
+            if not diakeep.lower().startswith("n"):
+              diatest = True
+          if "in=" in self.wb[i]:
+            self.wb[i], diain = self.get_id("in", self.wb[i])
+          if "out=" in self.wb[i]:
+            self.wb[i], diaout = self.get_id("out", self.wb[i])
+          if "quit=" in self.wb[i]:
+            self.wb[i], self.dia_quit = self.get_id("quit", self.wb[i])
+          if "italic=" in self.wb[i]:
+            self.wb[i], dia_italic = self.get_id("italic", self.wb[i])
+          if "bold=" in self.wb[i]:
+            self.wb[i], dia_bold = self.get_id("bold", self.wb[i])
+          if "done" in self.wb[i]:
+            dia_done = True
+          del self.wb[i]
+          if (diain and not diaout) or (diaout and not diain):
+            self.warn("Missing in= or out= value: {}".format(orig))
+          if diain:
+            if diain[0] != "[" or diain[-1] != "]" or len(diain) > 10 or len(diain) < 3:
+              self.warn("Ignoring invalid in= value {}: {}".format(diain, orig))
+              diain = ""
+            inner = diain[1:-1]
+            if inner.isdigit():
+              self.warn("in= value {} may conflict with footnote processing: {}".format(diain, orig))
+          if diain and diaout:
+            m = re.search(r"\\u[0-9a-fA-F]{4}", diaout) # find any characters defined by unicode constants in output string
+            while m:
+              found = m.group(0)
+              rep = bytes(m.group(0),"utf-8").decode('unicode-escape')
+              diaout = re.sub(re.escape(found), rep, diaout)
+              m = re.search(r"\\u[0-9a-fA-F]{4}", diaout)
+            if diaout != "ignore":
+              self.diacritics_user.append((diain, diaout))
+            else:
+              ignored = False
+              for s in self.diacritics:
+                if s[0] == diain:
+                  self.diacritics.remove(s)
+                  ignored = True
+                  break
+              if not ignored:
+                self.warn("No builtin diacritic {} to ignore: {}".format(diain, orig))
+          continue
+        i += 1
+      if self.dia_requested and (dia_italic.lower().startswith("y") or dia_bold.lower().startswith("y")):
+        text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
+        dia_blobbed = True
+        #
+        # Correct diacritics with <i> markup in them if requested
+        #
+        if dia_italic.lower().startswith("y"):
+          print("Checking for <i> within diacritic markup and correcting")
+          for s in self.diacritics_user:
+            si = "[<i>" + s[0][1:-1] + "</i>]"
+            so = "<i>" + s[0] + "</i>"
+            try:
+              text, count = re.subn(re.escape(si), so, text)
+              if count:
+                print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+            except:
+              self.warn("Error occurred trying to replace {} with {}.".format(si, so))
+          for s in self.diacritics:
+            si = "[<i>" + s[0][1:-1] + "</i>]"
+            so = "<i>" + s[0] + "</i>"
+            try:
+              text, count = re.subn(re.escape(si), so, text)
+              if count:
+                print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+            except:
+              self.warn("Error occurred trying to replace {} with {}.".format(si, so))
+        if dia_bold.lower().startswith("y"):
+          print("Checking for <b> within diacritic markup and correcting")
+          for s in self.diacritics_user:
+            si = "[<b>" + s[0][1:-1] + "</b>]"
+            so = "<b>" + s[0] + "</b>"
+            try:
+              text, count = re.subn(re.escape(si), so, text)
+              if count:
+                print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+            except:
+              self.warn("Error occurred trying to replace {} with {}.".format(si, so))
+          for s in self.diacritics:
+            si = "[<b>" + s[0][1:-1] + "</b>]"
+            so = "<b>" + s[0] + "</b>"
+            try:
+              text, count = re.subn(re.escape(si), so, text)
+              if count:
+                print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+            except:
+              self.warn("Error occurred trying to replace {} with {}.".format(si, so))
+      if self.dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
+        if not dia_blobbed:
+          text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
+          dia_blobbed = True
+        if not diatest:
+          if len(self.diacritics_user) > 0:
+            for s in self.diacritics_user:
+              try:
+                text, count = re.subn(re.escape(s[0]), s[1], text)
+                print(self.umap("Replaced PPer-provided diacritic {} {} times.".format(s[0], count)))
+              except:
+                self.warn("Error occurred trying to replace PPer-provided diacritic " +
+                          "{} with {}. Check replacement value".format(s[0], s[1]))
+          for s in self.diacritics:
+            text, count = re.subn(re.escape(s[0]), s[1], text)
+            if count > 0:
+              print("Replaced {} {} times.".format(s[0], count))
+        else:
+          if len(self.diacritics_user) > 0:
+            for s in self.diacritics_user:
+              if diakeep.lower().startswith("b"): # original before?
+                diaorigb = s[0]
+                diaoriga = ""
+              elif diakeep.lower().startswith("a"): # original after?
+                diaoriga = s[0]
+                diaorigb = ""
+              repl = diaorigb + diapre + s[1] + diasuf + diaoriga
+              try:
+                text, count = re.subn(re.escape(s[0]), repl, text)
+                print(self.umap("Replaced PPer-provided diacritic {} {} times.".format(s[0], count)))
+              except:
+                self.warn("Error occurred trying to replace PPer-provided Greek character" +
+                          "{} with {}. Check replacement value".format(s[0], s[1]))
+          for s in self.diacritics:
+            if diakeep.lower().startswith("b"): # original before?
+              diaorigb = s[0]
+              diaoriga = ""
+            elif diakeep.lower().startswith("a"): # original after?
+              diaoriga = s[0]
+              diaorigb = ""
+            repl = diaorigb + diapre + s[1] + diasuf + diaoriga
+            text, count = re.subn(re.escape(s[0]), repl, text)
+            if count > 0:
+              print("Replaced {} {} times.".format(s[0], count))
+        if self.log:
+          header_needed = True
+          text2 = text
+          m = re.search(r"\[([^*\]].{1,7}?)]", text2)
+          while m:
+            matched = m.group(0)
+            inner = m.group(1)
+            text2, count = re.subn(re.escape(m.group(0)), "", text2)
+            if count > 0 and not inner.isdigit():
+              if header_needed:
+                print("Potential diacritics not converted:")
+                header_needed = False
+              try:
+                print(" {} occurred {} times.".format(m.group(0), count))
+              except:
+                print(self.umap("**{} occurred {} times. (Safe-printed due to error.)".format(m.group(0), count)))
+            m = re.search(r"\[([^*\]].{1,7}?)]", text2)
+          if header_needed:
+            print("No unconverted diacritics seem to remain after conversion.")
+          del text2
+
+      if dia_blobbed:
+        self.wb = text.splitlines()
+        del text
+
+    def doFilterSR():
+      # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+      # capture and remove search/replace directives that specify f for filtering
+      # .sr f[p]? /search/replace/
+      # which is a string containing some combination of ulthf (UTF-8, Latin-1, Text, HTML, filtering)
+      #   or b (before processing, rather than in postprocessing) or p (prompt whether to replace or not)
+      # search is  reg-ex search string
+      # replace is a reg-ex replace string
+      # / is any character not contained within either search or replace
+      #
+      # Values gathered during preprocessCommon and used during filtering
+      i = 0
+      filter_sr = False
+      sr_error = False
+      while i < len(self.wb):
+        if self.wb[i].startswith(".sr"):
+          m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
+          if m:
+            if m.group(5) != "":           # if anything here then the user's expression was wrong, somehow
+              self.warn("Problem with .sr arguments: " +
+                        "1={} 2={} 3={} 4={} Unexpected 5={}\n             {}".format(
+                        m.group(1),m.group(2), m.group(3), m.group(4), m.group(5), self.wb[i]))
+              sr_error = True
+            if "f" in m.group(1):  # if request to do s/r during filtering
+              filter_sr = True     # remember the request
+              if ("u" in m.group(1) or "l" in m.group(1) or
+                  "t" in m.group(1) or "h" in m.group(1) or "b" in m.group(1)):
+                self.warn(".sr f option can not be used with u, l, t, h, or b options:" +
+                          "\n             {}".format(self.wb[i]))
+                sr_error = True
+              if not self.cvgfilter:
+                self.warn(".sr f option can only be used with -f command line option:" +
+                          "\n             {}".format(self.wb[i]))
+                sr_error = True
+              if (("\\n" in m.group(3)) and
+                  ("p" in m.group(1))): # Can't do prompting with \n in request
+                self.warn(".sr p option can not be used with \\n in search string:" +
+                          "\n             {}".format(self.wb[i]))
+                sr_error = True
+              self.srw.append(m.group(1))
+              self.srs.append(m.group(3))
+              self.srr.append(m.group(4))
+
+              del self.wb[i]       # delete this record
+              continue
+          else:
+            self.crash_w_context("Problem parsing .sr arguments.", i)
+
+        i += 1
+
+      if sr_error: # if any .sr parsing problems noted
+        self.fatal("Terminating due to the .sr issues listed previously.")
+
+      if self.cvgfilter and filter_sr: # if user wants some .sr directives applied in filtering mode do them now
+        for i in range(len(self.srw)):
+          if ('f' in self.srw[i]):     # if this one applies to filtering mode
+            self.process_SR(self.wb, i)
+        self.srw = []
+        self.srs = []
+        self.srr = []
+
     #
     # Begin Pre-process Common
     #
+
+    # load cvg filter file if specified
+    if self.cvgfilter:
+      loadFilter()
+
+    # Handle Greek, Diacritics, .sr for filtering, and terminate with cvg-bailout text if filtering or user requested it
+    doGreek()
+    doDiacritics()
+    if self.cvgfilter:
+      doFilterSR()
+    if self.gk_quit.lower().startswith("y") or self.dia_quit.lower().startswith("y") or self.cvgfilter:
+      self.cvgbailout()  # bail out after .cv/.gk or filter processing if user requested early termination
+
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # Remove comments in pre-processor
@@ -2017,248 +2334,6 @@ class Book(object):
       self.wb = text
       text = []
 
-    # load cvg filter file if specified
-    if self.cvgfilter:
-      loadFilter()
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # process [Greek: ...] in UTF-8 output if requested to via .gk command
-    i = 0
-    self.gk_requested = False
-    gk_done = False
-    self.gkpre = ""
-    self.gksuf = ""
-    self.gkkeep = "n"
-    gk_quit = "n"
-    while i < len(self.wb) and not gk_done:
-      if self.wb[i].startswith(".gk"):
-        gkin = ""
-        gkout = ""
-        if "pre=" in self.wb[i]:
-          self.wb[i], self.gkpre = self.get_id("pre", self.wb[i])
-          self.gkpre = re.sub(r"\\n", "\n", self.gkpre)
-        if "suf=" in self.wb[i]:
-          self.wb[i], self.gksuf = self.get_id("suf", self.wb[i])
-          self.gksuf = re.sub(r"\\n", "\n", self.gksuf)
-        if "keep=" in self.wb[i]:
-          self.wb[i], self.gkkeep = self.get_id("keep", self.wb[i])
-        if "in=" in self.wb[i]:
-          self.wb[i], gkin = self.get_id("in", self.wb[i])
-        if "out=" in self.wb[i]:
-          self.wb[i], gkout = self.get_id("out", self.wb[i])
-        if "quit=" in self.wb[i]:
-          self.wb[i], gk_quit = self.get_id("quit", self.wb[i])
-        if "done" in self.wb[i]:
-          gk_done = True
-        del self.wb[i]
-        self.gk_requested = True
-
-        if gkin and gkout:
-          m = re.search(r"\\u[0-9a-fA-F]{4}", gkout) # find any characters defined by unicode constants in output string
-          while m:
-            found = m.group(0)
-            rep = bytes(m.group(0),"utf-8").decode('unicode-escape')
-            gkout = re.sub(re.escape(found), rep, gkout)
-            m = re.search(r"\\u[0-9a-fA-F]{4}", gkout)
-          self.gk_user.append((gkin, gkout))
-        continue
-      i += 1
-    if self.gk_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
-      text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
-      text = re.sub(r"\[Greek: (.*?)]", gkrepl, text, flags=re.DOTALL)
-
-      self.wb = text.splitlines()
-      text = ""
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # process diacritic markup in UTF-8 output if requested to via .cv command
-    i = 0
-    self.dia_requested = False
-    dia_done = False
-    dia_blobbed = False
-    diapre = ""
-    diasuf = ""
-    diakeep = "n"
-    diatest = False
-    dia_quit = "n"
-    dia_italic = "n"
-    dia_bold = "n"
-    while i < len(self.wb) and not dia_done:
-      if self.wb[i].startswith(".cv"):
-        self.dia_requested = True
-        orig = self.wb[i]
-        diain = ""
-        diaout = ""
-        if "pre=" in self.wb[i]:
-          self.wb[i], diapre = self.get_id("pre", self.wb[i])
-          diapre = re.sub(r"\\n", "\n", diapre)
-          if diapre:
-            diatest = True
-        if "suf=" in self.wb[i]:
-          self.wb[i], diasuf = self.get_id("suf", self.wb[i])
-          diasuf = re.sub(r"\\n", "\n", diasuf)
-          if diasuf:
-            diatest = True
-        if "keep=" in self.wb[i]:
-          self.wb[i], diakeep = self.get_id("keep", self.wb[i])
-          if not diakeep.lower().startswith("n"):
-            diatest = True
-        if "in=" in self.wb[i]:
-          self.wb[i], diain = self.get_id("in", self.wb[i])
-        if "out=" in self.wb[i]:
-          self.wb[i], diaout = self.get_id("out", self.wb[i])
-        if "quit=" in self.wb[i]:
-          self.wb[i], dia_quit = self.get_id("quit", self.wb[i])
-        if "italic=" in self.wb[i]:
-          self.wb[i], dia_italic = self.get_id("italic", self.wb[i])
-        if "bold=" in self.wb[i]:
-          self.wb[i], dia_bold = self.get_id("bold", self.wb[i])
-        if "done" in self.wb[i]:
-          dia_done = True
-        del self.wb[i]
-        if (diain and not diaout) or (diaout and not diain):
-          self.warn("Missing in= or out= value: {}".format(orig))
-        if diain:
-          if diain[0] != "[" or diain[-1] != "]" or len(diain) > 10 or len(diain) < 3:
-            self.warn("Ignoring invalid in= value {}: {}".format(diain, orig))
-            diain = ""
-          inner = diain[1:-1]
-          if inner.isdigit():
-            self.warn("in= value {} may conflict with footnote processing: {}".format(diain, orig))
-        if diain and diaout:
-          m = re.search(r"\\u[0-9a-fA-F]{4}", diaout) # find any characters defined by unicode constants in output string
-          while m:
-            found = m.group(0)
-            rep = bytes(m.group(0),"utf-8").decode('unicode-escape')
-            diaout = re.sub(re.escape(found), rep, diaout)
-            m = re.search(r"\\u[0-9a-fA-F]{4}", diaout)
-          if diaout != "ignore":
-            self.diacritics_user.append((diain, diaout))
-          else:
-            ignored = False
-            for s in self.diacritics:
-              if s[0] == diain:
-                self.diacritics.remove(s)
-                ignored = True
-                break
-            if not ignored:
-              self.warn("No builtin diacritic {} to ignore: {}".format(diain, orig))
-        continue
-      i += 1
-    if self.dia_requested and (dia_italic.lower().startswith("y") or dia_bold.lower().startswith("y")):
-      text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
-      dia_blobbed = True
-      #
-      # Correct diacritics with <i> markup in them if requested
-      #
-      if dia_italic.lower().startswith("y"):
-        print("Checking for <i> within diacritic markup and correcting")
-        for s in self.diacritics_user:
-          si = "[<i>" + s[0][1:-1] + "</i>]"
-          so = "<i>" + s[0] + "</i>"
-          try:
-            text, count = re.subn(re.escape(si), so, text)
-            if count:
-              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
-          except:
-            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
-        for s in self.diacritics:
-          si = "[<i>" + s[0][1:-1] + "</i>]"
-          so = "<i>" + s[0] + "</i>"
-          try:
-            text, count = re.subn(re.escape(si), so, text)
-            if count:
-              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
-          except:
-            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
-      if dia_bold.lower().startswith("y"):
-        print("Checking for <b> within diacritic markup and correcting")
-        for s in self.diacritics_user:
-          si = "[<b>" + s[0][1:-1] + "</b>]"
-          so = "<b>" + s[0] + "</b>"
-          try:
-            text, count = re.subn(re.escape(si), so, text)
-            if count:
-              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
-          except:
-            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
-        for s in self.diacritics:
-          si = "[<b>" + s[0][1:-1] + "</b>]"
-          so = "<b>" + s[0] + "</b>"
-          try:
-            text, count = re.subn(re.escape(si), so, text)
-            if count:
-              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
-          except:
-            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
-    if self.dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
-      if not dia_blobbed:
-        text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
-        dia_blobbed = True
-      if not diatest:
-        if len(self.diacritics_user) > 0:
-          for s in self.diacritics_user:
-            try:
-              text, count = re.subn(re.escape(s[0]), s[1], text)
-              print(self.umap("Replaced PPer-provided diacritic {} {} times.".format(s[0], count)))
-            except:
-              self.warn("Error occurred trying to replace PPer-provided diacritic " +
-                        "{} with {}. Check replacement value".format(s[0], s[1]))
-        for s in self.diacritics:
-          text, count = re.subn(re.escape(s[0]), s[1], text)
-          if count > 0:
-            print("Replaced {} {} times.".format(s[0], count))
-      else:
-        if len(self.diacritics_user) > 0:
-          for s in self.diacritics_user:
-            if diakeep.lower().startswith("b"): # original before?
-              diaorigb = s[0]
-              diaoriga = ""
-            elif diakeep.lower().startswith("a"): # original after?
-              diaoriga = s[0]
-              diaorigb = ""
-            repl = diaorigb + diapre + s[1] + diasuf + diaoriga
-            try:
-              text, count = re.subn(re.escape(s[0]), repl, text)
-              print(self.umap("Replaced PPer-provided diacritic {} {} times.".format(s[0], count)))
-            except:
-              self.warn("Error occurred trying to replace PPer-provided Greek character" +
-                        "{} with {}. Check replacement value".format(s[0], s[1]))
-        for s in self.diacritics:
-          if diakeep.lower().startswith("b"): # original before?
-            diaorigb = s[0]
-            diaoriga = ""
-          elif diakeep.lower().startswith("a"): # original after?
-            diaoriga = s[0]
-            diaorigb = ""
-          repl = diaorigb + diapre + s[1] + diasuf + diaoriga
-          text, count = re.subn(re.escape(s[0]), repl, text)
-          if count > 0:
-            print("Replaced {} {} times.".format(s[0], count))
-      if self.log:
-        header_needed = True
-        text2 = text
-        m = re.search(r"\[([^*\]].{1,7}?)]", text2)
-        while m:
-          matched = m.group(0)
-          inner = m.group(1)
-          text2, count = re.subn(re.escape(m.group(0)), "", text2)
-          if count > 0 and not inner.isdigit():
-            if header_needed:
-              print("Potential diacritics not converted:")
-              header_needed = False
-            try:
-              print(" {} occurred {} times.".format(m.group(0), count))
-            except:
-              print(self.umap("**{} occurred {} times. (Safe-printed due to error.)".format(m.group(0), count)))
-          m = re.search(r"\[([^*\]].{1,7}?)]", text2)
-        if header_needed:
-          print("No unconverted diacritics seem to remain after conversion.")
-        del text2
-
-    if dia_blobbed:
-      self.wb = text.splitlines()
-      del text
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # capture and remove search/replace directives
@@ -2315,15 +2390,6 @@ class Book(object):
     if sr_error: # if any .sr parsing problems noted
       self.fatal("Terminating due to the .sr issues listed previously.")
 
-    if self.cvgfilter and filter_sr: # if user wants some .sr directives applied in filtering mode do them now
-      #self.dprint("processing .sr for filtering")
-      for i in range(len(self.srw)):
-        if ('f' in self.srw[i]):     # if this one applies to filtering mode
-          self.process_SR(self.wb, i)
-
-
-    if gk_quit.lower().startswith("y") or dia_quit.lower().startswith("y") or self.cvgfilter:
-      self.cvgbailout()  # bail out after .cv/.gk or filter processing if user requested early termination
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # process character mappings
@@ -7622,7 +7688,7 @@ def main():
   parser = argparse.ArgumentParser(description='ppgen generator')
   parser.add_argument('-i', '--infile', help='UTF-8 or Latin-1 input file')
   parser.add_argument('-l', '--log', help="display Latin-1, diacritic, and Greek conversion logs", action="store_true")
-  parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r,l)') 
+  parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r,l)')
   parser.add_argument('-o', '--output_format', default="hu", help='output format (HTML:h, text:t, u or l)')
   parser.add_argument('-a', '--anonymous', action='store_true', help='do not identify version/timestamp in HTML')
   parser.add_argument("-v", "--version", help="display version and exit", action="store_true")
