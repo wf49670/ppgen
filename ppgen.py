@@ -22,10 +22,14 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.48h"    # 30-Mar-2015
-# Enhance sidenote processing:
-#   (a) allow | to signal original line breaks (both in .sn and <sn>) in HTML, but remove (change to blank) in <sn> form in text
-#   (b) wrap long .sn-style sidenotes in text if no | in them
+VERSION="3.48i"    # 1-Apr-2015
+# Misc. cleanup:
+#   (a) better diagnostics and context for malformed tables
+#   (b) better context for long lines in .nf b blocks
+#   (c) added a few alternative diacritic markup forms
+#   (d) fixed error with processing of -l command-line option
+#   (e) revised logging for Greek conversions to reduce the number of generated messages
+#       (also, added a new debugging flag, -dl (el, for log) to show the more detailed Greek messages)
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -966,7 +970,9 @@ class Book(object):
     ('[`=E]',   '\u1E14', '\\u1E14'), # LATIN CAPITAL LETTER E WITH MACRON AND GRAVE
     ('[`=e]',   '\u1E15', '\\u1E15'), # LATIN SMALL LETTER E WITH MACRON AND GRAVE
     ('[=É]',    '\u1E16', '\\u1E16'), # LATIN CAPITAL LETTER E WITH MACRON AND ACUTE
+    ('[\'=E]',  '\u1E16', '\\u1E16'), # LATIN CAPITAL LETTER E WITH MACRON AND ACUTE (the more proper form)
     ('[=é]',    '\u1E17', '\\u1E17'), # LATIN SMALL LETTER E WITH MACRON AND ACUTE
+    ('[\'=e]',  '\u1E17', '\\u1E17'), # LATIN SMALL LETTER E WITH MACRON AND ACUTE (the more proper form)
     ('[E^]',    '\u1E18', '\\u1E18'), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX BELOW
     ('[e^]',    '\u1E19', '\\u1E19'), # LATIN SMALL LETTER E WITH CIRCUMFLEX BELOW
     ('[E~]',    '\u1E1A', '\\u1E1A'), # LATIN CAPITAL LETTER E WITH TILDE BELOW
@@ -990,7 +996,9 @@ class Book(object):
     ('[I~]',    '\u1E2C', '\\u1E2C'), # LATIN CAPITAL LETTER I WITH TILDE BELOW
     ('[i~]',    '\u1E2D', '\\u1E2D'), # LATIN SMALL LETTER I WITH TILDE BELOW
     ('[\'Ï]',   '\u1E2E', '\\u1E2E'), # LATIN CAPITAL LETTER I WITH DIAERESIS AND ACUTE
+    ('[:Í]',   '\u1E2E', '\\u1E2E'), # LATIN CAPITAL LETTER I WITH DIAERESIS AND ACUTE
     ('[\'ï]',   '\u1E2F', '\\u1E2F'), # LATIN SMALL LETTER I WITH DIAERESIS AND ACUTE
+    ('[:í]',   '\u1E2F', '\\u1E2F'), # LATIN SMALL LETTER I WITH DIAERESIS AND ACUTE
     ('[\'K]',   '\u1E30', '\\u1E30'), # LATIN CAPITAL LETTER K WITH ACUTE
     ('[\'k]',   '\u1E31', '\\u1E31'), # LATIN SMALL LETTER K WITH ACUTE
     ('[K.]',    '\u1E32', '\\u1E32'), # LATIN CAPITAL LETTER K WITH DOT BELOW
@@ -1833,18 +1841,39 @@ class Book(object):
 
     def gkrepl(gkmatch):
       gkstring = gkmatch.group(1)
+      if self.log:
+        try:
+          print("Processing: {}".format(gkstring))
+        except: 
+          print(self.umap("Processing: {}".format(gkstring)))
+      count = 0 # count of built-in Greek characters converted
+      count1 = 0 # count of PPer-provided Greek characters converted
       if len(self.gk_user) > 0:   # if PPer provided any additional Greek mappings apply them first
         for s in self.gk_user:
           try:
-            gkstring, count = re.subn(re.escape(s[0]), s[1], gkstring)
-            print(self.umap("Replaced PPer-provided Greek character {} {} times.".format(s[0], count)))
+            gkstring, count2 = re.subn(re.escape(s[0]), s[1], gkstring)
+            count1 += count2
+            if count2 > 0 and 'l' in self.debug:
+              try:
+                print("Replaced PPer-provided Greek character {} {} times.".format(s[0], count2))
+              except:
+                print(self.umap("Replaced PPer-provided Greek character {} {} times.".format(s[0], count2)))
           except:
             self.warn("Error occurred trying to replace PPer-provided Greek character " +
                       "{} with {}. Check replacement value".format(s[0], s[1]))
       for s in self.gk:
-        gkstring, count = re.subn(s[0], s[1], gkstring)
-        if count > 0:
-          print("Replaced Greek {} {} times.".format(s[0], count))
+        gkstring, count2 = re.subn(s[0], s[1], gkstring)
+        count += count2
+        if count2 > 0 and 'l' in self.debug:
+          try:
+            print("Replaced Greek {} {} times.".format(s[0], count2))
+          except:
+            print(self.umap("Replaced Greek {} {} times.".format(s[0], count2)))
+      if self.log:
+        if len(self.gk_user) > 0:
+          print("Replaced {} PPer-provided Greek characters and {} built-in Greek characters".format(count1, count))
+        else:
+          print("Replaced {} built-in Greek characters".format(count))
       gkorigb = ""
       gkoriga = ""
       if self.gkkeep.lower().startswith("b"): # original before?
@@ -2208,8 +2237,7 @@ class Book(object):
             print("Replaced {} {} times.".format(s[0], count))
       if self.log:
         header_needed = True
-        text2 = []
-        text2.extend(text)
+        text2 = text
         m = re.search(r"\[([^*\]].{1,7}?)]", text2)
         while m:
           matched = m.group(0)
@@ -2226,11 +2254,11 @@ class Book(object):
           m = re.search(r"\[([^*\]].{1,7}?)]", text2)
         if header_needed:
           print("No unconverted diacritics seem to remain after conversion.")
-        del text2[:]
+        del text2
 
     if dia_blobbed:
       self.wb = text.splitlines()
-      text = ""
+      del text
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # capture and remove search/replace directives
@@ -3816,6 +3844,7 @@ class Ppt(Book):
   # no-fill, block (text)
   def doNfb(self, mo):
     t = []
+    firstline = self.cl
     regBW = min(self.calculateBW(".nf-"), self.regLL)
     i = self.cl + 1 # skip the .nf b line
     xt = self.regLL - self.regIN
@@ -3891,7 +3920,7 @@ class Ppt(Book):
           need_pad = True
           break
     if need_pad:
-      self.warn("inserting leading space in wide .nf b")
+      self.warn_w_context("inserting leading space in wide .nf b", firstline)
       for i,line in enumerate(t):
         t[i] = " "+ t[i]
     t.insert(0, ".RS 1")
@@ -4101,7 +4130,7 @@ class Ppt(Book):
           continue
         u = self.wb[j].split("|")
         if len(u) != ncols:
-            self.fatal("table has wrong number of columns:\n{}".format(self.wb[j]))
+            self.crash_w_context("table has wrong number of columns:{}".format(self.wb[j]), j)
         t = u[c].strip()
         maxw = max(maxw, self.truelen(t)) # ignore lead/trail whitespace and account for lang markup
         j += 1
@@ -4216,6 +4245,8 @@ class Ppt(Book):
         continue
 
       t = self.wb[k1].split("|")
+      if len(t) != ncols:
+        self.crash_w_context("table has wrong number of columns:{}".format(self.wb[k1]), k1)
       for i in range(0,ncols):
         k2 = self.wrap_para(t[i].strip(), 0, widths[i], 0) # should handle combining characters properly
         if len(k2) > 1:
@@ -6921,7 +6952,7 @@ class Pph(Book):
           continue
         u = self.wb[j].split("|")
         if len(u) != ncols:
-            self.fatal("table has wrong number of columns:\n{}".format(self.wb[j]))
+            self.crash_w_context("table has wrong number of columns:{}".format(self.wb[j]), j)
         t = re.sub(r"<.*?>", "", u[c].strip())  # adjust column width for inline tags
         maxw = max(maxw, self.truelen(t))
         j += 1
@@ -7118,6 +7149,8 @@ class Pph(Book):
         self.wb[self.cl] = re.sub(m.group(1), "", self.wb[self.cl])
 
       v = self.wb[self.cl].split('|') #
+      if len(v) != ncols:
+        self.crash_w_context("table has wrong number of columns:{}".format(self.wb[self.cl]), self.cl)
       t.append("  <tr>")
       # iterate over the td elements
       for k,data in enumerate(v):
@@ -7582,13 +7615,14 @@ class Pph(Book):
 # debug options:
 # 'd' enables dprint, 's' retains runtime-generated styles,
 # 'a' shows lines as they are processed, 'p' shows architecture
+# 'r' shows regex results for .sr, 'l' provides detailed logging for Greek conversions
 
 def main():
   # process command line
   parser = argparse.ArgumentParser(description='ppgen generator')
   parser.add_argument('-i', '--infile', help='UTF-8 or Latin-1 input file')
   parser.add_argument('-l', '--log', help="display Latin-1, diacritic, and Greek conversion logs", action="store_true")
-  parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r)') # r = report regex results
+  parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r,l)') 
   parser.add_argument('-o', '--output_format', default="hu", help='output format (HTML:h, text:t, u or l)')
   parser.add_argument('-a', '--anonymous', action='store_true', help='do not identify version/timestamp in HTML')
   parser.add_argument("-v", "--version", help="display version and exit", action="store_true")
