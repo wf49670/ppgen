@@ -22,8 +22,9 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.48j"    # 1-Apr-2015
-# Warn PPer if non-standard diacritics are encountered
+VERSION="3.48k"    # 1-Apr-2015
+# adjusted Greek processing to detect theta before stigma to allow sth to become sigma theta rather than stigma h
+# fix bug in -f processing that left \<space> and \| characters encoded in output file
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -478,6 +479,8 @@ class Book(object):
      (';',        '\u0387', ';'),
      ('r\)',      '\u1FE4', 'r)'),
      ('r\(',      '\u1FE5', 'r('),
+     ('th',       '\u03B8', 'th'),
+     ('T[Hh]',    '\u0398', 'TH or Th'),               # must handle theta before stigma to allow sth letter combination
      ('S[Tt]',    '\u03DA', 'ST or St (Stigma)'),      # must handle stigmas before s
      ('st',       '\u03DB', 'st (stigma)'),
      ('^s\'',     '\u03C3\'', 's may be regular', "\u03c3"),    # handle s' as regular sigma as the first characters of the string
@@ -490,8 +493,6 @@ class Book(object):
      ('C[Hh]',    '\u03A7', 'CH or Ch'),
      ('ph',       '\u03C6', 'ph'),
      ('P[Hh]',    '\u03A6', 'PH or Ph'),
-     ('th',       '\u03B8', 'th'),
-     ('T[Hh]',    '\u0398', 'TH or Th'),
      ('ng',       '\u03B3\u03B3', 'ng'),
      ('NG',       '\u0393\u0393', 'NG'),
      ('nk',       '\u03B3\u03BA', 'nk'),
@@ -1431,6 +1432,9 @@ class Book(object):
     bailfn = re.sub("-src", "", self.srcfile.split('.')[0]) + "-cvgout-utf8.txt"
     f1 = codecs.open(bailfn, "w", encoding="UTF-8")
     for index,t in enumerate(self.wb):
+      # unprotect temporarily protected characters from Greek strings
+      t = t.replace("⑩", r"\|") # restore temporarily protected \| and \(space)
+      t = t.replace("⑮", r"\ ")
       f1.write( "{:s}\r\n".format(t.rstrip()) )
     f1.close()
     print("Terminating as requested after .cv/.gk processing.\n\tOutput file: {}".format(bailfn))
