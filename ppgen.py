@@ -22,9 +22,12 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.48k"    # 1-Apr-2015
-# adjusted Greek processing to detect theta before stigma to allow sth to become sigma theta rather than stigma h
-# fix bug in -f processing that left \<space> and \| characters encoded in output file
+VERSION="3.48l"    # 3-Apr-2015
+# Further adjustment of Greek stigma processing. Stigma is now either {st} or {St} or {ST} to allow
+#   proper processing of the much more common case where st means sigma tau not stigma.
+# When keeping original Greek, remove extraneous space we were adding before or after the original.
+# When scanning for Greek allow [Greek:text] with no space after the colon.
+
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -480,9 +483,9 @@ class Book(object):
      ('r\)',      '\u1FE4', 'r)'),
      ('r\(',      '\u1FE5', 'r('),
      ('th',       '\u03B8', 'th'),
-     ('T[Hh]',    '\u0398', 'TH or Th'),               # must handle theta before stigma to allow sth letter combination
-     ('S[Tt]',    '\u03DA', 'ST or St (Stigma)'),      # must handle stigmas before s
-     ('st',       '\u03DB', 'st (stigma)'),
+     ('T[Hh]',    '\u0398', 'TH or Th'),
+     ('\{S[Tt]}', '\u03DA', 'ST or St (Stigma)'),      # must handle stigmas before s (note unusual form
+     ('\{st}',    '\u03DB', 'st (stigma)'),            # to uniquely indicate stigma vs sigma tau
      ('^s\'',     '\u03C3\'', 's may be regular', "\u03c3"),    # handle s' as regular sigma as the first characters of the string
      ('([^Pp])s\'', '\\1\u03C3\'', ' sigma or', ""),            # handle s' as regular sigma elsewhere in string
      ('^s($|\\W)', '\u03C2\\1', 'final sigma based', "\u03c2"), # handle solo s at start of string as final sigma
@@ -1876,9 +1879,9 @@ class Book(object):
       gkorigb = ""
       gkoriga = ""
       if self.gkkeep.lower().startswith("b"): # original before?
-        gkorigb = gkmatch.group(0) + " "
+        gkorigb = gkmatch.group(0)
       elif self.gkkeep.lower().startswith("a"): # original after?
-        gkoriga = " " + gkmatch.group(0)
+        gkoriga = gkmatch.group(0)
       gkfull = gkorigb + self.gkpre + gkstring + self.gksuf + gkoriga
       gkfull = gkfull.replace(r"\|", "⑩") # temporarily protect \| and \(space)
       gkfull = gkfull.replace(r"\ ", "⑮")
@@ -1985,7 +1988,7 @@ class Book(object):
         i += 1
       if self.gk_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
         text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
-        text = re.sub(r"\[Greek: (.*?)]", gkrepl, text, flags=re.DOTALL)
+        text = re.sub(r"\[Greek: ?(.*?)]", gkrepl, text, flags=re.DOTALL)
 
         self.wb = text.splitlines()
         text = ""
