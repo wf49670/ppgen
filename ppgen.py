@@ -22,11 +22,8 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.48m"    # 4-Apr-2015
-# Protect \| and \(space) in all [Greek: ...] strings whether we're doing Greek processing or not,
-#   so they will pass through into the output transparently instead of being lost
-# Detect .li- outside of .li block and fail the run.
-# When wrapping text, remove any consecutive space characters (e.g., '  ' becomes ' ')
+VERSION="3.49"    # 4-Apr-2015
+# Roll 3.48m into production.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
