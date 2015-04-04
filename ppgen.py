@@ -22,9 +22,11 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.48a"    # 8-Mar-2015     bug fixes relating to reinitialization of some internal variables
-
-
+VERSION="3.48m"    # 4-Apr-2015
+# Protect \| and \(space) in all [Greek: ...] strings whether we're doing Greek processing or not,
+#   so they will pass through into the output transparently instead of being lost
+# Detect .li- outside of .li block and fail the run.
+# When wrapping text, remove any consecutive space characters (e.g., '  ' becomes ' ')
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -74,9 +76,12 @@ class Book(object):
   wb = [] # working buffer
   eb = [] # emit buffer
   bb = [] # GG .bin file buffer
-  srw = [] # .sr "which" array
-  srs = [] #     "search" array
-  srr = [] #     "replace" array
+  gk_user = [] # PPer-supplied Greek characters
+  diacritics_user = [] # PPer-supplied diacritic characters
+  srw = []    # .sr "which" array
+  srs = []    # .sr "search" array
+  srr = []    # .sr "replace" array
+  fnlist = [] # buffer for saved footnotes
   regLL = 72 # line length
   regIN = 0 # indent
   regTI = 0 # temporary indent
@@ -205,8 +210,6 @@ class Book(object):
      '\uFF5C':'|', '\uFF5D':'}', '\uFF5E':'~',
      '\u2042':'***'
     }
-
-  gk_user = []                          # PPer provided Greek transliterations will go here
 
   gk = [                              # builtin Greek transliterations
      ('ï/', 'i/\+', 'ï/'),            # i/u/y alternatives using dieresis
@@ -479,8 +482,10 @@ class Book(object):
      (';',        '\u0387', ';'),
      ('r\)',      '\u1FE4', 'r)'),
      ('r\(',      '\u1FE5', 'r('),
-     ('S[Tt]',    '\u03DA', 'ST or St (Stigma)'),      # must handle stigmas before s
-     ('st',       '\u03DB', 'st (stigma)'),
+     ('th',       '\u03B8', 'th'),
+     ('T[Hh]',    '\u0398', 'TH or Th'),
+     ('\{S[Tt]}', '\u03DA', 'ST or St (Stigma)'),      # must handle stigmas before s (note unusual form
+     ('\{st}',    '\u03DB', 'st (stigma)'),            # to uniquely indicate stigma vs sigma tau
      ('^s\'',     '\u03C3\'', 's may be regular', "\u03c3"),    # handle s' as regular sigma as the first characters of the string
      ('([^Pp])s\'', '\\1\u03C3\'', ' sigma or', ""),            # handle s' as regular sigma elsewhere in string
      ('^s($|\\W)', '\u03C2\\1', 'final sigma based', "\u03c2"), # handle solo s at start of string as final sigma
@@ -491,8 +496,6 @@ class Book(object):
      ('C[Hh]',    '\u03A7', 'CH or Ch'),
      ('ph',       '\u03C6', 'ph'),
      ('P[Hh]',    '\u03A6', 'PH or Ph'),
-     ('th',       '\u03B8', 'th'),
-     ('T[Hh]',    '\u0398', 'TH or Th'),
      ('ng',       '\u03B3\u03B3', 'ng'),
      ('NG',       '\u0393\u0393', 'NG'),
      ('nk',       '\u03B3\u03BA', 'nk'),
@@ -572,804 +575,807 @@ class Book(object):
      ('c',        '\u03E1', 'c (sampi)'),
     ]
 
-  diacritics_user = []  # PPer-supplied diacritic markup will go here
-
   diacritics = [
-    ('[=A]',    '\u0100', '\\u0100'), # LATIN CAPITAL LETTER A WITH MACRON    (Latin Extended-A)
-    ('[=a]',    '\u0101', '\\u0101'), # LATIN SMALL LETTER A WITH MACRON
-    ('[)A]',    '\u0102', '\\u0102'), # LATIN CAPITAL LETTER A WITH BREVE
-    ('[)a]',    '\u0103', '\\u0103'), # LATIN SMALL LETTER A WITH BREVE
-    ('[A,]',    '\u0104', '\\u0104'), # LATIN CAPITAL LETTER A WITH OGONEK
-    ('[a,]',    '\u0105', '\\u0105'), # LATIN SMALL LETTER A WITH OGONEK
-    ('[\'C]',   '\u0106', '\\u0106'), # LATIN CAPITAL LETTER C WITH ACUTE
-    ('[\'c]',   '\u0107', '\\u0107'), # LATIN SMALL LETTER C WITH ACUTE
-    ('[^C]',    '\u0108', '\\u0108'), # LATIN CAPITAL LETTER C WITH CIRCUMFLEX
-    ('[^c]',    '\u0109', '\\u0109'), # LATIN SMALL LETTER C WITH CIRCUMFLEX
-    ('[.C]',    '\u010A', '\\u010A'), # LATIN CAPITAL LETTER C WITH DOT ABOVE
-    ('[.c]',    '\u010B', '\\u010B'), # LATIN SMALL LETTER C WITH DOT ABOVE
-    ('[vC]',    '\u010C', '\\u010C'), # LATIN CAPITAL LETTER C WITH CARON
-    ('[vc]',    '\u010D', '\\u010D'), # LATIN SMALL LETTER C WITH CARON
-    ('[vD]',    '\u010E', '\\u010E'), # LATIN CAPITAL LETTER D WITH CARON
-    ('[vd]',    '\u010F', '\\u010F'), # LATIN SMALL LETTER D WITH CARON
-    ('[-D]',    '\u0110', '\\u0110'), # LATIN CAPITAL LETTER D WITH STROKE
-    ('[-d]',    '\u0111', '\\u0111'), # LATIN SMALL LETTER D WITH STROKE
-    ('[=E]',    '\u0112', '\\u0112'), # LATIN CAPITAL LETTER E WITH MACRON
-    ('[=e]',    '\u0113', '\\u0113'), # LATIN SMALL LETTER E WITH MACRON
-    ('[)E]',    '\u0114', '\\u0114'), # LATIN CAPITAL LETTER E WITH BREVE
-    ('[)e]',    '\u0115', '\\u0115'), # LATIN SMALL LETTER E WITH BREVE
-    ('[.E]',    '\u0116', '\\u0116'), # LATIN CAPITAL LETTER E WITH DOT ABOVE
-    ('[.e]',    '\u0117', '\\u0117'), # LATIN SMALL LETTER E WITH DOT ABOVE
-    #('[E,]', '\u0118', '\\u0118'), # LATIN CAPITAL LETTER E WITH OGONEK  # conflicts with markup for cedilla
-    #('[e,]', '\u0119', '\\u0119'), # LATIN SMALL LETTER E WITH OGONEK    # conflicts with markup for cedilla
-    ('[vE]',    '\u011A', '\\u011A'), # LATIN CAPITAL LETTER E WITH CARON
-    ('[ve]',    '\u011B', '\\u011B'), # LATIN SMALL LETTER E WITH CARON
-    ('[^G]',    '\u011C', '\\u011C'), # LATIN CAPITAL LETTER G WITH CIRCUMFLEX
-    ('[^g]',    '\u011D', '\\u011D'), # LATIN SMALL LETTER G WITH CIRCUMFLEX
-    ('[)G]',    '\u011E', '\\u011E'), # LATIN CAPITAL LETTER G WITH BREVE
-    ('[)g]',    '\u011F', '\\u011F'), # LATIN SMALL LETTER G WITH BREVE
-    ('[.G]',    '\u0120', '\\u0120'), # LATIN CAPITAL LETTER G WITH DOT ABOVE
-    ('[.g]',    '\u0121', '\\u0121'), # LATIN SMALL LETTER G WITH DOT ABOVE
-    ('[G,]',    '\u0122', '\\u0122'), # LATIN CAPITAL LETTER G WITH CEDILLA
-    ('[g,]',    '\u0123', '\\u0123'), # LATIN SMALL LETTER G WITH CEDILLA
-    ('[^H]',    '\u0124', '\\u0124'), # LATIN CAPITAL LETTER H WITH CIRCUMFLEX
-    ('[^h]',    '\u0125', '\\u0125'), # LATIN SMALL LETTER H WITH CIRCUMFLEX
-    ('[-H]',    '\u0126', '\\u0126'), # LATIN CAPITAL LETTER H WITH STROKE
-    ('[-h]',    '\u0127', '\\u0127'), # LATIN SMALL LETTER H WITH STROKE
-    ('[~I]',    '\u0128', '\\u0128'), # LATIN CAPITAL LETTER I WITH TILDE
-    ('[~i]',    '\u0129', '\\u0129'), # LATIN SMALL LETTER I WITH TILDE
-    ('[=I]',    '\u012A', '\\u012A'), # LATIN CAPITAL LETTER I WITH MACRON
-    ('[=i]',    '\u012B', '\\u012B'), # LATIN SMALL LETTER I WITH MACRON
-    ('[)I]',    '\u012C', '\\u012C'), # LATIN CAPITAL LETTER I WITH BREVE
-    ('[)i]',    '\u012D', '\\u012D'), # LATIN SMALL LETTER I WITH BREVE
-    ('[I,]',    '\u012E', '\\u012E'), # LATIN CAPITAL LETTER I WITH OGONEK
-    ('[i,]',    '\u012F', '\\u012F'), # LATIN SMALL LETTER I WITH OGONEK
-    ('[.I]',    '\u0130', '\\u0130'), # LATIN CAPITAL LETTER I WITH DOT ABOVE
-    #('[]', '\u0131', '\\u0131'), # LATIN SMALL LETTER DOTLESS I
-    ('[IJ]',    '\u0132', '\\u0132'), # LATIN CAPITAL LIGATURE IJ
-    ('[ij]',    '\u0133', '\\u0133'), # LATIN SMALL LIGATURE IJ
-    ('[^J]',    '\u0134', '\\u0134'), # LATIN CAPITAL LETTER J WITH CIRCUMFLEX
-    ('[^j]',    '\u0135', '\\u0135'), # LATIN SMALL LETTER J WITH CIRCUMFLEX
-    ('[K,]',    '\u0136', '\\u0136'), # LATIN CAPITAL LETTER K WITH CEDILLA
-    ('[k,]',    '\u0137', '\\u0137'), # LATIN SMALL LETTER K WITH CEDILLA
-    ('[kra]',   '\u0138', '\\u0138'), # LATIN SMALL LETTER KRA
-    ('[\'L]',   '\u0139', '\\u0139'), # LATIN CAPITAL LETTER L WITH ACUTE
-    ('[\'l]',   '\u013A', '\\u013A'), # LATIN SMALL LETTER L WITH ACUTE
-    ('[L,]',    '\u013B', '\\u013B'), # LATIN CAPITAL LETTER L WITH CEDILLA
-    ('[l,]',    '\u013C', '\\u013C'), # LATIN SMALL LETTER L WITH CEDILLA
-    ('[vL]',    '\u013D', '\\u013D'), # LATIN CAPITAL LETTER L WITH CARON
-    ('[vl]',    '\u013E', '\\u013E'), # LATIN SMALL LETTER L WITH CARON
-    ('[L·]',    '\u013F', '\\u013F'), # LATIN CAPITAL LETTER L WITH MIDDLE DOT
-    ('[l·]',    '\u0140', '\\u0140'), # LATIN SMALL LETTER L WITH MIDDLE DOT
-    ('[/L]',    '\u0141', '\\u0141'), # LATIN CAPITAL LETTER L WITH STROKE
-    ('[/l]',    '\u0142', '\\u0142'), # LATIN SMALL LETTER L WITH STROKE
-    ('[\'N]',   '\u0143', '\\u0143'), # LATIN CAPITAL LETTER N WITH ACUTE
-    ('[\'n]',   '\u0144', '\\u0144'), # LATIN SMALL LETTER N WITH ACUTE
-    ('[N,]',    '\u0145', '\\u0145'), # LATIN CAPITAL LETTER N WITH CEDILLA
-    ('[n,]',    '\u0146', '\\u0146'), # LATIN SMALL LETTER N WITH CEDILLA
-    ('[vN]',    '\u0147', '\\u0147'), # LATIN CAPITAL LETTER N WITH CARON
-    ('[vn]',    '\u0148', '\\u0148'), # LATIN SMALL LETTER N WITH CARON
-    #('[\'n]', '\u0149', '\\u0149'), # LATIN SMALL LETTER N PRECEDED BY APOSTROPHE (conflicts with markup for n with acute)
-    ('[Eng]',   '\u014A', '\\u014A'), # LATIN CAPITAL LETTER ENG
-    ('[eng]',   '\u014B', '\\u014B'), # LATIN SMALL LETTER ENG
-    ('[=O]',    '\u014C', '\\u014C'), # LATIN CAPITAL LETTER O WITH MACRON
-    ('[=o]',    '\u014D', '\\u014D'), # LATIN SMALL LETTER O WITH MACRON
-    ('[)O]',    '\u014E', '\\u014E'), # LATIN CAPITAL LETTER O WITH BREVE
-    ('[)o]',    '\u014F', '\\u014F'), # LATIN SMALL LETTER O WITH BREVE
-    ('[\'\'O]', '\u0150', '\\u0150'), # LATIN CAPITAL LETTER O WITH DOUBLE ACUTE
-    ('[\'\'o]', '\u0151', '\\u0151'), # LATIN SMALL LETTER O WITH DOUBLE ACUTE
-    ('[OE]',    '\u0152', '\\u0152'), # LATIN CAPITAL LIGATURE OE
-    ('[oe]',    '\u0153', '\\u0153'), # LATIN SMALL LIGATURE OE
-    ('[\'R]',   '\u0154', '\\u0154'), # LATIN CAPITAL LETTER R WITH ACUTE
-    ('[\'r]',   '\u0155', '\\u0155'), # LATIN SMALL LETTER R WITH ACUTE
-    ('[R,]',    '\u0156', '\\u0156'), # LATIN CAPITAL LETTER R WITH CEDILLA
-    ('[r,]',    '\u0157', '\\u0157'), # LATIN SMALL LETTER R WITH CEDILLA
-    ('[vR]',    '\u0158', '\\u0158'), # LATIN CAPITAL LETTER R WITH CARON
-    ('[vr]',    '\u0159', '\\u0159'), # LATIN SMALL LETTER R WITH CARON
-    ('[\'S]',   '\u015A', '\\u015A'), # LATIN CAPITAL LETTER S WITH ACUTE
-    ('[\'s]',   '\u015B', '\\u015B'), # LATIN SMALL LETTER S WITH ACUTE
-    ('[^S]',    '\u015C', '\\u015C'), # LATIN CAPITAL LETTER S WITH CIRCUMFLEX
-    ('[^s]',    '\u015D', '\\u015D'), # LATIN SMALL LETTER S WITH CIRCUMFLEX
-    ('[S,]',    '\u015E', '\\u015E'), # LATIN CAPITAL LETTER S WITH CEDILLA
-    ('[s,]',    '\u015F', '\\u015F'), # LATIN SMALL LETTER S WITH CEDILLA
-    ('[vS]',    '\u0160', '\\u0160'), # LATIN CAPITAL LETTER S WITH CARON
-    ('[vs]',    '\u0161', '\\u0161'), # LATIN SMALL LETTER S WITH CARON
-    ('[T,]',    '\u0162', '\\u0162'), # LATIN CAPITAL LETTER T WITH CEDILLA
-    ('[t,]',    '\u0163', '\\u0163'), # LATIN SMALL LETTER T WITH CEDILLA
-    ('[vT]',    '\u0164', '\\u0164'), # LATIN CAPITAL LETTER T WITH CARON
-    ('[vt]',    '\u0165', '\\u0165'), # LATIN SMALL LETTER T WITH CARON
-    ('[-T]',    '\u0166', '\\u0166'), # LATIN CAPITAL LETTER T WITH STROKE
-    ('[-t]',    '\u0167', '\\u0167'), # LATIN SMALL LETTER T WITH STROKE
-    ('[~U]',    '\u0168', '\\u0168'), # LATIN CAPITAL LETTER U WITH TILDE
-    ('[~u]',    '\u0169', '\\u0169'), # LATIN SMALL LETTER U WITH TILDE
-    ('[=U]',    '\u016A', '\\u016A'), # LATIN CAPITAL LETTER U WITH MACRON
-    ('[=u]',    '\u016B', '\\u016B'), # LATIN SMALL LETTER U WITH MACRON
-    ('[)U]',    '\u016C', '\\u016C'), # LATIN CAPITAL LETTER U WITH BREVE
-    ('[)u]',    '\u016D', '\\u016D'), # LATIN SMALL LETTER U WITH BREVE
-    ('[°U]',    '\u016E', '\\u016E'), # LATIN CAPITAL LETTER U WITH RING ABOVE
-    ('[°u]',    '\u016F', '\\u016F'), # LATIN SMALL LETTER U WITH RING ABOVE
-    ('[\'\'U]', '\u0170', '\\u0170'), # LATIN CAPITAL LETTER U WITH DOUBLE ACUTE
-    ('[\'\'u]', '\u0171', '\\u0171'), # LATIN SMALL LETTER U WITH DOUBLE ACUTE
-    ('[U,]',    '\u0172', '\\u0172'), # LATIN CAPITAL LETTER U WITH OGONEK
-    ('[u,]',    '\u0173', '\\u0173'), # LATIN SMALL LETTER U WITH OGONEK
-    ('[^W]',    '\u0174', '\\u0174'), # LATIN CAPITAL LETTER W WITH CIRCUMFLEX
-    ('[^w]',    '\u0175', '\\u0175'), # LATIN SMALL LETTER W WITH CIRCUMFLEX
-    ('[^Y]',    '\u0176', '\\u0176'), # LATIN CAPITAL LETTER Y WITH CIRCUMFLEX
-    ('[^y]',    '\u0177', '\\u0177'), # LATIN SMALL LETTER Y WITH CIRCUMFLEX
-    ('[:Y]',    '\u0178', '\\u0178'), # LATIN CAPITAL LETTER Y WITH DIAERESIS
-    ('[\'Z]',   '\u0179', '\\u0179'), # LATIN CAPITAL LETTER Z WITH ACUTE
-    ('[\'z]',   '\u017A', '\\u017A'), # LATIN SMALL LETTER Z WITH ACUTE
-    ('[.Z]',    '\u017B', '\\u017B'), # LATIN CAPITAL LETTER Z WITH DOT ABOVE
-    ('[.z]',    '\u017C', '\\u017C'), # LATIN SMALL LETTER Z WITH DOT ABOVE
-    ('[vZ]',    '\u017D', '\\u017D'), # LATIN CAPITAL LETTER Z WITH CARON
-    ('[vz]',    '\u017E', '\\u017E'), # LATIN SMALL LETTER Z WITH CARON
-    ('[s]',     '\u017F', '\\u017F'), # LATIN SMALL LETTER LONG S
-    ('[-b]',    '\u0180', '\\u0180'), # LATIN SMALL LETTER B WITH STROKE     (Latin Extended-B)
-    #('[]', '\u0181', '\\u0181'), # LATIN CAPITAL LETTER B WITH HOOK
-    #('[]', '\u0182', '\\u0182'), # LATIN CAPITAL LETTER B WITH TOPBAR
-    #('[]', '\u0183', '\\u0183'), # LATIN SMALL LETTER B WITH TOPBAR
-    #('[]', '\u0184', '\\u0184'), # LATIN CAPITAL LETTER TONE SIX
-    #('[]', '\u0185', '\\u0185'), # LATIN SMALL LETTER TONE SIX
-    #('[]', '\u0186', '\\u0186'), # LATIN CAPITAL LETTER OPEN O
-    #('[]', '\u0187', '\\u0187'), # LATIN CAPITAL LETTER C WITH HOOK
-    #('[]', '\u0188', '\\u0188'), # LATIN SMALL LETTER C WITH HOOK
-    #('[]', '\u0189', '\\u0189'), # LATIN CAPITAL LETTER AFRICAN D
-    #('[]', '\u018A', '\\u018A'), # LATIN CAPITAL LETTER D WITH HOOK
-    #('[]', '\u018B', '\\u018B'), # LATIN CAPITAL LETTER D WITH TOPBAR
-    #('[]', '\u018C', '\\u018C'), # LATIN SMALL LETTER D WITH TOPBAR
-    #('[]', '\u018D', '\\u018D'), # LATIN SMALL LETTER TURNED DELTA
-    #('[]', '\u018E', '\\u018E'), # LATIN CAPITAL LETTER REVERSED E
-    ('[Schwa]', '\u018F', '\\u018F'), # LATIN CAPITAL LETTER SCHWA
-    #('[]', '\u0190', '\\u0190'), # LATIN CAPITAL LETTER OPEN E
-    #('[]', '\u0191', '\\u0191'), # LATIN CAPITAL LETTER F WITH HOOK
-    #('[]', '\u0192', '\\u0192'), # LATIN SMALL LETTER F WITH HOOK
-    #('[]', '\u0193', '\\u0193'), # LATIN CAPITAL LETTER G WITH HOOK
-    #('[Gamma]', '\u0194', '\\u0194'), # LATIN CAPITAL LETTER GAMMA  (use Greek versions instead)
-    #('[]', '\u0195', '\\u0195'), # LATIN SMALL LETTER HV
-    #('[Iota]', '\u0196', '\\u0196'), # LATIN CAPITAL LETTER IOTA    (use Greek versions instead)
-    ('[-I]',    '\u0197', '\\u0197'), # LATIN CAPITAL LETTER I WITH STROKE
-    #('[]', '\u0198', '\\u0198'), # LATIN CAPITAL LETTER K WITH HOOK
-    #('[]', '\u0199', '\\u0199'), # LATIN SMALL LETTER K WITH HOOK
-    ('[-l]',    '\u019A', '\\u019A'), # LATIN SMALL LETTER L WITH BAR
-    #('[]', '\u019B', '\\u019B'), # LATIN SMALL LETTER LAMBDA WITH STROKE
-    #('[]', '\u019C', '\\u019C'), # LATIN CAPITAL LETTER TURNED M
-    #('[]', '\u019D', '\\u019D'), # LATIN CAPITAL LETTER N WITH LEFT HOOK
-    #('[]', '\u019E', '\\u019E'), # LATIN SMALL LETTER N WITH LONG RIGHT LEG
-    #('[]', '\u019F', '\\u019F'), # LATIN CAPITAL LETTER O WITH MIDDLE TILDE
-    #('[]', '\u01A0', '\\u01A0'), # LATIN CAPITAL LETTER O WITH HORN
-    #('[]', '\u01A1', '\\u01A1'), # LATIN SMALL LETTER O WITH HORN
-    ('[OI]',    '\u01A2', '\\u01A2'), # LATIN CAPITAL LETTER OI
-    ('[oi]',    '\u01A3', '\\u01A3'), # LATIN SMALL LETTER OI
-    #('[]', '\u01A4', '\\u01A4'), # LATIN CAPITAL LETTER P WITH HOOK
-    #('[]', '\u01A5', '\\u01A5'), # LATIN SMALL LETTER P WITH HOOK
-    #('[]', '\u01A6', '\\u01A6'), # LATIN LETTER YR
-    #('[]', '\u01A7', '\\u01A7'), # LATIN CAPITAL LETTER TONE TWO
-    #('[]', '\u01A8', '\\u01A8'), # LATIN SMALL LETTER TONE TWO
-    ('[Esh]',   '\u01A9', '\\u01A9'), # LATIN CAPITAL LETTER ESH
-    #('[]', '\u01AA', '\\u01AA'), # LATIN LETTER REVERSED ESH LOOP
-    #('[]', '\u01AB', '\\u01AB'), # LATIN SMALL LETTER T WITH PALATAL HOOK
-    #('[]', '\u01AC', '\\u01AC'), # LATIN CAPITAL LETTER T WITH HOOK
-    #('[]', '\u01AD', '\\u01AD'), # LATIN SMALL LETTER T WITH HOOK
-    #('[]', '\u01AE', '\\u01AE'), # LATIN CAPITAL LETTER T WITH RETROFLEX HOOK
-    #('[]', '\u01AF', '\\u01AF'), # LATIN CAPITAL LETTER U WITH HORN
-    #('[]', '\u01B0', '\\u01B0'), # LATIN SMALL LETTER U WITH HORN
-    #('[Upsilon]', '\u01B1', '\\u01B1'), # LATIN CAPITAL LETTER UPSILON    (use Greek versions instead)
-    #('[]', '\u01B2', '\\u01B2'), # LATIN CAPITAL LETTER V WITH HOOK
-    #('[]', '\u01B3', '\\u01B3'), # LATIN CAPITAL LETTER Y WITH HOOK
-    #('[]', '\u01B4', '\\u01B4'), # LATIN SMALL LETTER Y WITH HOOK
-    ('[-Z]',    '\u01B5', '\\u01B5'), # LATIN CAPITAL LETTER Z WITH STROKE
-    ('[-z]',    '\u01B6', '\\u01B6'), # LATIN SMALL LETTER Z WITH STROKE
-    ('[Zh]',    '\u01B7', '\\u01B7'), # LATIN CAPITAL LETTER EZH
-    ('[zh]',    '\u0292', '\\u0292'), # LATIN SMALL LETTER EZH (out of order just to keep it with the capital)
-    #('[]', '\u01B8', '\\u01B8'), # LATIN CAPITAL LETTER EZH REVERSED
-    #('[]', '\u01B9', '\\u01B9'), # LATIN SMALL LETTER EZH REVERSED
-    #('[]', '\u01BA', '\\u01BA'), # LATIN SMALL LETTER EZH WITH TAIL
-    ('[-2]',    '\u01BB', '\\u01BB'), # LATIN LETTER TWO WITH STROKE
-    #('[]', '\u01BC', '\\u01BC'), # LATIN CAPITAL LETTER TONE FIVE
-    #('[]', '\u01BD', '\\u01BD'), # LATIN SMALL LETTER TONE FIVE
-    #('[]', '\u01BE', '\\u01BE'), # LATIN LETTER INVERTED GLOTTAL STOP WITH STROKE
-    ('[wynn]',  '\u01BF', '\\u01BF'), # LATIN LETTER WYNN
-    #('[]', '\u01C0', '\\u01C0'), # LATIN LETTER DENTAL CLICK
-    #('[]', '\u01C1', '\\u01C1'), # LATIN LETTER LATERAL CLICK
-    #('[]', '\u01C2', '\\u01C2'), # LATIN LETTER ALVEOLAR CLICK
-    #('[]', '\u01C3', '\\u01C3'), # LATIN LETTER RETROFLEX CLICK
-    ('[vDZ]',   '\u01C4', '\\u01C4'), # LATIN CAPITAL LETTER DZ WITH CARON
-    ('[vDz]',   '\u01C5', '\\u01C5'), # LATIN CAPITAL LETTER D WITH SMALL LETTER Z WITH CARON
-    ('[vdz]',   '\u01C6', '\\u01C6'), # LATIN SMALL LETTER DZ WITH CARON
-    ('[LJ]',    '\u01C7', '\\u01C7'), # LATIN CAPITAL LETTER LJ
-    ('[Lj]',    '\u01C8', '\\u01C8'), # LATIN CAPITAL LETTER L WITH SMALL LETTER J
-    ('[lj]',    '\u01C9', '\\u01C9'), # LATIN SMALL LETTER LJ
-    ('[NJ]',    '\u01CA', '\\u01CA'), # LATIN CAPITAL LETTER NJ
-    ('[Nj]',    '\u01CB', '\\u01CB'), # LATIN CAPITAL LETTER N WITH SMALL LETTER J
-    ('[nj]',    '\u01CC', '\\u01CC'), # LATIN SMALL LETTER NJ
-    ('[vA]',    '\u01CD', '\\u01CD'), # LATIN CAPITAL LETTER A WITH CARON
-    ('[va]',    '\u01CE', '\\u01CE'), # LATIN SMALL LETTER A WITH CARON
-    ('[vI]',    '\u01CF', '\\u01CF'), # LATIN CAPITAL LETTER I WITH CARON
-    ('[vi]',    '\u01D0', '\\u01D0'), # LATIN SMALL LETTER I WITH CARON
-    ('[vO]',    '\u01D1', '\\u01D1'), # LATIN CAPITAL LETTER O WITH CARON
-    ('[vo]',    '\u01D2', '\\u01D2'), # LATIN SMALL LETTER O WITH CARON
-    ('[vU]',    '\u01D3', '\\u01D3'), # LATIN CAPITAL LETTER U WITH CARON
-    ('[vu]',    '\u01D4', '\\u01D4'), # LATIN SMALL LETTER U WITH CARON
-    ('[=Ü]',    '\u01D5', '\\u01D5'), # LATIN CAPITAL LETTER U WITH DIAERESIS AND MACRON
-    ('[=:U]',   '\u01D5', '\\u01D5'), # LATIN CAPITAL LETTER U WITH DIAERESIS AND MACRON
-    ('[:=U]',   '\u01D5', '\\u01D5'), # LATIN CAPITAL LETTER U WITH DIAERESIS AND MACRON
-    ('[=ü]',    '\u01D6', '\\u01D6'), # LATIN SMALL LETTER U WITH DIAERESIS AND MACRON
-    ('[=:u]',   '\u01D6', '\\u01D6'), # LATIN SMALL LETTER U WITH DIAERESIS AND MACRON
-    ('[:=u]',   '\u01D6', '\\u01D6'), # LATIN SMALL LETTER U WITH DIAERESIS AND MACRON
-    ('[\'Ü]',   '\u01D7', '\\u01D7'), # LATIN CAPITAL LETTER U WITH DIAERESIS AND ACUTE
-    ('[\':U]',  '\u01D7', '\\u01D7'), # LATIN CAPITAL LETTER U WITH DIAERESIS AND ACUTE
-    ('[:\'U]',  '\u01D7', '\\u01D7'), # LATIN CAPITAL LETTER U WITH DIAERESIS AND ACUTE
-    ('[:Ú]',    '\u01D7', '\\u01D7'), # LATIN CAPITAL LETTER U WITH DIAERESIS AND ACUTE
-    ('[\'ü]',   '\u01D8', '\\u01D8'), # LATIN SMALL LETTER U WITH DIAERESIS AND ACUTE
-    ('[\':u]',  '\u01D8', '\\u01D8'), # LATIN SMALL LETTER U WITH DIAERESIS AND ACUTE
-    ('[:\'u]',  '\u01D8', '\\u01D8'), # LATIN SMALL LETTER U WITH DIAERESIS AND ACUTE
-    ('[:ú]',    '\u01D8', '\\u01D8'), # LATIN SMALL LETTER U WITH DIAERESIS AND ACUTE
-    ('[)Ü]',    '\u01D9', '\\u01D9'), # LATIN CAPITAL LETTER U WITH DIAERESIS AND CARON
-    ('[):U]',   '\u01D9', '\\u01D9'), # LATIN CAPITAL LETTER U WITH DIAERESIS AND CARON
-    ('[:)U]',   '\u01D9', '\\u01D9'), # LATIN CAPITAL LETTER U WITH DIAERESIS AND CARON
-    ('[)ü]',    '\u01DA', '\\u01DA'), # LATIN SMALL LETTER U WITH DIAERESIS AND CARON
-    ('[):u]',   '\u01DA', '\\u01DA'), # LATIN SMALL LETTER U WITH DIAERESIS AND CARON
-    ('[:)u]',   '\u01DA', '\\u01DA'), # LATIN SMALL LETTER U WITH DIAERESIS AND CARON
-    ('[`Ü]',    '\u01DB', '\\u01DB'), # LATIN CAPITAL LETTER U WITH DIAERESIS AND GRAVE
-    ('[`:U]',   '\u01DB', '\\u01DB'), # LATIN CAPITAL LETTER U WITH DIAERESIS AND GRAVE
-    ('[:`U]',   '\u01DB', '\\u01DB'), # LATIN CAPITAL LETTER U WITH DIAERESIS AND GRAVE
-    ('[`ü]',    '\u01DC', '\\u01DC'), # LATIN SMALL LETTER U WITH DIAERESIS AND GRAVE
-    ('[`:u]',   '\u01DC', '\\u01DC'), # LATIN SMALL LETTER U WITH DIAERESIS AND GRAVE
-    ('[:`u]',   '\u01DC', '\\u01DC'), # LATIN SMALL LETTER U WITH DIAERESIS AND GRAVE
-    #('[]', '\u01DD', '\\u01DD'), # LATIN SMALL LETTER TURNED E
-    ('[=Ä]',    '\u01DE', '\\u01DE'), # LATIN CAPITAL LETTER A WITH DIAERESIS AND MACRON
-    ('[=:A]',   '\u01DE', '\\u01DE'), # LATIN CAPITAL LETTER A WITH DIAERESIS AND MACRON
-    ('[:=A]',   '\u01DE', '\\u01DE'), # LATIN CAPITAL LETTER A WITH DIAERESIS AND MACRON
-    ('[=ä]',    '\u01DF', '\\u01DF'), # LATIN SMALL LETTER A WITH DIAERESIS AND MACRON
-    ('[=:a]',   '\u01DF', '\\u01DF'), # LATIN SMALL LETTER A WITH DIAERESIS AND MACRON
-    ('[:=a]',   '\u01DF', '\\u01DF'), # LATIN SMALL LETTER A WITH DIAERESIS AND MACRON
-    ('[=.A]',   '\u01E0', '\\u01E0'), # LATIN CAPITAL LETTER A WITH DOT ABOVE AND MACRON
-    ('[.=A]',   '\u01E0', '\\u01E0'), # LATIN CAPITAL LETTER A WITH DOT ABOVE AND MACRON
-    ('[=.a]',   '\u01E1', '\\u01E1'), # LATIN SMALL LETTER A WITH DOT ABOVE AND MACRON
-    ('[.=a]',   '\u01E1', '\\u01E1'), # LATIN SMALL LETTER A WITH DOT ABOVE AND MACRON
-    ('[=AE]',   '\u01E2', '\\u01E2'), # LATIN CAPITAL LETTER AE WITH MACRON
-    ('[=ae]',   '\u01E3', '\\u01E3'), # LATIN SMALL LETTER AE WITH MACRON
-    ('[-G]',    '\u01E4', '\\u01E4'), # LATIN CAPITAL LETTER G WITH STROKE
-    ('[-g]',    '\u01E5', '\\u01E5'), # LATIN SMALL LETTER G WITH STROKE
-    ('[vG]',    '\u01E6', '\\u01E6'), # LATIN CAPITAL LETTER G WITH CARON
-    ('[vg]',    '\u01E7', '\\u01E7'), # LATIN SMALL LETTER G WITH CARON
-    ('[vK]',    '\u01E8', '\\u01E8'), # LATIN CAPITAL LETTER K WITH CARON
-    ('[vk]',    '\u01E9', '\\u01E9'), # LATIN SMALL LETTER K WITH CARON
-    ('[O,]',    '\u01EA', '\\u01EA'), # LATIN CAPITAL LETTER O WITH OGONEK
-    ('[o,]',    '\u01EB', '\\u01EB'), # LATIN SMALL LETTER O WITH OGONEK
-    ('[=O,]',   '\u01EC', '\\u01EC'), # LATIN CAPITAL LETTER O WITH OGONEK AND MACRON
-    ('[=o,]',   '\u01ED', '\\u01ED'), # LATIN SMALL LETTER O WITH OGONEK AND MACRON
-    ('[vZh]',   '\u01EE', '\\u01EE'), # LATIN CAPITAL LETTER EZH WITH CARON
-    ('[vzh]',   '\u01EF', '\\u01EF'), # LATIN SMALL LETTER EZH WITH CARON
-    ('[vj]',    '\u01F0', '\\u01F0'), # LATIN SMALL LETTER J WITH CARON
-    ('[DZ]',    '\u01F1', '\\u01F1'), # LATIN CAPITAL LETTER DZ
-    ('[Dz]',    '\u01F2', '\\u01F2'), # LATIN CAPITAL LETTER D WITH SMALL LETTER Z
-    ('[dz]',    '\u01F3', '\\u01F3'), # LATIN SMALL LETTER DZ
-    ('[\'G]',   '\u01F4', '\\u01F4'), # LATIN CAPITAL LETTER G WITH ACUTE
-    ('[\'g]',   '\u01F5', '\\u01F5'), # LATIN SMALL LETTER G WITH ACUTE
-    ('[Hwair]', '\u01F6', '\\u01F6'), # LATIN CAPITAL LETTER HWAIR
-    ('[Wynn]',  '\u01F7', '\\u01F7'), # LATIN CAPITAL LETTER WYNN
-    ('[`N]',    '\u01F8', '\\u01F8'), # LATIN CAPITAL LETTER N WITH GRAVE
-    ('[`n]',    '\u01F9', '\\u01F9'), # LATIN SMALL LETTER N WITH GRAVE
-    ('[\'Å]',   '\u01FA', '\\u01FA'), # LATIN CAPITAL LETTER A WITH RING ABOVE AND ACUTE
-    ('[\'å]',   '\u01FB', '\\u01FB'), # LATIN SMALL LETTER A WITH RING ABOVE AND ACUTE
-    ('[\'AE]',  '\u01FC', '\\u01FC'), # LATIN CAPITAL LETTER AE WITH ACUTE
-    ('[\'ae]',  '\u01FD', '\\u01FD'), # LATIN SMALL LETTER AE WITH ACUTE
-    ('[\'Ø]',   '\u01FE', '\\u01FE'), # LATIN CAPITAL LETTER O WITH STROKE AND ACUTE
-    ('[\'ø]',   '\u01FF', '\\u01FF'), # LATIN SMALL LETTER O WITH STROKE AND ACUTE
-    ('[``A]',   '\u0200', '\\u0200'), # LATIN CAPITAL LETTER A WITH DOUBLE GRAVE
-    ('[``a]',   '\u0201', '\\u0201'), # LATIN SMALL LETTER A WITH DOUBLE GRAVE
-    #('[]', '\u0202', '\\u0202'), # LATIN CAPITAL LETTER A WITH INVERTED BREVE
-    #('[]', '\u0203', '\\u0203'), # LATIN SMALL LETTER A WITH INVERTED BREVE
-    ('[``E]',   '\u0204', '\\u0204'), # LATIN CAPITAL LETTER E WITH DOUBLE GRAVE
-    ('[``e]',   '\u0205', '\\u0205'), # LATIN SMALL LETTER E WITH DOUBLE GRAVE
-    #('[]', '\u0206', '\\u0206'), # LATIN CAPITAL LETTER E WITH INVERTED BREVE
-    #('[]', '\u0207', '\\u0207'), # LATIN SMALL LETTER E WITH INVERTED BREVE
-    ('[``I]',   '\u0208', '\\u0208'), # LATIN CAPITAL LETTER I WITH DOUBLE GRAVE
-    ('[``i]',   '\u0209', '\\u0209'), # LATIN SMALL LETTER I WITH DOUBLE GRAVE
-    #('[]', '\u020A', '\\u020A'), # LATIN CAPITAL LETTER I WITH INVERTED BREVE
-    #('[]', '\u020B', '\\u020B'), # LATIN SMALL LETTER I WITH INVERTED BREVE
-    ('[``O]',   '\u020C', '\\u020C'), # LATIN CAPITAL LETTER O WITH DOUBLE GRAVE
-    ('[``o]',   '\u020D', '\\u020D'), # LATIN SMALL LETTER O WITH DOUBLE GRAVE
-    #('[]', '\u020E', '\\u020E'), # LATIN CAPITAL LETTER O WITH INVERTED BREVE
-    #('[]', '\u020F', '\\u020F'), # LATIN SMALL LETTER O WITH INVERTED BREVE
-    ('[``R]',   '\u0210', '\\u0210'), # LATIN CAPITAL LETTER R WITH DOUBLE GRAVE
-    ('[``r]',   '\u0211', '\\u0211'), # LATIN SMALL LETTER R WITH DOUBLE GRAVE
-    #('[]', '\u0212', '\\u0212'), # LATIN CAPITAL LETTER R WITH INVERTED BREVE
-    #('[]', '\u0213', '\\u0213'), # LATIN SMALL LETTER R WITH INVERTED BREVE
-    ('[``U]',   '\u0214', '\\u0214'), # LATIN CAPITAL LETTER U WITH DOUBLE GRAVE
-    ('[``u]',   '\u0215', '\\u0215'), # LATIN SMALL LETTER U WITH DOUBLE GRAVE
-    #('[]', '\u0216', '\\u0216'), # LATIN CAPITAL LETTER U WITH INVERTED BREVE
-    #('[]', '\u0217', '\\u0217'), # LATIN SMALL LETTER U WITH INVERTED BREVE
-    #('[S,]', '\u0218', '\\u0218'), # LATIN CAPITAL LETTER S WITH COMMA BELOW  # conflicts with cedilla markup
-    #('[s,]', '\u0219', '\\u0219'), # LATIN SMALL LETTER S WITH COMMA BELOW    # conflicts with cedilla markup
-    #('[T,]', '\u021A', '\\u021A'), # LATIN CAPITAL LETTER T WITH COMMA BELOW  # conflicts with cedilla markup
-    #('[t,]', '\u021B', '\\u021B'), # LATIN SMALL LETTER T WITH COMMA BELOW    # conflicts with cedilla markup
-    ('[Gh]',    '\u021C', '\\u021C'), # LATIN CAPITAL LETTER YOGH
-    ('[gh]',    '\u021D', '\\u021D'), # LATIN SMALL LETTER YOGH
-    ('[vH]',    '\u021E', '\\u021E'), # LATIN CAPITAL LETTER H WITH CARON
-    ('[vh]',    '\u021F', '\\u021F'), # LATIN SMALL LETTER H WITH CARON
-    #('[]', '\u0220', '\\u0220'), # LATIN CAPITAL LETTER N WITH LONG RIGHT LEG
-    #('[]', '\u0221', '\\u0221'), # LATIN SMALL LETTER D WITH CURL
-    ('[OU]',    '\u0222', '\\u0222'), # LATIN CAPITAL LETTER OU
-    ('[ou]',    '\u0223', '\\u0223'), # LATIN SMALL LETTER OU
-    #('[]', '\u0224', '\\u0224'), # LATIN CAPITAL LETTER Z WITH HOOK
-    #('[]', '\u0225', '\\u0225'), # LATIN SMALL LETTER Z WITH HOOK
-    ('[.A]',    '\u0226', '\\u0226'), # LATIN CAPITAL LETTER A WITH DOT ABOVE
-    ('[.a]',    '\u0227', '\\u0227'), # LATIN SMALL LETTER A WITH DOT ABOVE
-    ('[E,]',    '\u0228', '\\u0228'), # LATIN CAPITAL LETTER E WITH CEDILLA
-    ('[e,]',    '\u0229', '\\u0229'), # LATIN SMALL LETTER E WITH CEDILLA
-    ('[=Ö]',    '\u022A', '\\u022A'), # LATIN CAPITAL LETTER O WITH DIAERESIS AND MACRON
-    ('[=:O]',   '\u022A', '\\u022A'), # LATIN CAPITAL LETTER O WITH DIAERESIS AND MACRON
-    ('[:=O]',   '\u022A', '\\u022A'), # LATIN CAPITAL LETTER O WITH DIAERESIS AND MACRON
-    ('[=ö]',    '\u022B', '\\u022B'), # LATIN SMALL LETTER O WITH DIAERESIS AND MACRON
-    ('[=:o]',   '\u022B', '\\u022B'), # LATIN SMALL LETTER O WITH DIAERESIS AND MACRON
-    ('[:=o]',   '\u022B', '\\u022B'), # LATIN SMALL LETTER O WITH DIAERESIS AND MACRON
-    ('[=Õ]',    '\u022C', '\\u022C'), # LATIN CAPITAL LETTER O WITH TILDE AND MACRON
-    ('[=~O]',   '\u022C', '\\u022C'), # LATIN CAPITAL LETTER O WITH TILDE AND MACRON
-    ('[~=O]',   '\u022C', '\\u022C'), # LATIN CAPITAL LETTER O WITH TILDE AND MACRON
-    ('[=õ]',    '\u022D', '\\u022D'), # LATIN SMALL LETTER O WITH TILDE AND MACRON
-    ('[=~o]',   '\u022D', '\\u022D'), # LATIN SMALL LETTER O WITH TILDE AND MACRON
-    ('[~=o]',   '\u022D', '\\u022D'), # LATIN SMALL LETTER O WITH TILDE AND MACRON
-    ('[.O]',    '\u022E', '\\u022E'), # LATIN CAPITAL LETTER O WITH DOT ABOVE
-    ('[.o]',    '\u022F', '\\u022F'), # LATIN SMALL LETTER O WITH DOT ABOVE
-    ('[=.O]',   '\u0230', '\\u0230'), # LATIN CAPITAL LETTER O WITH DOT ABOVE AND MACRON
-    ('[=.o]',   '\u0231', '\\u0231'), # LATIN SMALL LETTER O WITH DOT ABOVE AND MACRON
-    ('[=Y]',    '\u0232', '\\u0232'), # LATIN CAPITAL LETTER Y WITH MACRON
-    ('[=y]',    '\u0233', '\\u0233'), # LATIN SMALL LETTER Y WITH MACRON
-    #('[]', '\u0234', '\\u0234'), # LATIN SMALL LETTER L WITH CURL
-    #('[]', '\u0235', '\\u0235'), # LATIN SMALL LETTER N WITH CURL
-    #('[]', '\u0236', '\\u0236'), # LATIN SMALL LETTER T WITH CURL
-    #('[]', '\u0237', '\\u0237'), # LATIN SMALL LETTER DOTLESS J
-    ('[db]',    '\u0238', '\\u0238'), # LATIN SMALL LETTER DB DIGRAPH
-    ('[qp]',    '\u0239', '\\u0239'), # LATIN SMALL LETTER QP DIGRAPH
-    ('[/A]',    '\u023A', '\\u023A'), # LATIN CAPITAL LETTER A WITH STROKE
-    ('[/C]',    '\u023B', '\\u023B'), # LATIN CAPITAL LETTER C WITH STROKE
-    ('[/c]',    '\u023C', '\\u023C'), # LATIN SMALL LETTER C WITH STROKE
-    ('[-L]',    '\u023D', '\\u023D'), # LATIN CAPITAL LETTER L WITH BAR
-    ('[/T]',    '\u023E', '\\u023E'), # LATIN CAPITAL LETTER T WITH DIAGONAL STROKE
-    #('[]', '\u023F', '\\u023F'), # LATIN SMALL LETTER S WITH SWASH TAIL
-    #('[]', '\u0240', '\\u0240'), # LATIN SMALL LETTER Z WITH SWASH TAIL
-    #('[]', '\u0241', '\\u0241'), # LATIN CAPITAL LETTER GLOTTAL STOP
-    #('[]', '\u0242', '\\u0242'), # LATIN SMALL LETTER GLOTTAL STOP
-    ('[-B]',    '\u0243', '\\u0243'), # LATIN CAPITAL LETTER B WITH STROKE
-    ('[-U]',    '\u0244', '\\u0244'), # LATIN CAPITAL LETTER U BAR
-    #('[]', '\u0245', '\\u0245'), # LATIN CAPITAL LETTER TURNED V
-    ('[/E]',    '\u0246', '\\u0246'), # LATIN CAPITAL LETTER E WITH STROKE
-    ('[/e]',    '\u0247', '\\u0247'), # LATIN SMALL LETTER E WITH STROKE
-    ('[-J]',    '\u0248', '\\u0248'), # LATIN CAPITAL LETTER J WITH STROKE
-    ('[-j]',    '\u0249', '\\u0249'), # LATIN SMALL LETTER J WITH STROKE
-    #('[]', '\u024A', '\\u024A'), # LATIN CAPITAL LETTER SMALL Q WITH HOOK TAIL
-    #('[]', '\u024B', '\\u024B'), # LATIN SMALL LETTER Q WITH HOOK TAIL
-    ('[-R]',    '\u024C', '\\u024C'), # LATIN CAPITAL LETTER R WITH STROKE
-    ('[-r]',    '\u024D', '\\u024D'), # LATIN SMALL LETTER R WITH STROKE
-    ('[-Y]',    '\u024E', '\\u024E'), # LATIN CAPITAL LETTER Y WITH STROKE
-    ('[-y]',    '\u024F', '\\u024F'), # LATIN SMALL LETTER Y WITH STROKE
-    ('[A°]',    '\u1E00', '\\u1E00'), # LATIN CAPITAL LETTER A WITH RING BELOW    (Latin Extended Additional)
-    ('[a°]',    '\u1E01', '\\u1E01'), # LATIN SMALL LETTER A WITH RING BELOW
-    ('[.B]',    '\u1E02', '\\u1E02'), # LATIN CAPITAL LETTER B WITH DOT ABOVE
-    ('[.b]',    '\u1E03', '\\u1E03'), # LATIN SMALL LETTER B WITH DOT ABOVE
-    ('[B.]',    '\u1E04', '\\u1E04'), # LATIN CAPITAL LETTER B WITH DOT BELOW
-    ('[b.]',    '\u1E05', '\\u1E05'), # LATIN SMALL LETTER B WITH DOT BELOW
-    ('[B=]',    '\u1E06', '\\u1E06'), # LATIN CAPITAL LETTER B WITH LINE BELOW
-    ('[b=]',    '\u1E07', '\\u1E07'), # LATIN SMALL LETTER B WITH LINE BELOW
-    ('[\'C,]',  '\u1E08', '\\u1E08'), # LATIN CAPITAL LETTER C WITH CEDILLA AND ACUTE
-    ('[\'c,]',  '\u1E09', '\\u1E09'), # LATIN SMALL LETTER C WITH CEDILLA AND ACUTE
-    ('[.D]',    '\u1E0A', '\\u1E0A'), # LATIN CAPITAL LETTER D WITH DOT ABOVE
-    ('[.d]',    '\u1E0B', '\\u1E0B'), # LATIN SMALL LETTER D WITH DOT ABOVE
-    ('[D.]',    '\u1E0C', '\\u1E0C'), # LATIN CAPITAL LETTER D WITH DOT BELOW
-    ('[d.]',    '\u1E0D', '\\u1E0D'), # LATIN SMALL LETTER D WITH DOT BELOW
-    ('[D=]',    '\u1E0E', '\\u1E0E'), # LATIN CAPITAL LETTER D WITH LINE BELOW
-    ('[d=]',    '\u1E0F', '\\u1E0F'), # LATIN SMALL LETTER D WITH LINE BELOW
-    ('[D,]',    '\u1E10', '\\u1E10'), # LATIN CAPITAL LETTER D WITH CEDILLA
-    ('[d,]',    '\u1E11', '\\u1E11'), # LATIN SMALL LETTER D WITH CEDILLA
-    ('[D^]',    '\u1E12', '\\u1E12'), # LATIN CAPITAL LETTER D WITH CIRCUMFLEX BELOW
-    ('[d^]',    '\u1E13', '\\u1E13'), # LATIN SMALL LETTER D WITH CIRCUMFLEX BELOW
-    ('[`=E]',   '\u1E14', '\\u1E14'), # LATIN CAPITAL LETTER E WITH MACRON AND GRAVE
-    ('[`=e]',   '\u1E15', '\\u1E15'), # LATIN SMALL LETTER E WITH MACRON AND GRAVE
-    ('[=É]',    '\u1E16', '\\u1E16'), # LATIN CAPITAL LETTER E WITH MACRON AND ACUTE
-    ('[=é]',    '\u1E17', '\\u1E17'), # LATIN SMALL LETTER E WITH MACRON AND ACUTE
-    ('[E^]',    '\u1E18', '\\u1E18'), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX BELOW
-    ('[e^]',    '\u1E19', '\\u1E19'), # LATIN SMALL LETTER E WITH CIRCUMFLEX BELOW
-    ('[E~]',    '\u1E1A', '\\u1E1A'), # LATIN CAPITAL LETTER E WITH TILDE BELOW
-    ('[e~]',    '\u1E1B', '\\u1E1B'), # LATIN SMALL LETTER E WITH TILDE BELOW
-    ('[)E,]',   '\u1E1C', '\\u1E1C'), # LATIN CAPITAL LETTER E WITH CEDILLA AND BREVE
-    ('[)e,]',   '\u1E1D', '\\u1E1D'), # LATIN SMALL LETTER E WITH CEDILLA AND BREVE
-    ('[.F]',    '\u1E1E', '\\u1E1E'), # LATIN CAPITAL LETTER F WITH DOT ABOVE
-    ('[.f]',    '\u1E1F', '\\u1E1F'), # LATIN SMALL LETTER F WITH DOT ABOVE
-    ('[=G]',    '\u1E20', '\\u1E20'), # LATIN CAPITAL LETTER G WITH MACRON
-    ('[=g]',    '\u1E21', '\\u1E21'), # LATIN SMALL LETTER G WITH MACRON
-    ('[.H]',    '\u1E22', '\\u1E22'), # LATIN CAPITAL LETTER H WITH DOT ABOVE
-    ('[.h]',    '\u1E23', '\\u1E23'), # LATIN SMALL LETTER H WITH DOT ABOVE
-    ('[H.]',    '\u1E24', '\\u1E24'), # LATIN CAPITAL LETTER H WITH DOT BELOW
-    ('[h.]',    '\u1E25', '\\u1E25'), # LATIN SMALL LETTER H WITH DOT BELOW
-    ('[:H]',    '\u1E26', '\\u1E26'), # LATIN CAPITAL LETTER H WITH DIAERESIS
-    ('[:h]',    '\u1E27', '\\u1E27'), # LATIN SMALL LETTER H WITH DIAERESIS
-    ('[H,]',    '\u1E28', '\\u1E28'), # LATIN CAPITAL LETTER H WITH CEDILLA
-    ('[h,]',    '\u1E29', '\\u1E29'), # LATIN SMALL LETTER H WITH CEDILLA
-    ('[H)]',    '\u1E2A', '\\u1E2A'), # LATIN CAPITAL LETTER H WITH BREVE BELOW
-    ('[h)]',    '\u1E2B', '\\u1E2B'), # LATIN SMALL LETTER H WITH BREVE BELOW
-    ('[I~]',    '\u1E2C', '\\u1E2C'), # LATIN CAPITAL LETTER I WITH TILDE BELOW
-    ('[i~]',    '\u1E2D', '\\u1E2D'), # LATIN SMALL LETTER I WITH TILDE BELOW
-    ('[\'Ï]',   '\u1E2E', '\\u1E2E'), # LATIN CAPITAL LETTER I WITH DIAERESIS AND ACUTE
-    ('[\'ï]',   '\u1E2F', '\\u1E2F'), # LATIN SMALL LETTER I WITH DIAERESIS AND ACUTE
-    ('[\'K]',   '\u1E30', '\\u1E30'), # LATIN CAPITAL LETTER K WITH ACUTE
-    ('[\'k]',   '\u1E31', '\\u1E31'), # LATIN SMALL LETTER K WITH ACUTE
-    ('[K.]',    '\u1E32', '\\u1E32'), # LATIN CAPITAL LETTER K WITH DOT BELOW
-    ('[k.]',    '\u1E33', '\\u1E33'), # LATIN SMALL LETTER K WITH DOT BELOW
-    ('[K=]',    '\u1E34', '\\u1E34'), # LATIN CAPITAL LETTER K WITH LINE BELOW
-    ('[k=]',    '\u1E35', '\\u1E35'), # LATIN SMALL LETTER K WITH LINE BELOW
-    ('[L.]',    '\u1E36', '\\u1E36'), # LATIN CAPITAL LETTER L WITH DOT BELOW
-    ('[l.]',    '\u1E37', '\\u1E37'), # LATIN SMALL LETTER L WITH DOT BELOW
-    ('[=L.]',   '\u1E38', '\\u1E38'), # LATIN CAPITAL LETTER L WITH DOT BELOW AND MACRON
-    ('[=l.]',   '\u1E39', '\\u1E39'), # LATIN SMALL LETTER L WITH DOT BELOW AND MACRON
-    ('[L=]',    '\u1E3A', '\\u1E3A'), # LATIN CAPITAL LETTER L WITH LINE BELOW
-    ('[l=]',    '\u1E3B', '\\u1E3B'), # LATIN SMALL LETTER L WITH LINE BELOW
-    ('[L^]',    '\u1E3C', '\\u1E3C'), # LATIN CAPITAL LETTER L WITH CIRCUMFLEX BELOW
-    ('[l^]',    '\u1E3D', '\\u1E3D'), # LATIN SMALL LETTER L WITH CIRCUMFLEX BELOW
-    ('[\'M]',   '\u1E3E', '\\u1E3E'), # LATIN CAPITAL LETTER M WITH ACUTE
-    ('[\'m]',   '\u1E3F', '\\u1E3F'), # LATIN SMALL LETTER M WITH ACUTE
-    ('[.M]',    '\u1E40', '\\u1E40'), # LATIN CAPITAL LETTER M WITH DOT ABOVE
-    ('[.m]',    '\u1E41', '\\u1E41'), # LATIN SMALL LETTER M WITH DOT ABOVE
-    ('[M.]',    '\u1E42', '\\u1E42'), # LATIN CAPITAL LETTER M WITH DOT BELOW
-    ('[m.]',    '\u1E43', '\\u1E43'), # LATIN SMALL LETTER M WITH DOT BELOW
-    ('[.N]',    '\u1E44', '\\u1E44'), # LATIN CAPITAL LETTER N WITH DOT ABOVE
-    ('[.n]',    '\u1E45', '\\u1E45'), # LATIN SMALL LETTER N WITH DOT ABOVE
-    ('[N.]',    '\u1E46', '\\u1E46'), # LATIN CAPITAL LETTER N WITH DOT BELOW
-    ('[n.]',    '\u1E47', '\\u1E47'), # LATIN SMALL LETTER N WITH DOT BELOW
-    ('[N=]',    '\u1E48', '\\u1E48'), # LATIN CAPITAL LETTER N WITH LINE BELOW
-    ('[n=]',    '\u1E49', '\\u1E49'), # LATIN SMALL LETTER N WITH LINE BELOW
-    ('[N^]',    '\u1E4A', '\\u1E4A'), # LATIN CAPITAL LETTER N WITH CIRCUMFLEX BELOW
-    ('[n^]',    '\u1E4B', '\\u1E4B'), # LATIN SMALL LETTER N WITH CIRCUMFLEX BELOW
-    ('[\'Õ]',   '\u1E4C', '\\u1E4C'), # LATIN CAPITAL LETTER O WITH TILDE AND ACUTE
-    ('[\'~O]',  '\u1E4C', '\\u1E4C'), # LATIN CAPITAL LETTER O WITH TILDE AND ACUTE
-    ('[~\'O]',  '\u1E4C', '\\u1E4C'), # LATIN CAPITAL LETTER O WITH TILDE AND ACUTE
-    ('[~Ó]',    '\u1E4C', '\\u1E4C'), # LATIN CAPITAL LETTER O WITH TILDE AND ACUTE
-    ('[\'õ]',   '\u1E4D', '\\u1E4D'), # LATIN SMALL LETTER O WITH TILDE AND ACUTE
-    ('[\'~o]',  '\u1E4D', '\\u1E4D'), # LATIN SMALL LETTER O WITH TILDE AND ACUTE
-    ('[~\'o]',  '\u1E4D', '\\u1E4D'), # LATIN SMALL LETTER O WITH TILDE AND ACUTE
-    ('[~ó]',    '\u1E4D', '\\u1E4D'), # LATIN SMALL LETTER O WITH TILDE AND ACUTE
-    ('[:Õ]',    '\u1E4E', '\\u1E4E'), # LATIN CAPITAL LETTER O WITH TILDE AND DIAERESIS
-    ('[~Ö]',    '\u1E4E', '\\u1E4E'), # LATIN CAPITAL LETTER O WITH TILDE AND DIAERESIS
-    ('[~:O]',   '\u1E4E', '\\u1E4E'), # LATIN CAPITAL LETTER O WITH TILDE AND DIAERESIS
-    ('[:~O]',   '\u1E4E', '\\u1E4E'), # LATIN CAPITAL LETTER O WITH TILDE AND DIAERESIS
-    ('[:õ]',    '\u1E4F', '\\u1E4F'), # LATIN SMALL LETTER O WITH TILDE AND DIAERESIS
-    ('[~ö]',    '\u1E4F', '\\u1E4F'), # LATIN SMALL LETTER O WITH TILDE AND DIAERESIS
-    ('[~:o]',   '\u1E4F', '\\u1E4F'), # LATIN SMALL LETTER O WITH TILDE AND DIAERESIS
-    ('[:~o]',   '\u1E4F', '\\u1E4F'), # LATIN SMALL LETTER O WITH TILDE AND DIAERESIS
-    ('[`=O]',   '\u1E50', '\\u1E50'), # LATIN CAPITAL LETTER O WITH MACRON AND GRAVE
-    ('[=`O]',   '\u1E50', '\\u1E50'), # LATIN CAPITAL LETTER O WITH MACRON AND GRAVE
-    ('[=Ò]',    '\u1E50', '\\u1E50'), # LATIN CAPITAL LETTER O WITH MACRON AND GRAVE
-    ('[`=o]',   '\u1E51', '\\u1E51'), # LATIN SMALL LETTER O WITH MACRON AND GRAVE
-    ('[=`o]',   '\u1E51', '\\u1E51'), # LATIN SMALL LETTER O WITH MACRON AND GRAVE
-    ('[=ò]',    '\u1E51', '\\u1E51'), # LATIN SMALL LETTER O WITH MACRON AND GRAVE
-    ('[\'=O]',  '\u1E52', '\\u1E52'), # LATIN CAPITAL LETTER O WITH MACRON AND ACUTE
-    ('[=\'O]',  '\u1E52', '\\u1E52'), # LATIN CAPITAL LETTER O WITH MACRON AND ACUTE
-    ('[=Ó]',    '\u1E52', '\\u1E52'), # LATIN CAPITAL LETTER O WITH MACRON AND ACUTE
-    ('[\'=o]',  '\u1E53', '\\u1E53'), # LATIN SMALL LETTER O WITH MACRON AND ACUTE
-    ('[=\'o]',  '\u1E53', '\\u1E53'), # LATIN SMALL LETTER O WITH MACRON AND ACUTE
-    ('[=ó]',    '\u1E53', '\\u1E53'), # LATIN SMALL LETTER O WITH MACRON AND ACUTE
-    ('[\'P]',   '\u1E54', '\\u1E54'), # LATIN CAPITAL LETTER P WITH ACUTE
-    ('[\'p]',   '\u1E55', '\\u1E55'), # LATIN SMALL LETTER P WITH ACUTE
-    ('[.P]',    '\u1E56', '\\u1E56'), # LATIN CAPITAL LETTER P WITH DOT ABOVE
-    ('[.p]',    '\u1E57', '\\u1E57'), # LATIN SMALL LETTER P WITH DOT ABOVE
-    ('[.R]',    '\u1E58', '\\u1E58'), # LATIN CAPITAL LETTER R WITH DOT ABOVE
-    ('[.r]',    '\u1E59', '\\u1E59'), # LATIN SMALL LETTER R WITH DOT ABOVE
-    ('[R.]',    '\u1E5A', '\\u1E5A'), # LATIN CAPITAL LETTER R WITH DOT BELOW
-    ('[r.]',    '\u1E5B', '\\u1E5B'), # LATIN SMALL LETTER R WITH DOT BELOW
-    ('[=R.]',   '\u1E5C', '\\u1E5C'), # LATIN CAPITAL LETTER R WITH DOT BELOW AND MACRON
-    ('[=r.]',   '\u1E5D', '\\u1E5D'), # LATIN SMALL LETTER R WITH DOT BELOW AND MACRON
-    ('[R=]',    '\u1E5E', '\\u1E5E'), # LATIN CAPITAL LETTER R WITH LINE BELOW
-    ('[r=]',    '\u1E5F', '\\u1E5F'), # LATIN SMALL LETTER R WITH LINE BELOW
-    ('[.S]',    '\u1E60', '\\u1E60'), # LATIN CAPITAL LETTER S WITH DOT ABOVE
-    ('[.s]',    '\u1E61', '\\u1E61'), # LATIN SMALL LETTER S WITH DOT ABOVE
-    ('[S.]',    '\u1E62', '\\u1E62'), # LATIN CAPITAL LETTER S WITH DOT BELOW
-    ('[s.]',    '\u1E63', '\\u1E63'), # LATIN SMALL LETTER S WITH DOT BELOW
-    ('[\'.S]',  '\u1E64', '\\u1E64'), # LATIN CAPITAL LETTER S WITH ACUTE AND DOT ABOVE
-    ('[\'.s]',  '\u1E65', '\\u1E65'), # LATIN SMALL LETTER S WITH ACUTE AND DOT ABOVE
-    ('[.vS]',   '\u1E66', '\\u1E66'), # LATIN CAPITAL LETTER S WITH CARON AND DOT ABOVE
-    ('[.vs]',   '\u1E67', '\\u1E67'), # LATIN SMALL LETTER S WITH CARON AND DOT ABOVE
-    ('[.S.]',   '\u1E68', '\\u1E68'), # LATIN CAPITAL LETTER S WITH DOT BELOW AND DOT ABOVE
-    ('[.s.]',   '\u1E69', '\\u1E69'), # LATIN SMALL LETTER S WITH DOT BELOW AND DOT ABOVE
-    ('[.T]',    '\u1E6A', '\\u1E6A'), # LATIN CAPITAL LETTER T WITH DOT ABOVE
-    ('[.t]',    '\u1E6B', '\\u1E6B'), # LATIN SMALL LETTER T WITH DOT ABOVE
-    ('[T.]',    '\u1E6C', '\\u1E6C'), # LATIN CAPITAL LETTER T WITH DOT BELOW
-    ('[t.]',    '\u1E6D', '\\u1E6D'), # LATIN SMALL LETTER T WITH DOT BELOW
-    ('[T=]',    '\u1E6E', '\\u1E6E'), # LATIN CAPITAL LETTER T WITH LINE BELOW
-    ('[t=]',    '\u1E6F', '\\u1E6F'), # LATIN SMALL LETTER T WITH LINE BELOW
-    ('[T^]',    '\u1E70', '\\u1E70'), # LATIN CAPITAL LETTER T WITH CIRCUMFLEX BELOW
-    ('[t^]',    '\u1E71', '\\u1E71'), # LATIN SMALL LETTER T WITH CIRCUMFLEX BELOW
-    ('[U:]',    '\u1E72', '\\u1E72'), # LATIN CAPITAL LETTER U WITH DIAERESIS BELOW
-    ('[u:]',    '\u1E73', '\\u1E73'), # LATIN SMALL LETTER U WITH DIAERESIS BELOW
-    ('[U~]',    '\u1E74', '\\u1E74'), # LATIN CAPITAL LETTER U WITH TILDE BELOW
-    ('[u~]',    '\u1E75', '\\u1E75'), # LATIN SMALL LETTER U WITH TILDE BELOW
-    ('[U^]',    '\u1E76', '\\u1E76'), # LATIN CAPITAL LETTER U WITH CIRCUMFLEX BELOW
-    ('[u^]',    '\u1E77', '\\u1E77'), # LATIN SMALL LETTER U WITH CIRCUMFLEX BELOW
-    ('[\'~U]',  '\u1E78', '\\u1E78'), # LATIN CAPITAL LETTER U WITH TILDE AND ACUTE
-    ('[~\'U]',  '\u1E78', '\\u1E78'), # LATIN CAPITAL LETTER U WITH TILDE AND ACUTE
-    ('[~Ú]',    '\u1E78', '\\u1E78'), # LATIN CAPITAL LETTER U WITH TILDE AND ACUTE
-    ('[\'~u]',  '\u1E79', '\\u1E79'), # LATIN SMALL LETTER U WITH TILDE AND ACUTE
-    ('[~\'u]',  '\u1E79', '\\u1E79'), # LATIN SMALL LETTER U WITH TILDE AND ACUTE
-    ('[~ú]',    '\u1E79', '\\u1E79'), # LATIN SMALL LETTER U WITH TILDE AND ACUTE
-    ('[:=U]',   '\u1E7A', '\\u1E7A'), # LATIN CAPITAL LETTER U WITH MACRON AND DIAERESIS
-    ('[=Ü]',    '\u1E7A', '\\u1E7A'), # LATIN CAPITAL LETTER U WITH MACRON AND DIAERESIS
-    ('[:=u]',   '\u1E7B', '\\u1E7B'), # LATIN SMALL LETTER U WITH MACRON AND DIAERESIS
-    ('[=ü]',    '\u1E7B', '\\u1E7B'), # LATIN SMALL LETTER U WITH MACRON AND DIAERESIS
-    ('[~V]',    '\u1E7C', '\\u1E7C'), # LATIN CAPITAL LETTER V WITH TILDE
-    ('[~v]',    '\u1E7D', '\\u1E7D'), # LATIN SMALL LETTER V WITH TILDE
-    ('[V.]',    '\u1E7E', '\\u1E7E'), # LATIN CAPITAL LETTER V WITH DOT BELOW
-    ('[v.]',    '\u1E7F', '\\u1E7F'), # LATIN SMALL LETTER V WITH DOT BELOW
-    ('[`W]',    '\u1E80', '\\u1E80'), # LATIN CAPITAL LETTER W WITH GRAVE
-    ('[`w]',    '\u1E81', '\\u1E81'), # LATIN SMALL LETTER W WITH GRAVE
-    ('[\'W]',   '\u1E82', '\\u1E82'), # LATIN CAPITAL LETTER W WITH ACUTE
-    ('[\'w]',   '\u1E83', '\\u1E83'), # LATIN SMALL LETTER W WITH ACUTE
-    ('[:W]',    '\u1E84', '\\u1E84'), # LATIN CAPITAL LETTER W WITH DIAERESIS
-    ('[:w]',    '\u1E85', '\\u1E85'), # LATIN SMALL LETTER W WITH DIAERESIS
-    ('[.W]',    '\u1E86', '\\u1E86'), # LATIN CAPITAL LETTER W WITH DOT ABOVE
-    ('[.w]',    '\u1E87', '\\u1E87'), # LATIN SMALL LETTER W WITH DOT ABOVE
-    ('[W.]',    '\u1E88', '\\u1E88'), # LATIN CAPITAL LETTER W WITH DOT BELOW
-    ('[w.]',    '\u1E89', '\\u1E89'), # LATIN SMALL LETTER W WITH DOT BELOW
-    ('[.X]',    '\u1E8A', '\\u1E8A'), # LATIN CAPITAL LETTER X WITH DOT ABOVE
-    ('[.x]',    '\u1E8B', '\\u1E8B'), # LATIN SMALL LETTER X WITH DOT ABOVE
-    ('[:X]',    '\u1E8C', '\\u1E8C'), # LATIN CAPITAL LETTER X WITH DIAERESIS
-    ('[:x]',    '\u1E8D', '\\u1E8D'), # LATIN SMALL LETTER X WITH DIAERESIS
-    ('[.Y]',    '\u1E8E', '\\u1E8E'), # LATIN CAPITAL LETTER Y WITH DOT ABOVE
-    ('[.y]',    '\u1E8F', '\\u1E8F'), # LATIN SMALL LETTER Y WITH DOT ABOVE
-    ('[^Z]',    '\u1E90', '\\u1E90'), # LATIN CAPITAL LETTER Z WITH CIRCUMFLEX
-    ('[^z]',    '\u1E91', '\\u1E91'), # LATIN SMALL LETTER Z WITH CIRCUMFLEX
-    ('[Z.]',    '\u1E92', '\\u1E92'), # LATIN CAPITAL LETTER Z WITH DOT BELOW
-    ('[z.]',    '\u1E93', '\\u1E93'), # LATIN SMALL LETTER Z WITH DOT BELOW
-    ('[Z=]',    '\u1E94', '\\u1E94'), # LATIN CAPITAL LETTER Z WITH LINE BELOW
-    ('[z=]',    '\u1E95', '\\u1E95'), # LATIN SMALL LETTER Z WITH LINE BELOW
-    ('[h=]',    '\u1E96', '\\u1E96'), # LATIN SMALL LETTER H WITH LINE BELOW
-    ('[:t]',    '\u1E97', '\\u1E97'), # LATIN SMALL LETTER T WITH DIAERESIS
-    ('[°w]',    '\u1E98', '\\u1E98'), # LATIN SMALL LETTER W WITH RING ABOVE
-    ('[°y]',    '\u1E99', '\\u1E99'), # LATIN SMALL LETTER Y WITH RING ABOVE
-    #('[]', '\u1E9A', '\\u1E9A'), # LATIN SMALL LETTER A WITH RIGHT HALF RING
-    ('[.[s]]',  '\u1E9B', '\\u1E9B'), # LATIN SMALL LETTER LONG S WITH DOT ABOVE
-    ('[/[s]]',  '\u1E9C', '\\u1E9C'), # LATIN SMALL LETTER LONG S WITH DIAGONAL STROKE
-    ('[-[s]]',  '\u1E9D', '\\u1E9D'), # LATIN SMALL LETTER LONG S WITH HIGH STROKE
-    #('[]', '\u1E9E', '\\u1E9E'), # LATIN CAPITAL LETTER SHARP S
-    #('[delta]', '\u1E9F', '\\u1E9F'), # LATIN SMALL LETTER DELTA    (use Greek versions instead)
-    ('[A.]',    '\u1EA0', '\\u1EA0'), # LATIN CAPITAL LETTER A WITH DOT BELOW
-    ('[a.]',    '\u1EA1', '\\u1EA1'), # LATIN SMALL LETTER A WITH DOT BELOW
-    ('[,A]',    '\u1EA2', '\\u1EA2'), # LATIN CAPITAL LETTER A WITH HOOK ABOVE
-    ('[,a]',    '\u1EA3', '\\u1EA3'), # LATIN SMALL LETTER A WITH HOOK ABOVE
-    ('[\'Â]',   '\u1EA4', '\\u1EA4'), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND ACUTE
-    ('[^\'A]',  '\u1EA4', '\\u1EA4'), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND ACUTE
-    ('[^Á]',    '\u1EA4', '\\u1EA4'), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND ACUTE
-    ('[\'â]',   '\u1EA5', '\\u1EA5'), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND ACUTE
-    ('[^\'a]',  '\u1EA5', '\\u1EA5'), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND ACUTE
-    ('[^á]',    '\u1EA5', '\\u1EA5'), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND ACUTE
-    ('[`Â]',    '\u1EA6', '\\u1EA6'), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND GRAVE
-    ('[`^A]',   '\u1EA6', '\\u1EA6'), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND GRAVE
-    ('[^`A]',   '\u1EA6', '\\u1EA6'), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND GRAVE
-    ('[^À]',    '\u1EA6', '\\u1EA6'), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND GRAVE
-    ('[`â]',    '\u1EA7', '\\u1EA7'), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND GRAVE
-    ('[^`a]',   '\u1EA7', '\\u1EA7'), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND GRAVE
-    ('[`^a]',   '\u1EA7', '\\u1EA7'), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND GRAVE
-    ('[^à]',    '\u1EA7', '\\u1EA7'), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND GRAVE
-    ('[,Â]',    '\u1EA8', '\\u1EA8'), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[^,A]',   '\u1EA8', '\\u1EA8'), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[,^A]',   '\u1EA8', '\\u1EA8'), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[,â]',    '\u1EA9', '\\u1EA9'), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[,^a]',   '\u1EA9', '\\u1EA9'), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[^,a]',   '\u1EA9', '\\u1EA9'), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[~Â]',    '\u1EAA', '\\u1EAA'), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND TILDE
-    ('[~^A]',   '\u1EAA', '\\u1EAA'), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND TILDE
-    ('[^~A]',   '\u1EAA', '\\u1EAA'), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND TILDE
-    ('[^Ã]',    '\u1EAA', '\\u1EAA'), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND TILDE
-    ('[~â]',    '\u1EAB', '\\u1EAB'), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND TILDE
-    ('[~^a]',   '\u1EAB', '\\u1EAB'), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND TILDE
-    ('[^~a]',   '\u1EAB', '\\u1EAB'), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND TILDE
-    ('[^ã]',    '\u1EAB', '\\u1EAB'), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND TILDE
-    ('[Â.]',    '\u1EAC', '\\u1EAC'), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND DOT BELOW
-    ('[^A.]',   '\u1EAC', '\\u1EAC'), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND DOT BELOW
-    ('[â.]',    '\u1EAD', '\\u1EAD'), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND DOT BELOW
-    ('[^a.]',   '\u1EAD', '\\u1EAD'), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND DOT BELOW
-    ('[\')A]',  '\u1EAE', '\\u1EAE'), # LATIN CAPITAL LETTER A WITH BREVE AND ACUTE
-    ('[)\'A]',  '\u1EAE', '\\u1EAE'), # LATIN CAPITAL LETTER A WITH BREVE AND ACUTE
-    ('[)Á]',    '\u1EAE', '\\u1EAE'), # LATIN CAPITAL LETTER A WITH BREVE AND ACUTE
-    ('[\')a]',  '\u1EAF', '\\u1EAF'), # LATIN SMALL LETTER A WITH BREVE AND ACUTE
-    ('[)\'a]',  '\u1EAF', '\\u1EAF'), # LATIN SMALL LETTER A WITH BREVE AND ACUTE
-    ('[)á]',    '\u1EAF', '\\u1EAF'), # LATIN SMALL LETTER A WITH BREVE AND ACUTE
-    ('[`)A]',   '\u1EB0', '\\u1EB0'), # LATIN CAPITAL LETTER A WITH BREVE AND GRAVE
-    ('[)`A]',   '\u1EB0', '\\u1EB0'), # LATIN CAPITAL LETTER A WITH BREVE AND GRAVE
-    ('[)À]',    '\u1EB0', '\\u1EB0'), # LATIN CAPITAL LETTER A WITH BREVE AND GRAVE
-    ('[`)a]',   '\u1EB1', '\\u1EB1'), # LATIN SMALL LETTER A WITH BREVE AND GRAVE
-    ('[)`a]',   '\u1EB1', '\\u1EB1'), # LATIN SMALL LETTER A WITH BREVE AND GRAVE
-    ('[)à]',    '\u1EB1', '\\u1EB1'), # LATIN SMALL LETTER A WITH BREVE AND GRAVE
-    ('[,)A]',   '\u1EB2', '\\u1EB2'), # LATIN CAPITAL LETTER A WITH BREVE AND HOOK ABOVE
-    ('[),A]',   '\u1EB2', '\\u1EB2'), # LATIN CAPITAL LETTER A WITH BREVE AND HOOK ABOVE
-    ('[,)a]',   '\u1EB3', '\\u1EB3'), # LATIN SMALL LETTER A WITH BREVE AND HOOK ABOVE
-    ('[),a]',   '\u1EB3', '\\u1EB3'), # LATIN SMALL LETTER A WITH BREVE AND HOOK ABOVE
-    ('[~)A]',   '\u1EB4', '\\u1EB4'), # LATIN CAPITAL LETTER A WITH BREVE AND TILDE
-    ('[)~A]',   '\u1EB4', '\\u1EB4'), # LATIN CAPITAL LETTER A WITH BREVE AND TILDE
-    ('[)Ã]',    '\u1EB4', '\\u1EB4'), # LATIN CAPITAL LETTER A WITH BREVE AND TILDE
-    ('[~)a]',   '\u1EB5', '\\u1EB5'), # LATIN SMALL LETTER A WITH BREVE AND TILDE
-    ('[)~a]',   '\u1EB5', '\\u1EB5'), # LATIN SMALL LETTER A WITH BREVE AND TILDE
-    ('[)ã]',    '\u1EB5', '\\u1EB5'), # LATIN SMALL LETTER A WITH BREVE AND TILDE
-    ('[)A.]',   '\u1EB6', '\\u1EB6'), # LATIN CAPITAL LETTER A WITH BREVE AND DOT BELOW
-    ('[)a.]',   '\u1EB7', '\\u1EB7'), # LATIN SMALL LETTER A WITH BREVE AND DOT BELOW
-    ('[E.]',    '\u1EB8', '\\u1EB8'), # LATIN CAPITAL LETTER E WITH DOT BELOW
-    ('[e.]',    '\u1EB9', '\\u1EB9'), # LATIN SMALL LETTER E WITH DOT BELOW
-    ('[,E]',    '\u1EBA', '\\u1EBA'), # LATIN CAPITAL LETTER E WITH HOOK ABOVE
-    ('[,e]',    '\u1EBB', '\\u1EBB'), # LATIN SMALL LETTER E WITH HOOK ABOVE
-    ('[~E]',    '\u1EBC', '\\u1EBC'), # LATIN CAPITAL LETTER E WITH TILDE
-    ('[~e]',    '\u1EBD', '\\u1EBD'), # LATIN SMALL LETTER E WITH TILDE
-    ('[\'Ê]',   '\u1EBE', '\\u1EBE'), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND ACUTE
-    ('[^\'E]',  '\u1EBE', '\\u1EBE'), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND ACUTE
-    ('[^É]',    '\u1EBE', '\\u1EBE'), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND ACUTE
-    ('[\'ê]',   '\u1EBF', '\\u1EBF'), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND ACUTE
-    ('[^\'e]',  '\u1EBF', '\\u1EBF'), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND ACUTE
-    ('[^é]',    '\u1EBF', '\\u1EBF'), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND ACUTE
-    ('[`Ê]',    '\u1EC0', '\\u1EC0'), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND GRAVE
-    ('[^`E]',   '\u1EC0', '\\u1EC0'), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND GRAVE
-    ('[`^E]',   '\u1EC0', '\\u1EC0'), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND GRAVE
-    ('[^È]',    '\u1EC0', '\\u1EC0'), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND GRAVE
-    ('[`ê]',    '\u1EC1', '\\u1EC1'), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND GRAVE
-    ('[^`e]',   '\u1EC1', '\\u1EC1'), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND GRAVE
-    ('[`^e]',   '\u1EC1', '\\u1EC1'), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND GRAVE
-    ('[^è]',    '\u1EC1', '\\u1EC1'), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND GRAVE
-    ('[,Ê]',    '\u1EC2', '\\u1EC2'), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[,^E]',   '\u1EC2', '\\u1EC2'), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[^,E]',   '\u1EC2', '\\u1EC2'), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[,ê]',    '\u1EC3', '\\u1EC3'), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[,^e]',   '\u1EC3', '\\u1EC3'), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[^,e]',   '\u1EC3', '\\u1EC3'), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[~Ê]',    '\u1EC4', '\\u1EC4'), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND TILDE
-    ('[~^E]',   '\u1EC4', '\\u1EC4'), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND TILDE
-    ('[^~E]',   '\u1EC4', '\\u1EC4'), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND TILDE
-    ('[~ê]',    '\u1EC5', '\\u1EC5'), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND TILDE
-    ('[~^e]',   '\u1EC5', '\\u1EC5'), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND TILDE
-    ('[^~e]',   '\u1EC5', '\\u1EC5'), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND TILDE
-    ('[Ê.]',    '\u1EC6', '\\u1EC6'), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND DOT BELOW
-    ('[^E.]',   '\u1EC6', '\\u1EC6'), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND DOT BELOW
-    ('[ê.]',    '\u1EC7', '\\u1EC7'), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND DOT BELOW
-    ('[^e.]',   '\u1EC7', '\\u1EC7'), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND DOT BELOW
-    ('[,I]',    '\u1EC8', '\\u1EC8'), # LATIN CAPITAL LETTER I WITH HOOK ABOVE
-    ('[,i]',    '\u1EC9', '\\u1EC9'), # LATIN SMALL LETTER I WITH HOOK ABOVE
-    ('[I.]',    '\u1ECA', '\\u1ECA'), # LATIN CAPITAL LETTER I WITH DOT BELOW
-    ('[i.]',    '\u1ECB', '\\u1ECB'), # LATIN SMALL LETTER I WITH DOT BELOW
-    ('[O.]',    '\u1ECC', '\\u1ECC'), # LATIN CAPITAL LETTER O WITH DOT BELOW
-    ('[o.]',    '\u1ECD', '\\u1ECD'), # LATIN SMALL LETTER O WITH DOT BELOW
-    ('[,O]',    '\u1ECE', '\\u1ECE'), # LATIN CAPITAL LETTER O WITH HOOK ABOVE
-    ('[,o]',    '\u1ECF', '\\u1ECF'), # LATIN SMALL LETTER O WITH HOOK ABOVE
-    ('[\'Ô]',   '\u1ED0', '\\u1ED0'), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND ACUTE
-    ('[\'^O]',  '\u1ED0', '\\u1ED0'), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND ACUTE
-    ('[^\'O]',  '\u1ED0', '\\u1ED0'), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND ACUTE
-    ('[^Ó]',    '\u1ED0', '\\u1ED0'), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND ACUTE
-    ('[\'ô]',   '\u1ED1', '\\u1ED1'), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND ACUTE
-    ('[\'^o]',  '\u1ED1', '\\u1ED1'), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND ACUTE
-    ('[^\'o]',  '\u1ED1', '\\u1ED1'), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND ACUTE
-    ('[^ó]',    '\u1ED1', '\\u1ED1'), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND ACUTE
-    ('[`Ô]',    '\u1ED2', '\\u1ED2'), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND GRAVE
-    ('[`^O]',   '\u1ED2', '\\u1ED2'), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND GRAVE
-    ('[^`O]',   '\u1ED2', '\\u1ED2'), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND GRAVE
-    ('[^Ò]',    '\u1ED2', '\\u1ED2'), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND GRAVE
-    ('[`ô]',    '\u1ED3', '\\u1ED3'), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND GRAVE
-    ('[`^o]',   '\u1ED3', '\\u1ED3'), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND GRAVE
-    ('[^`o]',   '\u1ED3', '\\u1ED3'), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND GRAVE
-    ('[^ò]',    '\u1ED3', '\\u1ED3'), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND GRAVE
-    ('[,Ô]',    '\u1ED4', '\\u1ED4'), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[,^O]',   '\u1ED4', '\\u1ED4'), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[^,O]',   '\u1ED4', '\\u1ED4'), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[,ô]',    '\u1ED5', '\\u1ED5'), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[,^o]',   '\u1ED5', '\\u1ED5'), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[^,o]',   '\u1ED5', '\\u1ED5'), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND HOOK ABOVE
-    ('[~Ô]',    '\u1ED6', '\\u1ED6'), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND TILDE
-    ('[~^O]',   '\u1ED6', '\\u1ED6'), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND TILDE
-    ('[^~O]',   '\u1ED6', '\\u1ED6'), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND TILDE
-    ('[^Õ]',    '\u1ED6', '\\u1ED6'), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND TILDE
-    ('[~ô]',    '\u1ED7', '\\u1ED7'), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND TILDE
-    ('[~^o]',   '\u1ED7', '\\u1ED7'), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND TILDE
-    ('[^~o]',   '\u1ED7', '\\u1ED7'), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND TILDE
-    ('[^õ]',    '\u1ED7', '\\u1ED7'), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND TILDE
-    ('[Ô.]',    '\u1ED8', '\\u1ED8'), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND DOT BELOW
-    ('[^O.]',   '\u1ED8', '\\u1ED8'), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND DOT BELOW
-    ('[ô.]',    '\u1ED9', '\\u1ED9'), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND DOT BELOW
-    ('[^o.]',   '\u1ED9', '\\u1ED9'), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND DOT BELOW
-    #('[]', '\u1EDA', '\\u1EDA'), # LATIN CAPITAL LETTER O WITH HORN AND ACUTE
-    #('[]', '\u1EDB', '\\u1EDB'), # LATIN SMALL LETTER O WITH HORN AND ACUTE
-    #('[]', '\u1EDC', '\\u1EDC'), # LATIN CAPITAL LETTER O WITH HORN AND GRAVE
-    #('[]', '\u1EDD', '\\u1EDD'), # LATIN SMALL LETTER O WITH HORN AND GRAVE
-    #('[]', '\u1EDE', '\\u1EDE'), # LATIN CAPITAL LETTER O WITH HORN AND HOOK ABOVE
-    #('[]', '\u1EDF', '\\u1EDF'), # LATIN SMALL LETTER O WITH HORN AND HOOK ABOVE
-    #('[]', '\u1EE0', '\\u1EE0'), # LATIN CAPITAL LETTER O WITH HORN AND TILDE
-    #('[]', '\u1EE1', '\\u1EE1'), # LATIN SMALL LETTER O WITH HORN AND TILDE
-    #('[]', '\u1EE2', '\\u1EE2'), # LATIN CAPITAL LETTER O WITH HORN AND DOT BELOW
-    #('[]', '\u1EE3', '\\u1EE3'), # LATIN SMALL LETTER O WITH HORN AND DOT BELOW
-    ('[U.]',    '\u1EE4', '\\u1EE4'), # LATIN CAPITAL LETTER U WITH DOT BELOW
-    ('[u.]',    '\u1EE5', '\\u1EE5'), # LATIN SMALL LETTER U WITH DOT BELOW
-    ('[,U]',    '\u1EE6', '\\u1EE6'), # LATIN CAPITAL LETTER U WITH HOOK ABOVE
-    ('[,u]',    '\u1EE7', '\\u1EE7'), # LATIN SMALL LETTER U WITH HOOK ABOVE
-    #('[]', '\u1EE8', '\\u1EE8'), # LATIN CAPITAL LETTER U WITH HORN AND ACUTE
-    #('[]', '\u1EE9', '\\u1EE9'), # LATIN SMALL LETTER U WITH HORN AND ACUTE
-    #('[]', '\u1EEA', '\\u1EEA'), # LATIN CAPITAL LETTER U WITH HORN AND GRAVE
-    #('[]', '\u1EEB', '\\u1EEB'), # LATIN SMALL LETTER U WITH HORN AND GRAVE
-    #('[]', '\u1EEC', '\\u1EEC'), # LATIN CAPITAL LETTER U WITH HORN AND HOOK ABOVE
-    #('[]', '\u1EED', '\\u1EED'), # LATIN SMALL LETTER U WITH HORN AND HOOK ABOVE
-    #('[]', '\u1EEE', '\\u1EEE'), # LATIN CAPITAL LETTER U WITH HORN AND TILDE
-    #('[]', '\u1EEF', '\\u1EEF'), # LATIN SMALL LETTER U WITH HORN AND TILDE
-    #('[]', '\u1EF0', '\\u1EF0'), # LATIN CAPITAL LETTER U WITH HORN AND DOT BELOW
-    #('[]', '\u1EF1', '\\u1EF1'), # LATIN SMALL LETTER U WITH HORN AND DOT BELOW
-    ('[`Y]',    '\u1EF2', '\\u1EF2'), # LATIN CAPITAL LETTER Y WITH GRAVE
-    ('[`y]',    '\u1EF3', '\\u1EF3'), # LATIN SMALL LETTER Y WITH GRAVE
-    ('[Y.]',    '\u1EF4', '\\u1EF4'), # LATIN CAPITAL LETTER Y WITH DOT BELOW
-    ('[y.]',    '\u1EF5', '\\u1EF5'), # LATIN SMALL LETTER Y WITH DOT BELOW
-    ('[,Y]',    '\u1EF6', '\\u1EF6'), # LATIN CAPITAL LETTER Y WITH HOOK ABOVE
-    ('[,y]',    '\u1EF7', '\\u1EF7'), # LATIN SMALL LETTER Y WITH HOOK ABOVE
-    ('[~Y]',    '\u1EF8', '\\u1EF8'), # LATIN CAPITAL LETTER Y WITH TILDE
-    ('[~y]',    '\u1EF9', '\\u1EF9'), # LATIN SMALL LETTER Y WITH TILDE
-    #('[]', '\u1EFA', '\\u1EFA'), # LATIN CAPITAL LETTER MIDDLE-WELSH LL
-    #('[]', '\u1EFB', '\\u1EFB'), # LATIN SMALL LETTER MIDDLE-WELSH LL
-    #('[]', '\u1EFC', '\\u1EFC'), # LATIN CAPITAL LETTER MIDDLE-WELSH V
-    #('[]', '\u1EFD', '\\u1EFD'), # LATIN SMALL LETTER MIDDLE-WELSH V
-    #('[]', '\u1EFE', '\\u1EFE'), # LATIN CAPITAL LETTER Y WITH LOOP
-    #('[]', '\u1EFF', '\\u1EFF'), # LATIN SMALL LETTER Y WITH LOOP
-     ('[Alpha]','\u0391', '\\u0391'),
-     ('[alpha]','\u03B1', '\\u03B1'),
-     ('[Beta]', '\u0392', '\\u0392'),
-     ('[beta]', '\u03B2', '\\u03B2'),
-     ('[Gamma]','\u0393', '\\u0393'),
-     ('[gamma]','\u03B3', '\\u03B3'),
-     ('[Delta]','\u0394', '\\u0394'),
-     ('[delta]','\u03B4', '\\u03B4'),
-     ('[Epsilon]', '\u0395', '\\u0395'),
-     ('[epsilon]', '\u03B5', '\\u03B5'),
-     ('[Zeta]', '\u0396', '\\u0396'),
-     ('[zeta]', '\u03B6', '\\u03B6'),
-     ('[Eta]',  '\u0397', '\\u0397'),
-     ('[eta]',  '\u03B7', '\\u03B7'),
-     ('[Theta]','\u0398', '\\u0398'),
-     ('[theta]','\u03B8', '\\u03B8'),
-     ('[Iota]', '\u0399', '\\u0399'),
-     ('[iota]', '\u03B9', '\\u03B9'),
-     ('[Kappa]','\u039A', '\\u039A'),
-     ('[kappa]','\u03BA', '\\u03BA'),
-     ('[Lamda]','\u039B', '\\u039B'),
-     ('[lamda]','\u03BB', '\\u03BB'),
-     ('[Mu]',   '\u039C', '\\u039C'),
-     ('[mu]',   '\u03BC', '\\u03BC'),
-     ('[Nu]',   '\u039D', '\\u039D'),
-     ('[nu]',   '\u03BD', '\\u03BD'),
-     ('[Xi]',   '\u039E', '\\u039E'),
-     ('[xi]',   '\u03BE', '\\u03BE'),
-     ('[Omicron]', '\u039F', '\\u039F'),
-     ('[omicron]', '\u03BF', '\\u03BF'),
-     ('[Pi]',   '\u03A0', '\\u03A0'),
-     ('[pi]',   '\u03C0', '\\u03C0'),
-     ('[Rho]',  '\u03A1', '\\u03A1'),
-     ('[rho]',  '\u03C1', '\\u03C1'),
-     ('[Sigma]','\u03A3', '\\u03A3'),
-     ('[sigma]','\u03C3', '\\u03C3'),
-     ('[Tau]',  '\u03A4', '\\u03A4'),
-     ('[tau]',  '\u03C4', '\\u03C4'),
-     ('[Upsilon]', '\u03A5', '\\u03A5'),
-     ('[upsilon]', '\u03C5', '\\u03C5'),
-     ('[Phi]',  '\u03A6', '\\u03A6'),
-     ('[phi]',  '\u03C6', '\\u03C6'),
-     ('[Chi]',  '\u03A7', '\\u03A7'),
-     ('[chi]',  '\u03C7', '\\u03C7'),
-     ('[Psi]',  '\u03A8', '\\u03A8'),
-     ('[psi]',  '\u03C8', '\\u03C8'),
-     ('[Omega]','\u03A9', '\\u03A9'),
-     ('[omega]','\u03C9', '\\u03C9'),
-     #('\?', '\u037E', '?'),
-     #(';', '\u0387', ';'),
-     ('[Koppa]','\u03D8', '\\u03D8'),
-     ('[koppa]','\u03D9', '\\u03D9'),
-     ('[Digamma]', '\u03DC', '\\u03DC'),
-     ('[digamma]', '\u03DD', '\\u03DD'),
-     ('[Qoppa]','\u03DE', '\\u03DE'),
-     ('[qoppa]','\u03DF', '\\u03DF'),
-     ('[Sampi]','\u03E0', '\\u03E0'),
-     ('[sampi]','\u03E1', '\\U03E1'),
+    ('[=A]',    '\u0100', '\\u0100', 0), # LATIN CAPITAL LETTER A WITH MACRON    (Latin Extended-A)
+    ('[=a]',    '\u0101', '\\u0101', 0), # LATIN SMALL LETTER A WITH MACRON
+    ('[)A]',    '\u0102', '\\u0102', 0), # LATIN CAPITAL LETTER A WITH BREVE
+    ('[)a]',    '\u0103', '\\u0103', 0), # LATIN SMALL LETTER A WITH BREVE
+    ('[A,]',    '\u0104', '\\u0104', 0), # LATIN CAPITAL LETTER A WITH OGONEK
+    ('[a,]',    '\u0105', '\\u0105', 0), # LATIN SMALL LETTER A WITH OGONEK
+    ('[\'C]',   '\u0106', '\\u0106', 0), # LATIN CAPITAL LETTER C WITH ACUTE
+    ('[\'c]',   '\u0107', '\\u0107', 0), # LATIN SMALL LETTER C WITH ACUTE
+    ('[^C]',    '\u0108', '\\u0108', 0), # LATIN CAPITAL LETTER C WITH CIRCUMFLEX
+    ('[^c]',    '\u0109', '\\u0109', 0), # LATIN SMALL LETTER C WITH CIRCUMFLEX
+    ('[.C]',    '\u010A', '\\u010A', 0), # LATIN CAPITAL LETTER C WITH DOT ABOVE
+    ('[.c]',    '\u010B', '\\u010B', 0), # LATIN SMALL LETTER C WITH DOT ABOVE
+    ('[vC]',    '\u010C', '\\u010C', 0), # LATIN CAPITAL LETTER C WITH CARON
+    ('[vc]',    '\u010D', '\\u010D', 0), # LATIN SMALL LETTER C WITH CARON
+    ('[vD]',    '\u010E', '\\u010E', 0), # LATIN CAPITAL LETTER D WITH CARON
+    ('[vd]',    '\u010F', '\\u010F', 0), # LATIN SMALL LETTER D WITH CARON
+    ('[-D]',    '\u0110', '\\u0110', 0), # LATIN CAPITAL LETTER D WITH STROKE
+    ('[-d]',    '\u0111', '\\u0111', 0), # LATIN SMALL LETTER D WITH STROKE
+    ('[=E]',    '\u0112', '\\u0112', 0), # LATIN CAPITAL LETTER E WITH MACRON
+    ('[=e]',    '\u0113', '\\u0113', 0), # LATIN SMALL LETTER E WITH MACRON
+    ('[)E]',    '\u0114', '\\u0114', 0), # LATIN CAPITAL LETTER E WITH BREVE
+    ('[)e]',    '\u0115', '\\u0115', 0), # LATIN SMALL LETTER E WITH BREVE
+    ('[.E]',    '\u0116', '\\u0116', 0), # LATIN CAPITAL LETTER E WITH DOT ABOVE
+    ('[.e]',    '\u0117', '\\u0117', 0), # LATIN SMALL LETTER E WITH DOT ABOVE
+    #('[E,]', '\u0118', '\\u0118', 0), # LATIN CAPITAL LETTER E WITH OGONEK  # conflicts with markup for cedilla
+    #('[e,]', '\u0119', '\\u0119', 0), # LATIN SMALL LETTER E WITH OGONEK    # conflicts with markup for cedilla
+    ('[vE]',    '\u011A', '\\u011A', 0), # LATIN CAPITAL LETTER E WITH CARON
+    ('[ve]',    '\u011B', '\\u011B', 0), # LATIN SMALL LETTER E WITH CARON
+    ('[^G]',    '\u011C', '\\u011C', 0), # LATIN CAPITAL LETTER G WITH CIRCUMFLEX
+    ('[^g]',    '\u011D', '\\u011D', 0), # LATIN SMALL LETTER G WITH CIRCUMFLEX
+    ('[)G]',    '\u011E', '\\u011E', 0), # LATIN CAPITAL LETTER G WITH BREVE
+    ('[)g]',    '\u011F', '\\u011F', 0), # LATIN SMALL LETTER G WITH BREVE
+    ('[.G]',    '\u0120', '\\u0120', 0), # LATIN CAPITAL LETTER G WITH DOT ABOVE
+    ('[.g]',    '\u0121', '\\u0121', 0), # LATIN SMALL LETTER G WITH DOT ABOVE
+    ('[G,]',    '\u0122', '\\u0122', 0), # LATIN CAPITAL LETTER G WITH CEDILLA
+    ('[g,]',    '\u0123', '\\u0123', 0), # LATIN SMALL LETTER G WITH CEDILLA
+    ('[^H]',    '\u0124', '\\u0124', 0), # LATIN CAPITAL LETTER H WITH CIRCUMFLEX
+    ('[^h]',    '\u0125', '\\u0125', 0), # LATIN SMALL LETTER H WITH CIRCUMFLEX
+    ('[-H]',    '\u0126', '\\u0126', 0), # LATIN CAPITAL LETTER H WITH STROKE
+    ('[-h]',    '\u0127', '\\u0127', 0), # LATIN SMALL LETTER H WITH STROKE
+    ('[~I]',    '\u0128', '\\u0128', 0), # LATIN CAPITAL LETTER I WITH TILDE
+    ('[~i]',    '\u0129', '\\u0129', 0), # LATIN SMALL LETTER I WITH TILDE
+    ('[=I]',    '\u012A', '\\u012A', 0), # LATIN CAPITAL LETTER I WITH MACRON
+    ('[=i]',    '\u012B', '\\u012B', 0), # LATIN SMALL LETTER I WITH MACRON
+    ('[)I]',    '\u012C', '\\u012C', 0), # LATIN CAPITAL LETTER I WITH BREVE
+    ('[)i]',    '\u012D', '\\u012D', 0), # LATIN SMALL LETTER I WITH BREVE
+    ('[I,]',    '\u012E', '\\u012E', 0), # LATIN CAPITAL LETTER I WITH OGONEK
+    ('[i,]',    '\u012F', '\\u012F', 0), # LATIN SMALL LETTER I WITH OGONEK
+    ('[.I]',    '\u0130', '\\u0130', 0), # LATIN CAPITAL LETTER I WITH DOT ABOVE
+    #('[]', '\u0131', '\\u0131', 0), # LATIN SMALL LETTER DOTLESS I
+    ('[IJ]',    '\u0132', '\\u0132', 0), # LATIN CAPITAL LIGATURE IJ
+    ('[ij]',    '\u0133', '\\u0133', 0), # LATIN SMALL LIGATURE IJ
+    ('[^J]',    '\u0134', '\\u0134', 0), # LATIN CAPITAL LETTER J WITH CIRCUMFLEX
+    ('[^j]',    '\u0135', '\\u0135', 0), # LATIN SMALL LETTER J WITH CIRCUMFLEX
+    ('[K,]',    '\u0136', '\\u0136', 0), # LATIN CAPITAL LETTER K WITH CEDILLA
+    ('[k,]',    '\u0137', '\\u0137', 0), # LATIN SMALL LETTER K WITH CEDILLA
+    ('[kra]',   '\u0138', '\\u0138', 0), # LATIN SMALL LETTER KRA
+    ('[\'L]',   '\u0139', '\\u0139', 0), # LATIN CAPITAL LETTER L WITH ACUTE
+    ('[\'l]',   '\u013A', '\\u013A', 0), # LATIN SMALL LETTER L WITH ACUTE
+    ('[L,]',    '\u013B', '\\u013B', 0), # LATIN CAPITAL LETTER L WITH CEDILLA
+    ('[l,]',    '\u013C', '\\u013C', 0), # LATIN SMALL LETTER L WITH CEDILLA
+    ('[vL]',    '\u013D', '\\u013D', 0), # LATIN CAPITAL LETTER L WITH CARON
+    ('[vl]',    '\u013E', '\\u013E', 0), # LATIN SMALL LETTER L WITH CARON
+    ('[L·]',    '\u013F', '\\u013F', 0), # LATIN CAPITAL LETTER L WITH MIDDLE DOT
+    ('[l·]',    '\u0140', '\\u0140', 0), # LATIN SMALL LETTER L WITH MIDDLE DOT
+    ('[/L]',    '\u0141', '\\u0141', 0), # LATIN CAPITAL LETTER L WITH STROKE
+    ('[/l]',    '\u0142', '\\u0142', 0), # LATIN SMALL LETTER L WITH STROKE
+    ('[\'N]',   '\u0143', '\\u0143', 0), # LATIN CAPITAL LETTER N WITH ACUTE
+    ('[\'n]',   '\u0144', '\\u0144', 0), # LATIN SMALL LETTER N WITH ACUTE
+    ('[N,]',    '\u0145', '\\u0145', 0), # LATIN CAPITAL LETTER N WITH CEDILLA
+    ('[n,]',    '\u0146', '\\u0146', 0), # LATIN SMALL LETTER N WITH CEDILLA
+    ('[vN]',    '\u0147', '\\u0147', 0), # LATIN CAPITAL LETTER N WITH CARON
+    ('[vn]',    '\u0148', '\\u0148', 0), # LATIN SMALL LETTER N WITH CARON
+    #('[\'n]', '\u0149', '\\u0149', 0), # LATIN SMALL LETTER N PRECEDED BY APOSTROPHE (conflicts with markup for n with acute)
+    ('[Eng]',   '\u014A', '\\u014A', 0), # LATIN CAPITAL LETTER ENG
+    ('[eng]',   '\u014B', '\\u014B', 0), # LATIN SMALL LETTER ENG
+    ('[=O]',    '\u014C', '\\u014C', 0), # LATIN CAPITAL LETTER O WITH MACRON
+    ('[=o]',    '\u014D', '\\u014D', 0), # LATIN SMALL LETTER O WITH MACRON
+    ('[)O]',    '\u014E', '\\u014E', 0), # LATIN CAPITAL LETTER O WITH BREVE
+    ('[)o]',    '\u014F', '\\u014F', 0), # LATIN SMALL LETTER O WITH BREVE
+    ('[\'\'O]', '\u0150', '\\u0150', 0), # LATIN CAPITAL LETTER O WITH DOUBLE ACUTE
+    ('[\'\'o]', '\u0151', '\\u0151', 0), # LATIN SMALL LETTER O WITH DOUBLE ACUTE
+    ('[OE]',    '\u0152', '\\u0152', 0), # LATIN CAPITAL LIGATURE OE
+    ('[oe]',    '\u0153', '\\u0153', 0), # LATIN SMALL LIGATURE OE
+    ('[\'R]',   '\u0154', '\\u0154', 0), # LATIN CAPITAL LETTER R WITH ACUTE
+    ('[\'r]',   '\u0155', '\\u0155', 0), # LATIN SMALL LETTER R WITH ACUTE
+    ('[R,]',    '\u0156', '\\u0156', 0), # LATIN CAPITAL LETTER R WITH CEDILLA
+    ('[r,]',    '\u0157', '\\u0157', 0), # LATIN SMALL LETTER R WITH CEDILLA
+    ('[vR]',    '\u0158', '\\u0158', 0), # LATIN CAPITAL LETTER R WITH CARON
+    ('[vr]',    '\u0159', '\\u0159', 0), # LATIN SMALL LETTER R WITH CARON
+    ('[\'S]',   '\u015A', '\\u015A', 0), # LATIN CAPITAL LETTER S WITH ACUTE
+    ('[\'s]',   '\u015B', '\\u015B', 0), # LATIN SMALL LETTER S WITH ACUTE
+    ('[^S]',    '\u015C', '\\u015C', 0), # LATIN CAPITAL LETTER S WITH CIRCUMFLEX
+    ('[^s]',    '\u015D', '\\u015D', 0), # LATIN SMALL LETTER S WITH CIRCUMFLEX
+    ('[S,]',    '\u015E', '\\u015E', 0), # LATIN CAPITAL LETTER S WITH CEDILLA
+    ('[s,]',    '\u015F', '\\u015F', 0), # LATIN SMALL LETTER S WITH CEDILLA
+    ('[vS]',    '\u0160', '\\u0160', 0), # LATIN CAPITAL LETTER S WITH CARON
+    ('[vs]',    '\u0161', '\\u0161', 0), # LATIN SMALL LETTER S WITH CARON
+    ('[T,]',    '\u0162', '\\u0162', 0), # LATIN CAPITAL LETTER T WITH CEDILLA
+    ('[t,]',    '\u0163', '\\u0163', 0), # LATIN SMALL LETTER T WITH CEDILLA
+    ('[vT]',    '\u0164', '\\u0164', 0), # LATIN CAPITAL LETTER T WITH CARON
+    ('[vt]',    '\u0165', '\\u0165', 0), # LATIN SMALL LETTER T WITH CARON
+    ('[-T]',    '\u0166', '\\u0166', 0), # LATIN CAPITAL LETTER T WITH STROKE
+    ('[-t]',    '\u0167', '\\u0167', 0), # LATIN SMALL LETTER T WITH STROKE
+    ('[~U]',    '\u0168', '\\u0168', 0), # LATIN CAPITAL LETTER U WITH TILDE
+    ('[~u]',    '\u0169', '\\u0169', 0), # LATIN SMALL LETTER U WITH TILDE
+    ('[=U]',    '\u016A', '\\u016A', 0), # LATIN CAPITAL LETTER U WITH MACRON
+    ('[=u]',    '\u016B', '\\u016B', 0), # LATIN SMALL LETTER U WITH MACRON
+    ('[)U]',    '\u016C', '\\u016C', 0), # LATIN CAPITAL LETTER U WITH BREVE
+    ('[)u]',    '\u016D', '\\u016D', 0), # LATIN SMALL LETTER U WITH BREVE
+    ('[°U]',    '\u016E', '\\u016E', 0), # LATIN CAPITAL LETTER U WITH RING ABOVE
+    ('[°u]',    '\u016F', '\\u016F', 0), # LATIN SMALL LETTER U WITH RING ABOVE
+    ('[\'\'U]', '\u0170', '\\u0170', 0), # LATIN CAPITAL LETTER U WITH DOUBLE ACUTE
+    ('[\'\'u]', '\u0171', '\\u0171', 0), # LATIN SMALL LETTER U WITH DOUBLE ACUTE
+    ('[U,]',    '\u0172', '\\u0172', 0), # LATIN CAPITAL LETTER U WITH OGONEK
+    ('[u,]',    '\u0173', '\\u0173', 0), # LATIN SMALL LETTER U WITH OGONEK
+    ('[^W]',    '\u0174', '\\u0174', 0), # LATIN CAPITAL LETTER W WITH CIRCUMFLEX
+    ('[^w]',    '\u0175', '\\u0175', 0), # LATIN SMALL LETTER W WITH CIRCUMFLEX
+    ('[^Y]',    '\u0176', '\\u0176', 0), # LATIN CAPITAL LETTER Y WITH CIRCUMFLEX
+    ('[^y]',    '\u0177', '\\u0177', 0), # LATIN SMALL LETTER Y WITH CIRCUMFLEX
+    ('[:Y]',    '\u0178', '\\u0178', 0), # LATIN CAPITAL LETTER Y WITH DIAERESIS
+    ('[\'Z]',   '\u0179', '\\u0179', 0), # LATIN CAPITAL LETTER Z WITH ACUTE
+    ('[\'z]',   '\u017A', '\\u017A', 0), # LATIN SMALL LETTER Z WITH ACUTE
+    ('[.Z]',    '\u017B', '\\u017B', 0), # LATIN CAPITAL LETTER Z WITH DOT ABOVE
+    ('[.z]',    '\u017C', '\\u017C', 0), # LATIN SMALL LETTER Z WITH DOT ABOVE
+    ('[vZ]',    '\u017D', '\\u017D', 0), # LATIN CAPITAL LETTER Z WITH CARON
+    ('[vz]',    '\u017E', '\\u017E', 0), # LATIN SMALL LETTER Z WITH CARON
+    ('[s]',     '\u017F', '\\u017F', 0), # LATIN SMALL LETTER LONG S
+    ('[-b]',    '\u0180', '\\u0180', 0), # LATIN SMALL LETTER B WITH STROKE     (Latin Extended-B)
+    #('[]', '\u0181', '\\u0181', 0), # LATIN CAPITAL LETTER B WITH HOOK
+    #('[]', '\u0182', '\\u0182', 0), # LATIN CAPITAL LETTER B WITH TOPBAR
+    #('[]', '\u0183', '\\u0183', 0), # LATIN SMALL LETTER B WITH TOPBAR
+    #('[]', '\u0184', '\\u0184', 0), # LATIN CAPITAL LETTER TONE SIX
+    #('[]', '\u0185', '\\u0185', 0), # LATIN SMALL LETTER TONE SIX
+    #('[]', '\u0186', '\\u0186', 0), # LATIN CAPITAL LETTER OPEN O
+    #('[]', '\u0187', '\\u0187', 0), # LATIN CAPITAL LETTER C WITH HOOK
+    #('[]', '\u0188', '\\u0188', 0), # LATIN SMALL LETTER C WITH HOOK
+    #('[]', '\u0189', '\\u0189', 0), # LATIN CAPITAL LETTER AFRICAN D
+    #('[]', '\u018A', '\\u018A', 0), # LATIN CAPITAL LETTER D WITH HOOK
+    #('[]', '\u018B', '\\u018B', 0), # LATIN CAPITAL LETTER D WITH TOPBAR
+    #('[]', '\u018C', '\\u018C', 0), # LATIN SMALL LETTER D WITH TOPBAR
+    #('[]', '\u018D', '\\u018D', 0), # LATIN SMALL LETTER TURNED DELTA
+    #('[]', '\u018E', '\\u018E', 0), # LATIN CAPITAL LETTER REVERSED E
+    ('[Schwa]', '\u018F', '\\u018F', 0), # LATIN CAPITAL LETTER SCHWA
+    #('[]', '\u0190', '\\u0190', 0), # LATIN CAPITAL LETTER OPEN E
+    #('[]', '\u0191', '\\u0191', 0), # LATIN CAPITAL LETTER F WITH HOOK
+    #('[]', '\u0192', '\\u0192', 0), # LATIN SMALL LETTER F WITH HOOK
+    #('[]', '\u0193', '\\u0193', 0), # LATIN CAPITAL LETTER G WITH HOOK
+    #('[Gamma]', '\u0194', '\\u0194', 0), # LATIN CAPITAL LETTER GAMMA  (use Greek versions instead)
+    #('[]', '\u0195', '\\u0195', 0), # LATIN SMALL LETTER HV
+    #('[Iota]', '\u0196', '\\u0196', 0), # LATIN CAPITAL LETTER IOTA    (use Greek versions instead)
+    ('[-I]',    '\u0197', '\\u0197', 0), # LATIN CAPITAL LETTER I WITH STROKE
+    #('[]', '\u0198', '\\u0198', 0), # LATIN CAPITAL LETTER K WITH HOOK
+    #('[]', '\u0199', '\\u0199', 0), # LATIN SMALL LETTER K WITH HOOK
+    ('[-l]',    '\u019A', '\\u019A', 0), # LATIN SMALL LETTER L WITH BAR
+    #('[]', '\u019B', '\\u019B', 0), # LATIN SMALL LETTER LAMBDA WITH STROKE
+    #('[]', '\u019C', '\\u019C', 0), # LATIN CAPITAL LETTER TURNED M
+    #('[]', '\u019D', '\\u019D', 0), # LATIN CAPITAL LETTER N WITH LEFT HOOK
+    #('[]', '\u019E', '\\u019E', 0), # LATIN SMALL LETTER N WITH LONG RIGHT LEG
+    #('[]', '\u019F', '\\u019F', 0), # LATIN CAPITAL LETTER O WITH MIDDLE TILDE
+    #('[]', '\u01A0', '\\u01A0', 0), # LATIN CAPITAL LETTER O WITH HORN
+    #('[]', '\u01A1', '\\u01A1', 0), # LATIN SMALL LETTER O WITH HORN
+    ('[OI]',    '\u01A2', '\\u01A2', 0), # LATIN CAPITAL LETTER OI
+    ('[oi]',    '\u01A3', '\\u01A3', 0), # LATIN SMALL LETTER OI
+    #('[]', '\u01A4', '\\u01A4', 0), # LATIN CAPITAL LETTER P WITH HOOK
+    #('[]', '\u01A5', '\\u01A5', 0), # LATIN SMALL LETTER P WITH HOOK
+    #('[]', '\u01A6', '\\u01A6', 0), # LATIN LETTER YR
+    #('[]', '\u01A7', '\\u01A7', 0), # LATIN CAPITAL LETTER TONE TWO
+    #('[]', '\u01A8', '\\u01A8', 0), # LATIN SMALL LETTER TONE TWO
+    ('[Esh]',   '\u01A9', '\\u01A9', 0), # LATIN CAPITAL LETTER ESH
+    #('[]', '\u01AA', '\\u01AA', 0), # LATIN LETTER REVERSED ESH LOOP
+    #('[]', '\u01AB', '\\u01AB', 0), # LATIN SMALL LETTER T WITH PALATAL HOOK
+    #('[]', '\u01AC', '\\u01AC', 0), # LATIN CAPITAL LETTER T WITH HOOK
+    #('[]', '\u01AD', '\\u01AD', 0), # LATIN SMALL LETTER T WITH HOOK
+    #('[]', '\u01AE', '\\u01AE', 0), # LATIN CAPITAL LETTER T WITH RETROFLEX HOOK
+    #('[]', '\u01AF', '\\u01AF', 0), # LATIN CAPITAL LETTER U WITH HORN
+    #('[]', '\u01B0', '\\u01B0', 0), # LATIN SMALL LETTER U WITH HORN
+    #('[Upsilon]', '\u01B1', '\\u01B1', 0), # LATIN CAPITAL LETTER UPSILON    (use Greek versions instead)
+    #('[]', '\u01B2', '\\u01B2', 0), # LATIN CAPITAL LETTER V WITH HOOK
+    #('[]', '\u01B3', '\\u01B3', 0), # LATIN CAPITAL LETTER Y WITH HOOK
+    #('[]', '\u01B4', '\\u01B4', 0), # LATIN SMALL LETTER Y WITH HOOK
+    ('[-Z]',    '\u01B5', '\\u01B5', 0), # LATIN CAPITAL LETTER Z WITH STROKE
+    ('[-z]',    '\u01B6', '\\u01B6', 0), # LATIN SMALL LETTER Z WITH STROKE
+    ('[Zh]',    '\u01B7', '\\u01B7', 0), # LATIN CAPITAL LETTER EZH
+    ('[zh]',    '\u0292', '\\u0292', 0), # LATIN SMALL LETTER EZH (out of order just to keep it with the capital)
+    #('[]', '\u01B8', '\\u01B8', 0), # LATIN CAPITAL LETTER EZH REVERSED
+    #('[]', '\u01B9', '\\u01B9', 0), # LATIN SMALL LETTER EZH REVERSED
+    #('[]', '\u01BA', '\\u01BA', 0), # LATIN SMALL LETTER EZH WITH TAIL
+    ('[-2]',    '\u01BB', '\\u01BB', 0), # LATIN LETTER TWO WITH STROKE
+    #('[]', '\u01BC', '\\u01BC', 0), # LATIN CAPITAL LETTER TONE FIVE
+    #('[]', '\u01BD', '\\u01BD', 0), # LATIN SMALL LETTER TONE FIVE
+    #('[]', '\u01BE', '\\u01BE', 0), # LATIN LETTER INVERTED GLOTTAL STOP WITH STROKE
+    ('[wynn]',  '\u01BF', '\\u01BF', 0), # LATIN LETTER WYNN
+    #('[]', '\u01C0', '\\u01C0', 0), # LATIN LETTER DENTAL CLICK
+    #('[]', '\u01C1', '\\u01C1', 0), # LATIN LETTER LATERAL CLICK
+    #('[]', '\u01C2', '\\u01C2', 0), # LATIN LETTER ALVEOLAR CLICK
+    #('[]', '\u01C3', '\\u01C3', 0), # LATIN LETTER RETROFLEX CLICK
+    ('[vDZ]',   '\u01C4', '\\u01C4', 0), # LATIN CAPITAL LETTER DZ WITH CARON
+    ('[vDz]',   '\u01C5', '\\u01C5', 0), # LATIN CAPITAL LETTER D WITH SMALL LETTER Z WITH CARON
+    ('[vdz]',   '\u01C6', '\\u01C6', 0), # LATIN SMALL LETTER DZ WITH CARON
+    ('[LJ]',    '\u01C7', '\\u01C7', 0), # LATIN CAPITAL LETTER LJ
+    ('[Lj]',    '\u01C8', '\\u01C8', 0), # LATIN CAPITAL LETTER L WITH SMALL LETTER J
+    ('[lj]',    '\u01C9', '\\u01C9', 0), # LATIN SMALL LETTER LJ
+    ('[NJ]',    '\u01CA', '\\u01CA', 0), # LATIN CAPITAL LETTER NJ
+    ('[Nj]',    '\u01CB', '\\u01CB', 0), # LATIN CAPITAL LETTER N WITH SMALL LETTER J
+    ('[nj]',    '\u01CC', '\\u01CC', 0), # LATIN SMALL LETTER NJ
+    ('[vA]',    '\u01CD', '\\u01CD', 0), # LATIN CAPITAL LETTER A WITH CARON
+    ('[va]',    '\u01CE', '\\u01CE', 0), # LATIN SMALL LETTER A WITH CARON
+    ('[vI]',    '\u01CF', '\\u01CF', 0), # LATIN CAPITAL LETTER I WITH CARON
+    ('[vi]',    '\u01D0', '\\u01D0', 0), # LATIN SMALL LETTER I WITH CARON
+    ('[vO]',    '\u01D1', '\\u01D1', 0), # LATIN CAPITAL LETTER O WITH CARON
+    ('[vo]',    '\u01D2', '\\u01D2', 0), # LATIN SMALL LETTER O WITH CARON
+    ('[vU]',    '\u01D3', '\\u01D3', 0), # LATIN CAPITAL LETTER U WITH CARON
+    ('[vu]',    '\u01D4', '\\u01D4', 0), # LATIN SMALL LETTER U WITH CARON
+    ('[=Ü]',    '\u01D5', '\\u01D5', 0), # LATIN CAPITAL LETTER U WITH DIAERESIS AND MACRON
+    ('[=:U]',   '\u01D5', '\\u01D5', 1), # LATIN CAPITAL LETTER U WITH DIAERESIS AND MACRON
+    ('[:=U]',   '\u01D5', '\\u01D5', 1), # LATIN CAPITAL LETTER U WITH DIAERESIS AND MACRON
+    ('[=ü]',    '\u01D6', '\\u01D6', 0), # LATIN SMALL LETTER U WITH DIAERESIS AND MACRON
+    ('[=:u]',   '\u01D6', '\\u01D6', 1), # LATIN SMALL LETTER U WITH DIAERESIS AND MACRON
+    ('[:=u]',   '\u01D6', '\\u01D6', 1), # LATIN SMALL LETTER U WITH DIAERESIS AND MACRON
+    ('[\'Ü]',   '\u01D7', '\\u01D7', 0), # LATIN CAPITAL LETTER U WITH DIAERESIS AND ACUTE
+    ('[\':U]',  '\u01D7', '\\u01D7', 1), # LATIN CAPITAL LETTER U WITH DIAERESIS AND ACUTE
+    ('[:\'U]',  '\u01D7', '\\u01D7', 1), # LATIN CAPITAL LETTER U WITH DIAERESIS AND ACUTE
+    ('[:Ú]',    '\u01D7', '\\u01D7', 1), # LATIN CAPITAL LETTER U WITH DIAERESIS AND ACUTE
+    ('[\'ü]',   '\u01D8', '\\u01D8', 0), # LATIN SMALL LETTER U WITH DIAERESIS AND ACUTE
+    ('[\':u]',  '\u01D8', '\\u01D8', 1), # LATIN SMALL LETTER U WITH DIAERESIS AND ACUTE
+    ('[:\'u]',  '\u01D8', '\\u01D8', 1), # LATIN SMALL LETTER U WITH DIAERESIS AND ACUTE
+    ('[:ú]',    '\u01D8', '\\u01D8', 1), # LATIN SMALL LETTER U WITH DIAERESIS AND ACUTE
+    ('[)Ü]',    '\u01D9', '\\u01D9', 0), # LATIN CAPITAL LETTER U WITH DIAERESIS AND CARON
+    ('[):U]',   '\u01D9', '\\u01D9', 1), # LATIN CAPITAL LETTER U WITH DIAERESIS AND CARON
+    ('[:)U]',   '\u01D9', '\\u01D9', 1), # LATIN CAPITAL LETTER U WITH DIAERESIS AND CARON
+    ('[)ü]',    '\u01DA', '\\u01DA', 0), # LATIN SMALL LETTER U WITH DIAERESIS AND CARON
+    ('[):u]',   '\u01DA', '\\u01DA', 1), # LATIN SMALL LETTER U WITH DIAERESIS AND CARON
+    ('[:)u]',   '\u01DA', '\\u01DA', 1), # LATIN SMALL LETTER U WITH DIAERESIS AND CARON
+    ('[`Ü]',    '\u01DB', '\\u01DB', 0), # LATIN CAPITAL LETTER U WITH DIAERESIS AND GRAVE
+    ('[`:U]',   '\u01DB', '\\u01DB', 1), # LATIN CAPITAL LETTER U WITH DIAERESIS AND GRAVE
+    ('[:`U]',   '\u01DB', '\\u01DB', 1), # LATIN CAPITAL LETTER U WITH DIAERESIS AND GRAVE
+    ('[`ü]',    '\u01DC', '\\u01DC', 0), # LATIN SMALL LETTER U WITH DIAERESIS AND GRAVE
+    ('[`:u]',   '\u01DC', '\\u01DC', 1), # LATIN SMALL LETTER U WITH DIAERESIS AND GRAVE
+    ('[:`u]',   '\u01DC', '\\u01DC', 1), # LATIN SMALL LETTER U WITH DIAERESIS AND GRAVE
+    #('[]', '\u01DD', '\\u01DD', 0), # LATIN SMALL LETTER TURNED E
+    ('[=Ä]',    '\u01DE', '\\u01DE', 0), # LATIN CAPITAL LETTER A WITH DIAERESIS AND MACRON
+    ('[=:A]',   '\u01DE', '\\u01DE', 1), # LATIN CAPITAL LETTER A WITH DIAERESIS AND MACRON
+    ('[:=A]',   '\u01DE', '\\u01DE', 1), # LATIN CAPITAL LETTER A WITH DIAERESIS AND MACRON
+    ('[=ä]',    '\u01DF', '\\u01DF', 0), # LATIN SMALL LETTER A WITH DIAERESIS AND MACRON
+    ('[=:a]',   '\u01DF', '\\u01DF', 1), # LATIN SMALL LETTER A WITH DIAERESIS AND MACRON
+    ('[:=a]',   '\u01DF', '\\u01DF', 1), # LATIN SMALL LETTER A WITH DIAERESIS AND MACRON
+    ('[=.A]',   '\u01E0', '\\u01E0', 0), # LATIN CAPITAL LETTER A WITH DOT ABOVE AND MACRON
+    ('[.=A]',   '\u01E0', '\\u01E0', 1), # LATIN CAPITAL LETTER A WITH DOT ABOVE AND MACRON
+    ('[=.a]',   '\u01E1', '\\u01E1', 0), # LATIN SMALL LETTER A WITH DOT ABOVE AND MACRON
+    ('[.=a]',   '\u01E1', '\\u01E1', 1), # LATIN SMALL LETTER A WITH DOT ABOVE AND MACRON
+    ('[=AE]',   '\u01E2', '\\u01E2', 0), # LATIN CAPITAL LETTER AE WITH MACRON
+    ('[=ae]',   '\u01E3', '\\u01E3', 0), # LATIN SMALL LETTER AE WITH MACRON
+    ('[-G]',    '\u01E4', '\\u01E4', 0), # LATIN CAPITAL LETTER G WITH STROKE
+    ('[-g]',    '\u01E5', '\\u01E5', 0), # LATIN SMALL LETTER G WITH STROKE
+    ('[vG]',    '\u01E6', '\\u01E6', 0), # LATIN CAPITAL LETTER G WITH CARON
+    ('[vg]',    '\u01E7', '\\u01E7', 0), # LATIN SMALL LETTER G WITH CARON
+    ('[vK]',    '\u01E8', '\\u01E8', 0), # LATIN CAPITAL LETTER K WITH CARON
+    ('[vk]',    '\u01E9', '\\u01E9', 0), # LATIN SMALL LETTER K WITH CARON
+    ('[O,]',    '\u01EA', '\\u01EA', 0), # LATIN CAPITAL LETTER O WITH OGONEK
+    ('[o,]',    '\u01EB', '\\u01EB', 0), # LATIN SMALL LETTER O WITH OGONEK
+    ('[=O,]',   '\u01EC', '\\u01EC', 0), # LATIN CAPITAL LETTER O WITH OGONEK AND MACRON
+    ('[=o,]',   '\u01ED', '\\u01ED', 0), # LATIN SMALL LETTER O WITH OGONEK AND MACRON
+    ('[vZh]',   '\u01EE', '\\u01EE', 0), # LATIN CAPITAL LETTER EZH WITH CARON
+    ('[vzh]',   '\u01EF', '\\u01EF', 0), # LATIN SMALL LETTER EZH WITH CARON
+    ('[vj]',    '\u01F0', '\\u01F0', 0), # LATIN SMALL LETTER J WITH CARON
+    ('[DZ]',    '\u01F1', '\\u01F1', 0), # LATIN CAPITAL LETTER DZ
+    ('[Dz]',    '\u01F2', '\\u01F2', 0), # LATIN CAPITAL LETTER D WITH SMALL LETTER Z
+    ('[dz]',    '\u01F3', '\\u01F3', 0), # LATIN SMALL LETTER DZ
+    ('[\'G]',   '\u01F4', '\\u01F4', 0), # LATIN CAPITAL LETTER G WITH ACUTE
+    ('[\'g]',   '\u01F5', '\\u01F5', 0), # LATIN SMALL LETTER G WITH ACUTE
+    ('[Hwair]', '\u01F6', '\\u01F6', 0), # LATIN CAPITAL LETTER HWAIR
+    ('[Wynn]',  '\u01F7', '\\u01F7', 0), # LATIN CAPITAL LETTER WYNN
+    ('[`N]',    '\u01F8', '\\u01F8', 0), # LATIN CAPITAL LETTER N WITH GRAVE
+    ('[`n]',    '\u01F9', '\\u01F9', 0), # LATIN SMALL LETTER N WITH GRAVE
+    ('[\'Å]',   '\u01FA', '\\u01FA', 0), # LATIN CAPITAL LETTER A WITH RING ABOVE AND ACUTE
+    ('[\'å]',   '\u01FB', '\\u01FB', 0), # LATIN SMALL LETTER A WITH RING ABOVE AND ACUTE
+    ('[\'AE]',  '\u01FC', '\\u01FC', 0), # LATIN CAPITAL LETTER AE WITH ACUTE
+    ('[\'ae]',  '\u01FD', '\\u01FD', 0), # LATIN SMALL LETTER AE WITH ACUTE
+    ('[\'Ø]',   '\u01FE', '\\u01FE', 0), # LATIN CAPITAL LETTER O WITH STROKE AND ACUTE
+    ('[\'ø]',   '\u01FF', '\\u01FF', 0), # LATIN SMALL LETTER O WITH STROKE AND ACUTE
+    ('[``A]',   '\u0200', '\\u0200', 0), # LATIN CAPITAL LETTER A WITH DOUBLE GRAVE
+    ('[``a]',   '\u0201', '\\u0201', 0), # LATIN SMALL LETTER A WITH DOUBLE GRAVE
+    #('[]', '\u0202', '\\u0202', 0), # LATIN CAPITAL LETTER A WITH INVERTED BREVE
+    #('[]', '\u0203', '\\u0203', 0), # LATIN SMALL LETTER A WITH INVERTED BREVE
+    ('[``E]',   '\u0204', '\\u0204', 0), # LATIN CAPITAL LETTER E WITH DOUBLE GRAVE
+    ('[``e]',   '\u0205', '\\u0205', 0), # LATIN SMALL LETTER E WITH DOUBLE GRAVE
+    #('[]', '\u0206', '\\u0206', 0), # LATIN CAPITAL LETTER E WITH INVERTED BREVE
+    #('[]', '\u0207', '\\u0207', 0), # LATIN SMALL LETTER E WITH INVERTED BREVE
+    ('[``I]',   '\u0208', '\\u0208', 0), # LATIN CAPITAL LETTER I WITH DOUBLE GRAVE
+    ('[``i]',   '\u0209', '\\u0209', 0), # LATIN SMALL LETTER I WITH DOUBLE GRAVE
+    #('[]', '\u020A', '\\u020A', 0), # LATIN CAPITAL LETTER I WITH INVERTED BREVE
+    #('[]', '\u020B', '\\u020B', 0), # LATIN SMALL LETTER I WITH INVERTED BREVE
+    ('[``O]',   '\u020C', '\\u020C', 0), # LATIN CAPITAL LETTER O WITH DOUBLE GRAVE
+    ('[``o]',   '\u020D', '\\u020D', 0), # LATIN SMALL LETTER O WITH DOUBLE GRAVE
+    #('[]', '\u020E', '\\u020E', 0), # LATIN CAPITAL LETTER O WITH INVERTED BREVE
+    #('[]', '\u020F', '\\u020F', 0), # LATIN SMALL LETTER O WITH INVERTED BREVE
+    ('[``R]',   '\u0210', '\\u0210', 0), # LATIN CAPITAL LETTER R WITH DOUBLE GRAVE
+    ('[``r]',   '\u0211', '\\u0211', 0), # LATIN SMALL LETTER R WITH DOUBLE GRAVE
+    #('[]', '\u0212', '\\u0212', 0), # LATIN CAPITAL LETTER R WITH INVERTED BREVE
+    #('[]', '\u0213', '\\u0213', 0), # LATIN SMALL LETTER R WITH INVERTED BREVE
+    ('[``U]',   '\u0214', '\\u0214', 0), # LATIN CAPITAL LETTER U WITH DOUBLE GRAVE
+    ('[``u]',   '\u0215', '\\u0215', 0), # LATIN SMALL LETTER U WITH DOUBLE GRAVE
+    #('[]', '\u0216', '\\u0216', 0), # LATIN CAPITAL LETTER U WITH INVERTED BREVE
+    #('[]', '\u0217', '\\u0217', 0), # LATIN SMALL LETTER U WITH INVERTED BREVE
+    #('[S,]', '\u0218', '\\u0218', 0), # LATIN CAPITAL LETTER S WITH COMMA BELOW  # conflicts with cedilla markup
+    #('[s,]', '\u0219', '\\u0219', 0), # LATIN SMALL LETTER S WITH COMMA BELOW    # conflicts with cedilla markup
+    #('[T,]', '\u021A', '\\u021A', 0), # LATIN CAPITAL LETTER T WITH COMMA BELOW  # conflicts with cedilla markup
+    #('[t,]', '\u021B', '\\u021B', 0), # LATIN SMALL LETTER T WITH COMMA BELOW    # conflicts with cedilla markup
+    ('[Gh]',    '\u021C', '\\u021C', 0), # LATIN CAPITAL LETTER YOGH
+    ('[gh]',    '\u021D', '\\u021D', 0), # LATIN SMALL LETTER YOGH
+    ('[vH]',    '\u021E', '\\u021E', 0), # LATIN CAPITAL LETTER H WITH CARON
+    ('[vh]',    '\u021F', '\\u021F', 0), # LATIN SMALL LETTER H WITH CARON
+    #('[]', '\u0220', '\\u0220', 0), # LATIN CAPITAL LETTER N WITH LONG RIGHT LEG
+    #('[]', '\u0221', '\\u0221', 0), # LATIN SMALL LETTER D WITH CURL
+    ('[OU]',    '\u0222', '\\u0222', 0), # LATIN CAPITAL LETTER OU
+    ('[ou]',    '\u0223', '\\u0223', 0), # LATIN SMALL LETTER OU
+    #('[]', '\u0224', '\\u0224', 0), # LATIN CAPITAL LETTER Z WITH HOOK
+    #('[]', '\u0225', '\\u0225', 0), # LATIN SMALL LETTER Z WITH HOOK
+    ('[.A]',    '\u0226', '\\u0226', 0), # LATIN CAPITAL LETTER A WITH DOT ABOVE
+    ('[.a]',    '\u0227', '\\u0227', 0), # LATIN SMALL LETTER A WITH DOT ABOVE
+    ('[E,]',    '\u0228', '\\u0228', 0), # LATIN CAPITAL LETTER E WITH CEDILLA
+    ('[e,]',    '\u0229', '\\u0229', 0), # LATIN SMALL LETTER E WITH CEDILLA
+    ('[=Ö]',    '\u022A', '\\u022A', 0), # LATIN CAPITAL LETTER O WITH DIAERESIS AND MACRON
+    ('[=:O]',   '\u022A', '\\u022A', 1), # LATIN CAPITAL LETTER O WITH DIAERESIS AND MACRON
+    ('[:=O]',   '\u022A', '\\u022A', 1), # LATIN CAPITAL LETTER O WITH DIAERESIS AND MACRON
+    ('[=ö]',    '\u022B', '\\u022B', 0), # LATIN SMALL LETTER O WITH DIAERESIS AND MACRON
+    ('[=:o]',   '\u022B', '\\u022B', 1), # LATIN SMALL LETTER O WITH DIAERESIS AND MACRON
+    ('[:=o]',   '\u022B', '\\u022B', 1), # LATIN SMALL LETTER O WITH DIAERESIS AND MACRON
+    ('[=Õ]',    '\u022C', '\\u022C', 0), # LATIN CAPITAL LETTER O WITH TILDE AND MACRON
+    ('[=~O]',   '\u022C', '\\u022C', 1), # LATIN CAPITAL LETTER O WITH TILDE AND MACRON
+    ('[~=O]',   '\u022C', '\\u022C', 1), # LATIN CAPITAL LETTER O WITH TILDE AND MACRON
+    ('[=õ]',    '\u022D', '\\u022D', 0), # LATIN SMALL LETTER O WITH TILDE AND MACRON
+    ('[=~o]',   '\u022D', '\\u022D', 1), # LATIN SMALL LETTER O WITH TILDE AND MACRON
+    ('[~=o]',   '\u022D', '\\u022D', 1), # LATIN SMALL LETTER O WITH TILDE AND MACRON
+    ('[.O]',    '\u022E', '\\u022E', 0), # LATIN CAPITAL LETTER O WITH DOT ABOVE
+    ('[.o]',    '\u022F', '\\u022F', 0), # LATIN SMALL LETTER O WITH DOT ABOVE
+    ('[=.O]',   '\u0230', '\\u0230', 0), # LATIN CAPITAL LETTER O WITH DOT ABOVE AND MACRON
+    ('[=.o]',   '\u0231', '\\u0231', 0), # LATIN SMALL LETTER O WITH DOT ABOVE AND MACRON
+    ('[=Y]',    '\u0232', '\\u0232', 0), # LATIN CAPITAL LETTER Y WITH MACRON
+    ('[=y]',    '\u0233', '\\u0233', 0), # LATIN SMALL LETTER Y WITH MACRON
+    #('[]', '\u0234', '\\u0234', 0), # LATIN SMALL LETTER L WITH CURL
+    #('[]', '\u0235', '\\u0235', 0), # LATIN SMALL LETTER N WITH CURL
+    #('[]', '\u0236', '\\u0236', 0), # LATIN SMALL LETTER T WITH CURL
+    #('[]', '\u0237', '\\u0237', 0), # LATIN SMALL LETTER DOTLESS J
+    ('[db]',    '\u0238', '\\u0238', 0), # LATIN SMALL LETTER DB DIGRAPH
+    ('[qp]',    '\u0239', '\\u0239', 0), # LATIN SMALL LETTER QP DIGRAPH
+    ('[/A]',    '\u023A', '\\u023A', 0), # LATIN CAPITAL LETTER A WITH STROKE
+    ('[/C]',    '\u023B', '\\u023B', 0), # LATIN CAPITAL LETTER C WITH STROKE
+    ('[/c]',    '\u023C', '\\u023C', 0), # LATIN SMALL LETTER C WITH STROKE
+    ('[-L]',    '\u023D', '\\u023D', 0), # LATIN CAPITAL LETTER L WITH BAR
+    ('[/T]',    '\u023E', '\\u023E', 0), # LATIN CAPITAL LETTER T WITH DIAGONAL STROKE
+    #('[]', '\u023F', '\\u023F', 0), # LATIN SMALL LETTER S WITH SWASH TAIL
+    #('[]', '\u0240', '\\u0240', 0), # LATIN SMALL LETTER Z WITH SWASH TAIL
+    #('[]', '\u0241', '\\u0241', 0), # LATIN CAPITAL LETTER GLOTTAL STOP
+    #('[]', '\u0242', '\\u0242', 0), # LATIN SMALL LETTER GLOTTAL STOP
+    ('[-B]',    '\u0243', '\\u0243', 0), # LATIN CAPITAL LETTER B WITH STROKE
+    ('[-U]',    '\u0244', '\\u0244', 0), # LATIN CAPITAL LETTER U BAR
+    #('[]', '\u0245', '\\u0245', 0), # LATIN CAPITAL LETTER TURNED V
+    ('[/E]',    '\u0246', '\\u0246', 0), # LATIN CAPITAL LETTER E WITH STROKE
+    ('[/e]',    '\u0247', '\\u0247', 0), # LATIN SMALL LETTER E WITH STROKE
+    ('[-J]',    '\u0248', '\\u0248', 0), # LATIN CAPITAL LETTER J WITH STROKE
+    ('[-j]',    '\u0249', '\\u0249', 0), # LATIN SMALL LETTER J WITH STROKE
+    #('[]', '\u024A', '\\u024A', 0), # LATIN CAPITAL LETTER SMALL Q WITH HOOK TAIL
+    #('[]', '\u024B', '\\u024B', 0), # LATIN SMALL LETTER Q WITH HOOK TAIL
+    ('[-R]',    '\u024C', '\\u024C', 0), # LATIN CAPITAL LETTER R WITH STROKE
+    ('[-r]',    '\u024D', '\\u024D', 0), # LATIN SMALL LETTER R WITH STROKE
+    ('[-Y]',    '\u024E', '\\u024E', 0), # LATIN CAPITAL LETTER Y WITH STROKE
+    ('[-y]',    '\u024F', '\\u024F', 0), # LATIN SMALL LETTER Y WITH STROKE
+    ('[A°]',    '\u1E00', '\\u1E00', 0), # LATIN CAPITAL LETTER A WITH RING BELOW    (Latin Extended Additional)
+    ('[a°]',    '\u1E01', '\\u1E01', 0), # LATIN SMALL LETTER A WITH RING BELOW
+    ('[.B]',    '\u1E02', '\\u1E02', 0), # LATIN CAPITAL LETTER B WITH DOT ABOVE
+    ('[.b]',    '\u1E03', '\\u1E03', 0), # LATIN SMALL LETTER B WITH DOT ABOVE
+    ('[B.]',    '\u1E04', '\\u1E04', 0), # LATIN CAPITAL LETTER B WITH DOT BELOW
+    ('[b.]',    '\u1E05', '\\u1E05', 0), # LATIN SMALL LETTER B WITH DOT BELOW
+    ('[B=]',    '\u1E06', '\\u1E06', 0), # LATIN CAPITAL LETTER B WITH LINE BELOW
+    ('[b=]',    '\u1E07', '\\u1E07', 0), # LATIN SMALL LETTER B WITH LINE BELOW
+    ('[\'C,]',  '\u1E08', '\\u1E08', 0), # LATIN CAPITAL LETTER C WITH CEDILLA AND ACUTE
+    ('[\'c,]',  '\u1E09', '\\u1E09', 0), # LATIN SMALL LETTER C WITH CEDILLA AND ACUTE
+    ('[.D]',    '\u1E0A', '\\u1E0A', 0), # LATIN CAPITAL LETTER D WITH DOT ABOVE
+    ('[.d]',    '\u1E0B', '\\u1E0B', 0), # LATIN SMALL LETTER D WITH DOT ABOVE
+    ('[D.]',    '\u1E0C', '\\u1E0C', 0), # LATIN CAPITAL LETTER D WITH DOT BELOW
+    ('[d.]',    '\u1E0D', '\\u1E0D', 0), # LATIN SMALL LETTER D WITH DOT BELOW
+    ('[D=]',    '\u1E0E', '\\u1E0E', 0), # LATIN CAPITAL LETTER D WITH LINE BELOW
+    ('[d=]',    '\u1E0F', '\\u1E0F', 0), # LATIN SMALL LETTER D WITH LINE BELOW
+    ('[D,]',    '\u1E10', '\\u1E10', 0), # LATIN CAPITAL LETTER D WITH CEDILLA
+    ('[d,]',    '\u1E11', '\\u1E11', 0), # LATIN SMALL LETTER D WITH CEDILLA
+    ('[D^]',    '\u1E12', '\\u1E12', 0), # LATIN CAPITAL LETTER D WITH CIRCUMFLEX BELOW
+    ('[d^]',    '\u1E13', '\\u1E13', 0), # LATIN SMALL LETTER D WITH CIRCUMFLEX BELOW
+    ('[`=E]',   '\u1E14', '\\u1E14', 0), # LATIN CAPITAL LETTER E WITH MACRON AND GRAVE
+    ('[`=e]',   '\u1E15', '\\u1E15', 0), # LATIN SMALL LETTER E WITH MACRON AND GRAVE
+    ('[\'=E]',  '\u1E16', '\\u1E16', 0), # LATIN CAPITAL LETTER E WITH MACRON AND ACUTE
+    ('[=É]',    '\u1E16', '\\u1E16', 1), # LATIN CAPITAL LETTER E WITH MACRON AND ACUTE
+    ('[\'=e]',  '\u1E17', '\\u1E17', 0), # LATIN SMALL LETTER E WITH MACRON AND ACUTE
+    ('[=é]',    '\u1E17', '\\u1E17', 1), # LATIN SMALL LETTER E WITH MACRON AND ACUTE
+    ('[E^]',    '\u1E18', '\\u1E18', 0), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX BELOW
+    ('[e^]',    '\u1E19', '\\u1E19', 0), # LATIN SMALL LETTER E WITH CIRCUMFLEX BELOW
+    ('[E~]',    '\u1E1A', '\\u1E1A', 0), # LATIN CAPITAL LETTER E WITH TILDE BELOW
+    ('[e~]',    '\u1E1B', '\\u1E1B', 0), # LATIN SMALL LETTER E WITH TILDE BELOW
+    ('[)E,]',   '\u1E1C', '\\u1E1C', 0), # LATIN CAPITAL LETTER E WITH CEDILLA AND BREVE
+    ('[)e,]',   '\u1E1D', '\\u1E1D', 0), # LATIN SMALL LETTER E WITH CEDILLA AND BREVE
+    ('[.F]',    '\u1E1E', '\\u1E1E', 0), # LATIN CAPITAL LETTER F WITH DOT ABOVE
+    ('[.f]',    '\u1E1F', '\\u1E1F', 0), # LATIN SMALL LETTER F WITH DOT ABOVE
+    ('[=G]',    '\u1E20', '\\u1E20', 0), # LATIN CAPITAL LETTER G WITH MACRON
+    ('[=g]',    '\u1E21', '\\u1E21', 0), # LATIN SMALL LETTER G WITH MACRON
+    ('[.H]',    '\u1E22', '\\u1E22', 0), # LATIN CAPITAL LETTER H WITH DOT ABOVE
+    ('[.h]',    '\u1E23', '\\u1E23', 0), # LATIN SMALL LETTER H WITH DOT ABOVE
+    ('[H.]',    '\u1E24', '\\u1E24', 0), # LATIN CAPITAL LETTER H WITH DOT BELOW
+    ('[h.]',    '\u1E25', '\\u1E25', 0), # LATIN SMALL LETTER H WITH DOT BELOW
+    ('[:H]',    '\u1E26', '\\u1E26', 0), # LATIN CAPITAL LETTER H WITH DIAERESIS
+    ('[:h]',    '\u1E27', '\\u1E27', 0), # LATIN SMALL LETTER H WITH DIAERESIS
+    ('[H,]',    '\u1E28', '\\u1E28', 0), # LATIN CAPITAL LETTER H WITH CEDILLA
+    ('[h,]',    '\u1E29', '\\u1E29', 0), # LATIN SMALL LETTER H WITH CEDILLA
+    ('[H)]',    '\u1E2A', '\\u1E2A', 0), # LATIN CAPITAL LETTER H WITH BREVE BELOW
+    ('[h)]',    '\u1E2B', '\\u1E2B', 0), # LATIN SMALL LETTER H WITH BREVE BELOW
+    ('[I~]',    '\u1E2C', '\\u1E2C', 0), # LATIN CAPITAL LETTER I WITH TILDE BELOW
+    ('[i~]',    '\u1E2D', '\\u1E2D', 0), # LATIN SMALL LETTER I WITH TILDE BELOW
+    ('[\'Ï]',   '\u1E2E', '\\u1E2E', 0), # LATIN CAPITAL LETTER I WITH DIAERESIS AND ACUTE
+    ('[:Í]',    '\u1E2E', '\\u1E2E', 1), # LATIN CAPITAL LETTER I WITH DIAERESIS AND ACUTE
+    ('[\'ï]',   '\u1E2F', '\\u1E2F', 0), # LATIN SMALL LETTER I WITH DIAERESIS AND ACUTE
+    ('[:í]',    '\u1E2F', '\\u1E2F', 1), # LATIN SMALL LETTER I WITH DIAERESIS AND ACUTE
+    ('[\'K]',   '\u1E30', '\\u1E30', 0), # LATIN CAPITAL LETTER K WITH ACUTE
+    ('[\'k]',   '\u1E31', '\\u1E31', 0), # LATIN SMALL LETTER K WITH ACUTE
+    ('[K.]',    '\u1E32', '\\u1E32', 0), # LATIN CAPITAL LETTER K WITH DOT BELOW
+    ('[k.]',    '\u1E33', '\\u1E33', 0), # LATIN SMALL LETTER K WITH DOT BELOW
+    ('[K=]',    '\u1E34', '\\u1E34', 0), # LATIN CAPITAL LETTER K WITH LINE BELOW
+    ('[k=]',    '\u1E35', '\\u1E35', 0), # LATIN SMALL LETTER K WITH LINE BELOW
+    ('[L.]',    '\u1E36', '\\u1E36', 0), # LATIN CAPITAL LETTER L WITH DOT BELOW
+    ('[l.]',    '\u1E37', '\\u1E37', 0), # LATIN SMALL LETTER L WITH DOT BELOW
+    ('[=L.]',   '\u1E38', '\\u1E38', 0), # LATIN CAPITAL LETTER L WITH DOT BELOW AND MACRON
+    ('[=l.]',   '\u1E39', '\\u1E39', 0), # LATIN SMALL LETTER L WITH DOT BELOW AND MACRON
+    ('[L=]',    '\u1E3A', '\\u1E3A', 0), # LATIN CAPITAL LETTER L WITH LINE BELOW
+    ('[l=]',    '\u1E3B', '\\u1E3B', 0), # LATIN SMALL LETTER L WITH LINE BELOW
+    ('[L^]',    '\u1E3C', '\\u1E3C', 0), # LATIN CAPITAL LETTER L WITH CIRCUMFLEX BELOW
+    ('[l^]',    '\u1E3D', '\\u1E3D', 0), # LATIN SMALL LETTER L WITH CIRCUMFLEX BELOW
+    ('[\'M]',   '\u1E3E', '\\u1E3E', 0), # LATIN CAPITAL LETTER M WITH ACUTE
+    ('[\'m]',   '\u1E3F', '\\u1E3F', 0), # LATIN SMALL LETTER M WITH ACUTE
+    ('[.M]',    '\u1E40', '\\u1E40', 0), # LATIN CAPITAL LETTER M WITH DOT ABOVE
+    ('[.m]',    '\u1E41', '\\u1E41', 0), # LATIN SMALL LETTER M WITH DOT ABOVE
+    ('[M.]',    '\u1E42', '\\u1E42', 0), # LATIN CAPITAL LETTER M WITH DOT BELOW
+    ('[m.]',    '\u1E43', '\\u1E43', 0), # LATIN SMALL LETTER M WITH DOT BELOW
+    ('[.N]',    '\u1E44', '\\u1E44', 0), # LATIN CAPITAL LETTER N WITH DOT ABOVE
+    ('[.n]',    '\u1E45', '\\u1E45', 0), # LATIN SMALL LETTER N WITH DOT ABOVE
+    ('[N.]',    '\u1E46', '\\u1E46', 0), # LATIN CAPITAL LETTER N WITH DOT BELOW
+    ('[n.]',    '\u1E47', '\\u1E47', 0), # LATIN SMALL LETTER N WITH DOT BELOW
+    ('[N=]',    '\u1E48', '\\u1E48', 0), # LATIN CAPITAL LETTER N WITH LINE BELOW
+    ('[n=]',    '\u1E49', '\\u1E49', 0), # LATIN SMALL LETTER N WITH LINE BELOW
+    ('[N^]',    '\u1E4A', '\\u1E4A', 0), # LATIN CAPITAL LETTER N WITH CIRCUMFLEX BELOW
+    ('[n^]',    '\u1E4B', '\\u1E4B', 0), # LATIN SMALL LETTER N WITH CIRCUMFLEX BELOW
+    ('[\'Õ]',   '\u1E4C', '\\u1E4C', 0), # LATIN CAPITAL LETTER O WITH TILDE AND ACUTE
+    ('[\'~O]',  '\u1E4C', '\\u1E4C', 1), # LATIN CAPITAL LETTER O WITH TILDE AND ACUTE
+    ('[~\'O]',  '\u1E4C', '\\u1E4C', 1), # LATIN CAPITAL LETTER O WITH TILDE AND ACUTE
+    ('[~Ó]',    '\u1E4C', '\\u1E4C', 1), # LATIN CAPITAL LETTER O WITH TILDE AND ACUTE
+    ('[\'õ]',   '\u1E4D', '\\u1E4D', 0), # LATIN SMALL LETTER O WITH TILDE AND ACUTE
+    ('[\'~o]',  '\u1E4D', '\\u1E4D', 1), # LATIN SMALL LETTER O WITH TILDE AND ACUTE
+    ('[~\'o]',  '\u1E4D', '\\u1E4D', 1), # LATIN SMALL LETTER O WITH TILDE AND ACUTE
+    ('[~ó]',    '\u1E4D', '\\u1E4D', 1), # LATIN SMALL LETTER O WITH TILDE AND ACUTE
+    ('[:Õ]',    '\u1E4E', '\\u1E4E', 0), # LATIN CAPITAL LETTER O WITH TILDE AND DIAERESIS
+    ('[~Ö]',    '\u1E4E', '\\u1E4E', 1), # LATIN CAPITAL LETTER O WITH TILDE AND DIAERESIS
+    ('[~:O]',   '\u1E4E', '\\u1E4E', 1), # LATIN CAPITAL LETTER O WITH TILDE AND DIAERESIS
+    ('[:~O]',   '\u1E4E', '\\u1E4E', 1), # LATIN CAPITAL LETTER O WITH TILDE AND DIAERESIS
+    ('[:õ]',    '\u1E4F', '\\u1E4F', 0), # LATIN SMALL LETTER O WITH TILDE AND DIAERESIS
+    ('[~ö]',    '\u1E4F', '\\u1E4F', 1), # LATIN SMALL LETTER O WITH TILDE AND DIAERESIS
+    ('[~:o]',   '\u1E4F', '\\u1E4F', 1), # LATIN SMALL LETTER O WITH TILDE AND DIAERESIS
+    ('[:~o]',   '\u1E4F', '\\u1E4F', 1), # LATIN SMALL LETTER O WITH TILDE AND DIAERESIS
+    ('[`=O]',   '\u1E50', '\\u1E50', 0), # LATIN CAPITAL LETTER O WITH MACRON AND GRAVE
+    ('[=`O]',   '\u1E50', '\\u1E50', 1), # LATIN CAPITAL LETTER O WITH MACRON AND GRAVE
+    ('[=Ò]',    '\u1E50', '\\u1E50', 1), # LATIN CAPITAL LETTER O WITH MACRON AND GRAVE
+    ('[`=o]',   '\u1E51', '\\u1E51', 0), # LATIN SMALL LETTER O WITH MACRON AND GRAVE
+    ('[=`o]',   '\u1E51', '\\u1E51', 1), # LATIN SMALL LETTER O WITH MACRON AND GRAVE
+    ('[=ò]',    '\u1E51', '\\u1E51', 1), # LATIN SMALL LETTER O WITH MACRON AND GRAVE
+    ('[\'=O]',  '\u1E52', '\\u1E52', 0), # LATIN CAPITAL LETTER O WITH MACRON AND ACUTE
+    ('[=\'O]',  '\u1E52', '\\u1E52', 1), # LATIN CAPITAL LETTER O WITH MACRON AND ACUTE
+    ('[=Ó]',    '\u1E52', '\\u1E52', 1), # LATIN CAPITAL LETTER O WITH MACRON AND ACUTE
+    ('[\'=o]',  '\u1E53', '\\u1E53', 0), # LATIN SMALL LETTER O WITH MACRON AND ACUTE
+    ('[=\'o]',  '\u1E53', '\\u1E53', 1), # LATIN SMALL LETTER O WITH MACRON AND ACUTE
+    ('[=ó]',    '\u1E53', '\\u1E53', 1), # LATIN SMALL LETTER O WITH MACRON AND ACUTE
+    ('[\'P]',   '\u1E54', '\\u1E54', 0), # LATIN CAPITAL LETTER P WITH ACUTE
+    ('[\'p]',   '\u1E55', '\\u1E55', 0), # LATIN SMALL LETTER P WITH ACUTE
+    ('[.P]',    '\u1E56', '\\u1E56', 0), # LATIN CAPITAL LETTER P WITH DOT ABOVE
+    ('[.p]',    '\u1E57', '\\u1E57', 0), # LATIN SMALL LETTER P WITH DOT ABOVE
+    ('[.R]',    '\u1E58', '\\u1E58', 0), # LATIN CAPITAL LETTER R WITH DOT ABOVE
+    ('[.r]',    '\u1E59', '\\u1E59', 0), # LATIN SMALL LETTER R WITH DOT ABOVE
+    ('[R.]',    '\u1E5A', '\\u1E5A', 0), # LATIN CAPITAL LETTER R WITH DOT BELOW
+    ('[r.]',    '\u1E5B', '\\u1E5B', 0), # LATIN SMALL LETTER R WITH DOT BELOW
+    ('[=R.]',   '\u1E5C', '\\u1E5C', 0), # LATIN CAPITAL LETTER R WITH DOT BELOW AND MACRON
+    ('[=r.]',   '\u1E5D', '\\u1E5D', 0), # LATIN SMALL LETTER R WITH DOT BELOW AND MACRON
+    ('[R=]',    '\u1E5E', '\\u1E5E', 0), # LATIN CAPITAL LETTER R WITH LINE BELOW
+    ('[r=]',    '\u1E5F', '\\u1E5F', 0), # LATIN SMALL LETTER R WITH LINE BELOW
+    ('[.S]',    '\u1E60', '\\u1E60', 0), # LATIN CAPITAL LETTER S WITH DOT ABOVE
+    ('[.s]',    '\u1E61', '\\u1E61', 0), # LATIN SMALL LETTER S WITH DOT ABOVE
+    ('[S.]',    '\u1E62', '\\u1E62', 0), # LATIN CAPITAL LETTER S WITH DOT BELOW
+    ('[s.]',    '\u1E63', '\\u1E63', 0), # LATIN SMALL LETTER S WITH DOT BELOW
+    ('[.\'S]',  '\u1E64', '\\u1E64', 0), # LATIN CAPITAL LETTER S WITH ACUTE AND DOT ABOVE
+    ('[.\'s]',  '\u1E65', '\\u1E65', 0), # LATIN SMALL LETTER S WITH ACUTE AND DOT ABOVE
+    ('[.vS]',   '\u1E66', '\\u1E66', 0), # LATIN CAPITAL LETTER S WITH CARON AND DOT ABOVE
+    ('[.vs]',   '\u1E67', '\\u1E67', 0), # LATIN SMALL LETTER S WITH CARON AND DOT ABOVE
+    ('[.S.]',   '\u1E68', '\\u1E68', 0), # LATIN CAPITAL LETTER S WITH DOT BELOW AND DOT ABOVE
+    ('[.s.]',   '\u1E69', '\\u1E69', 0), # LATIN SMALL LETTER S WITH DOT BELOW AND DOT ABOVE
+    ('[.T]',    '\u1E6A', '\\u1E6A', 0), # LATIN CAPITAL LETTER T WITH DOT ABOVE
+    ('[.t]',    '\u1E6B', '\\u1E6B', 0), # LATIN SMALL LETTER T WITH DOT ABOVE
+    ('[T.]',    '\u1E6C', '\\u1E6C', 0), # LATIN CAPITAL LETTER T WITH DOT BELOW
+    ('[t.]',    '\u1E6D', '\\u1E6D', 0), # LATIN SMALL LETTER T WITH DOT BELOW
+    ('[T=]',    '\u1E6E', '\\u1E6E', 0), # LATIN CAPITAL LETTER T WITH LINE BELOW
+    ('[t=]',    '\u1E6F', '\\u1E6F', 0), # LATIN SMALL LETTER T WITH LINE BELOW
+    ('[T^]',    '\u1E70', '\\u1E70', 0), # LATIN CAPITAL LETTER T WITH CIRCUMFLEX BELOW
+    ('[t^]',    '\u1E71', '\\u1E71', 0), # LATIN SMALL LETTER T WITH CIRCUMFLEX BELOW
+    ('[U:]',    '\u1E72', '\\u1E72', 0), # LATIN CAPITAL LETTER U WITH DIAERESIS BELOW
+    ('[u:]',    '\u1E73', '\\u1E73', 0), # LATIN SMALL LETTER U WITH DIAERESIS BELOW
+    ('[U~]',    '\u1E74', '\\u1E74', 0), # LATIN CAPITAL LETTER U WITH TILDE BELOW
+    ('[u~]',    '\u1E75', '\\u1E75', 0), # LATIN SMALL LETTER U WITH TILDE BELOW
+    ('[U^]',    '\u1E76', '\\u1E76', 0), # LATIN CAPITAL LETTER U WITH CIRCUMFLEX BELOW
+    ('[u^]',    '\u1E77', '\\u1E77', 0), # LATIN SMALL LETTER U WITH CIRCUMFLEX BELOW
+    ('[\'~U]',  '\u1E78', '\\u1E78', 0), # LATIN CAPITAL LETTER U WITH TILDE AND ACUTE
+    ('[~\'U]',  '\u1E78', '\\u1E78', 1), # LATIN CAPITAL LETTER U WITH TILDE AND ACUTE
+    ('[~Ú]',    '\u1E78', '\\u1E78', 1), # LATIN CAPITAL LETTER U WITH TILDE AND ACUTE
+    ('[\'~u]',  '\u1E79', '\\u1E79', 0), # LATIN SMALL LETTER U WITH TILDE AND ACUTE
+    ('[~\'u]',  '\u1E79', '\\u1E79', 1), # LATIN SMALL LETTER U WITH TILDE AND ACUTE
+    ('[~ú]',    '\u1E79', '\\u1E79', 1), # LATIN SMALL LETTER U WITH TILDE AND ACUTE
+    ('[:=U]',   '\u1E7A', '\\u1E7A', 0), # LATIN CAPITAL LETTER U WITH MACRON AND DIAERESIS
+    ('[=Ü]',    '\u1E7A', '\\u1E7A', 1), # LATIN CAPITAL LETTER U WITH MACRON AND DIAERESIS
+    ('[:=u]',   '\u1E7B', '\\u1E7B', 0), # LATIN SMALL LETTER U WITH MACRON AND DIAERESIS
+    ('[=ü]',    '\u1E7B', '\\u1E7B', 1), # LATIN SMALL LETTER U WITH MACRON AND DIAERESIS
+    ('[~V]',    '\u1E7C', '\\u1E7C', 0), # LATIN CAPITAL LETTER V WITH TILDE
+    ('[~v]',    '\u1E7D', '\\u1E7D', 0), # LATIN SMALL LETTER V WITH TILDE
+    ('[V.]',    '\u1E7E', '\\u1E7E', 0), # LATIN CAPITAL LETTER V WITH DOT BELOW
+    ('[v.]',    '\u1E7F', '\\u1E7F', 0), # LATIN SMALL LETTER V WITH DOT BELOW
+    ('[`W]',    '\u1E80', '\\u1E80', 0), # LATIN CAPITAL LETTER W WITH GRAVE
+    ('[`w]',    '\u1E81', '\\u1E81', 0), # LATIN SMALL LETTER W WITH GRAVE
+    ('[\'W]',   '\u1E82', '\\u1E82', 0), # LATIN CAPITAL LETTER W WITH ACUTE
+    ('[\'w]',   '\u1E83', '\\u1E83', 0), # LATIN SMALL LETTER W WITH ACUTE
+    ('[:W]',    '\u1E84', '\\u1E84', 0), # LATIN CAPITAL LETTER W WITH DIAERESIS
+    ('[:w]',    '\u1E85', '\\u1E85', 0), # LATIN SMALL LETTER W WITH DIAERESIS
+    ('[.W]',    '\u1E86', '\\u1E86', 0), # LATIN CAPITAL LETTER W WITH DOT ABOVE
+    ('[.w]',    '\u1E87', '\\u1E87', 0), # LATIN SMALL LETTER W WITH DOT ABOVE
+    ('[W.]',    '\u1E88', '\\u1E88', 0), # LATIN CAPITAL LETTER W WITH DOT BELOW
+    ('[w.]',    '\u1E89', '\\u1E89', 0), # LATIN SMALL LETTER W WITH DOT BELOW
+    ('[.X]',    '\u1E8A', '\\u1E8A', 0), # LATIN CAPITAL LETTER X WITH DOT ABOVE
+    ('[.x]',    '\u1E8B', '\\u1E8B', 0), # LATIN SMALL LETTER X WITH DOT ABOVE
+    ('[:X]',    '\u1E8C', '\\u1E8C', 0), # LATIN CAPITAL LETTER X WITH DIAERESIS
+    ('[:x]',    '\u1E8D', '\\u1E8D', 0), # LATIN SMALL LETTER X WITH DIAERESIS
+    ('[.Y]',    '\u1E8E', '\\u1E8E', 0), # LATIN CAPITAL LETTER Y WITH DOT ABOVE
+    ('[.y]',    '\u1E8F', '\\u1E8F', 0), # LATIN SMALL LETTER Y WITH DOT ABOVE
+    ('[^Z]',    '\u1E90', '\\u1E90', 0), # LATIN CAPITAL LETTER Z WITH CIRCUMFLEX
+    ('[^z]',    '\u1E91', '\\u1E91', 0), # LATIN SMALL LETTER Z WITH CIRCUMFLEX
+    ('[Z.]',    '\u1E92', '\\u1E92', 0), # LATIN CAPITAL LETTER Z WITH DOT BELOW
+    ('[z.]',    '\u1E93', '\\u1E93', 0), # LATIN SMALL LETTER Z WITH DOT BELOW
+    ('[Z=]',    '\u1E94', '\\u1E94', 0), # LATIN CAPITAL LETTER Z WITH LINE BELOW
+    ('[z=]',    '\u1E95', '\\u1E95', 0), # LATIN SMALL LETTER Z WITH LINE BELOW
+    ('[h=]',    '\u1E96', '\\u1E96', 0), # LATIN SMALL LETTER H WITH LINE BELOW
+    ('[:t]',    '\u1E97', '\\u1E97', 0), # LATIN SMALL LETTER T WITH DIAERESIS
+    ('[°w]',    '\u1E98', '\\u1E98', 0), # LATIN SMALL LETTER W WITH RING ABOVE
+    ('[°y]',    '\u1E99', '\\u1E99', 0), # LATIN SMALL LETTER Y WITH RING ABOVE
+    #('[]', '\u1E9A', '\\u1E9A', 0), # LATIN SMALL LETTER A WITH RIGHT HALF RING
+    ('[.[s]]',  '\u1E9B', '\\u1E9B', 0), # LATIN SMALL LETTER LONG S WITH DOT ABOVE
+    ('[/[s]]',  '\u1E9C', '\\u1E9C', 0), # LATIN SMALL LETTER LONG S WITH DIAGONAL STROKE
+    ('[-[s]]',  '\u1E9D', '\\u1E9D', 0), # LATIN SMALL LETTER LONG S WITH HIGH STROKE
+    #('[]', '\u1E9E', '\\u1E9E', 0), # LATIN CAPITAL LETTER SHARP S
+    #('[delta]', '\u1E9F', '\\u1E9F', 0), # LATIN SMALL LETTER DELTA    (use Greek versions instead)
+    ('[A.]',    '\u1EA0', '\\u1EA0', 0), # LATIN CAPITAL LETTER A WITH DOT BELOW
+    ('[a.]',    '\u1EA1', '\\u1EA1', 0), # LATIN SMALL LETTER A WITH DOT BELOW
+    ('[,A]',    '\u1EA2', '\\u1EA2', 0), # LATIN CAPITAL LETTER A WITH HOOK ABOVE
+    ('[,a]',    '\u1EA3', '\\u1EA3', 0), # LATIN SMALL LETTER A WITH HOOK ABOVE
+    ('[\'Â]',   '\u1EA4', '\\u1EA4', 0), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND ACUTE
+    ('[^\'A]',  '\u1EA4', '\\u1EA4', 1), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND ACUTE
+    ('[^Á]',    '\u1EA4', '\\u1EA4', 1), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND ACUTE
+    ('[\'â]',   '\u1EA5', '\\u1EA5', 0), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND ACUTE
+    ('[^\'a]',  '\u1EA5', '\\u1EA5', 1), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND ACUTE
+    ('[^á]',    '\u1EA5', '\\u1EA5', 1), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND ACUTE
+    ('[`Â]',    '\u1EA6', '\\u1EA6', 0), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND GRAVE
+    ('[`^A]',   '\u1EA6', '\\u1EA6', 1), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND GRAVE
+    ('[^`A]',   '\u1EA6', '\\u1EA6', 1), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND GRAVE
+    ('[^À]',    '\u1EA6', '\\u1EA6', 1), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND GRAVE
+    ('[`â]',    '\u1EA7', '\\u1EA7', 0), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND GRAVE
+    ('[^`a]',   '\u1EA7', '\\u1EA7', 1), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND GRAVE
+    ('[`^a]',   '\u1EA7', '\\u1EA7', 1), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND GRAVE
+    ('[^à]',    '\u1EA7', '\\u1EA7', 1), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND GRAVE
+    ('[,Â]',    '\u1EA8', '\\u1EA8', 0), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[^,A]',   '\u1EA8', '\\u1EA8', 1), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[,^A]',   '\u1EA8', '\\u1EA8', 1), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[,â]',    '\u1EA9', '\\u1EA9', 0), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[,^a]',   '\u1EA9', '\\u1EA9', 1), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[^,a]',   '\u1EA9', '\\u1EA9', 1), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[~Â]',    '\u1EAA', '\\u1EAA', 0), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND TILDE
+    ('[~^A]',   '\u1EAA', '\\u1EAA', 1), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND TILDE
+    ('[^~A]',   '\u1EAA', '\\u1EAA', 1), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND TILDE
+    ('[^Ã]',    '\u1EAA', '\\u1EAA', 1), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND TILDE
+    ('[~â]',    '\u1EAB', '\\u1EAB', 0), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND TILDE
+    ('[~^a]',   '\u1EAB', '\\u1EAB', 1), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND TILDE
+    ('[^~a]',   '\u1EAB', '\\u1EAB', 1), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND TILDE
+    ('[^ã]',    '\u1EAB', '\\u1EAB', 1), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND TILDE
+    ('[Â.]',    '\u1EAC', '\\u1EAC', 0), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND DOT BELOW
+    ('[^A.]',   '\u1EAC', '\\u1EAC', 1), # LATIN CAPITAL LETTER A WITH CIRCUMFLEX AND DOT BELOW
+    ('[â.]',    '\u1EAD', '\\u1EAD', 0), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND DOT BELOW
+    ('[^a.]',   '\u1EAD', '\\u1EAD', 1), # LATIN SMALL LETTER A WITH CIRCUMFLEX AND DOT BELOW
+    ('[\')A]',  '\u1EAE', '\\u1EAE', 0), # LATIN CAPITAL LETTER A WITH BREVE AND ACUTE
+    ('[)\'A]',  '\u1EAE', '\\u1EAE', 1), # LATIN CAPITAL LETTER A WITH BREVE AND ACUTE
+    ('[)Á]',    '\u1EAE', '\\u1EAE', 1), # LATIN CAPITAL LETTER A WITH BREVE AND ACUTE
+    ('[\')a]',  '\u1EAF', '\\u1EAF', 0), # LATIN SMALL LETTER A WITH BREVE AND ACUTE
+    ('[)\'a]',  '\u1EAF', '\\u1EAF', 1), # LATIN SMALL LETTER A WITH BREVE AND ACUTE
+    ('[)á]',    '\u1EAF', '\\u1EAF', 1), # LATIN SMALL LETTER A WITH BREVE AND ACUTE
+    ('[`)A]',   '\u1EB0', '\\u1EB0', 0), # LATIN CAPITAL LETTER A WITH BREVE AND GRAVE
+    ('[)`A]',   '\u1EB0', '\\u1EB0', 1), # LATIN CAPITAL LETTER A WITH BREVE AND GRAVE
+    ('[)À]',    '\u1EB0', '\\u1EB0', 1), # LATIN CAPITAL LETTER A WITH BREVE AND GRAVE
+    ('[`)a]',   '\u1EB1', '\\u1EB1', 0), # LATIN SMALL LETTER A WITH BREVE AND GRAVE
+    ('[)`a]',   '\u1EB1', '\\u1EB1', 1), # LATIN SMALL LETTER A WITH BREVE AND GRAVE
+    ('[)à]',    '\u1EB1', '\\u1EB1', 1), # LATIN SMALL LETTER A WITH BREVE AND GRAVE
+    ('[,)A]',   '\u1EB2', '\\u1EB2', 0), # LATIN CAPITAL LETTER A WITH BREVE AND HOOK ABOVE
+    ('[),A]',   '\u1EB2', '\\u1EB2', 1), # LATIN CAPITAL LETTER A WITH BREVE AND HOOK ABOVE
+    ('[,)a]',   '\u1EB3', '\\u1EB3', 0), # LATIN SMALL LETTER A WITH BREVE AND HOOK ABOVE
+    ('[),a]',   '\u1EB3', '\\u1EB3', 1), # LATIN SMALL LETTER A WITH BREVE AND HOOK ABOVE
+    ('[~)A]',   '\u1EB4', '\\u1EB4', 0), # LATIN CAPITAL LETTER A WITH BREVE AND TILDE
+    ('[)~A]',   '\u1EB4', '\\u1EB4', 1), # LATIN CAPITAL LETTER A WITH BREVE AND TILDE
+    ('[)Ã]',    '\u1EB4', '\\u1EB4', 1), # LATIN CAPITAL LETTER A WITH BREVE AND TILDE
+    ('[~)a]',   '\u1EB5', '\\u1EB5', 0), # LATIN SMALL LETTER A WITH BREVE AND TILDE
+    ('[)~a]',   '\u1EB5', '\\u1EB5', 1), # LATIN SMALL LETTER A WITH BREVE AND TILDE
+    ('[)ã]',    '\u1EB5', '\\u1EB5', 1), # LATIN SMALL LETTER A WITH BREVE AND TILDE
+    ('[)A.]',   '\u1EB6', '\\u1EB6', 0), # LATIN CAPITAL LETTER A WITH BREVE AND DOT BELOW
+    ('[)a.]',   '\u1EB7', '\\u1EB7', 0), # LATIN SMALL LETTER A WITH BREVE AND DOT BELOW
+    ('[E.]',    '\u1EB8', '\\u1EB8', 0), # LATIN CAPITAL LETTER E WITH DOT BELOW
+    ('[e.]',    '\u1EB9', '\\u1EB9', 0), # LATIN SMALL LETTER E WITH DOT BELOW
+    ('[,E]',    '\u1EBA', '\\u1EBA', 0), # LATIN CAPITAL LETTER E WITH HOOK ABOVE
+    ('[,e]',    '\u1EBB', '\\u1EBB', 0), # LATIN SMALL LETTER E WITH HOOK ABOVE
+    ('[~E]',    '\u1EBC', '\\u1EBC', 0), # LATIN CAPITAL LETTER E WITH TILDE
+    ('[~e]',    '\u1EBD', '\\u1EBD', 0), # LATIN SMALL LETTER E WITH TILDE
+    ('[\'Ê]',   '\u1EBE', '\\u1EBE', 0), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND ACUTE
+    ('[^\'E]',  '\u1EBE', '\\u1EBE', 1), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND ACUTE
+    ('[^É]',    '\u1EBE', '\\u1EBE', 1), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND ACUTE
+    ('[\'ê]',   '\u1EBF', '\\u1EBF', 0), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND ACUTE
+    ('[^\'e]',  '\u1EBF', '\\u1EBF', 1), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND ACUTE
+    ('[^é]',    '\u1EBF', '\\u1EBF', 1), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND ACUTE
+    ('[`Ê]',    '\u1EC0', '\\u1EC0', 0), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND GRAVE
+    ('[^`E]',   '\u1EC0', '\\u1EC0', 1), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND GRAVE
+    ('[`^E]',   '\u1EC0', '\\u1EC0', 1), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND GRAVE
+    ('[^È]',    '\u1EC0', '\\u1EC0', 1), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND GRAVE
+    ('[`ê]',    '\u1EC1', '\\u1EC1', 0), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND GRAVE
+    ('[^`e]',   '\u1EC1', '\\u1EC1', 1), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND GRAVE
+    ('[`^e]',   '\u1EC1', '\\u1EC1', 1), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND GRAVE
+    ('[^è]',    '\u1EC1', '\\u1EC1', 1), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND GRAVE
+    ('[,Ê]',    '\u1EC2', '\\u1EC2', 0), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[,^E]',   '\u1EC2', '\\u1EC2', 1), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[^,E]',   '\u1EC2', '\\u1EC2', 1), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[,ê]',    '\u1EC3', '\\u1EC3', 0), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[,^e]',   '\u1EC3', '\\u1EC3', 1), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[^,e]',   '\u1EC3', '\\u1EC3', 1), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[~Ê]',    '\u1EC4', '\\u1EC4', 0), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND TILDE
+    ('[~^E]',   '\u1EC4', '\\u1EC4', 1), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND TILDE
+    ('[^~E]',   '\u1EC4', '\\u1EC4', 1), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND TILDE
+    ('[~ê]',    '\u1EC5', '\\u1EC5', 0), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND TILDE
+    ('[~^e]',   '\u1EC5', '\\u1EC5', 1), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND TILDE
+    ('[^~e]',   '\u1EC5', '\\u1EC5', 1), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND TILDE
+    ('[Ê.]',    '\u1EC6', '\\u1EC6', 0), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND DOT BELOW
+    ('[^E.]',   '\u1EC6', '\\u1EC6', 1), # LATIN CAPITAL LETTER E WITH CIRCUMFLEX AND DOT BELOW
+    ('[ê.]',    '\u1EC7', '\\u1EC7', 0), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND DOT BELOW
+    ('[^e.]',   '\u1EC7', '\\u1EC7', 1), # LATIN SMALL LETTER E WITH CIRCUMFLEX AND DOT BELOW
+    ('[,I]',    '\u1EC8', '\\u1EC8', 0), # LATIN CAPITAL LETTER I WITH HOOK ABOVE
+    ('[,i]',    '\u1EC9', '\\u1EC9', 0), # LATIN SMALL LETTER I WITH HOOK ABOVE
+    ('[I.]',    '\u1ECA', '\\u1ECA', 0), # LATIN CAPITAL LETTER I WITH DOT BELOW
+    ('[i.]',    '\u1ECB', '\\u1ECB', 0), # LATIN SMALL LETTER I WITH DOT BELOW
+    ('[O.]',    '\u1ECC', '\\u1ECC', 0), # LATIN CAPITAL LETTER O WITH DOT BELOW
+    ('[o.]',    '\u1ECD', '\\u1ECD', 0), # LATIN SMALL LETTER O WITH DOT BELOW
+    ('[,O]',    '\u1ECE', '\\u1ECE', 0), # LATIN CAPITAL LETTER O WITH HOOK ABOVE
+    ('[,o]',    '\u1ECF', '\\u1ECF', 0), # LATIN SMALL LETTER O WITH HOOK ABOVE
+    ('[\'Ô]',   '\u1ED0', '\\u1ED0', 0), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND ACUTE
+    ('[\'^O]',  '\u1ED0', '\\u1ED0', 1), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND ACUTE
+    ('[^\'O]',  '\u1ED0', '\\u1ED0', 1), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND ACUTE
+    ('[^Ó]',    '\u1ED0', '\\u1ED0', 1), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND ACUTE
+    ('[\'ô]',   '\u1ED1', '\\u1ED1', 0), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND ACUTE
+    ('[\'^o]',  '\u1ED1', '\\u1ED1', 1), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND ACUTE
+    ('[^\'o]',  '\u1ED1', '\\u1ED1', 1), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND ACUTE
+    ('[^ó]',    '\u1ED1', '\\u1ED1', 1), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND ACUTE
+    ('[`Ô]',    '\u1ED2', '\\u1ED2', 0), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND GRAVE
+    ('[`^O]',   '\u1ED2', '\\u1ED2', 1), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND GRAVE
+    ('[^`O]',   '\u1ED2', '\\u1ED2', 1), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND GRAVE
+    ('[^Ò]',    '\u1ED2', '\\u1ED2', 1), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND GRAVE
+    ('[`ô]',    '\u1ED3', '\\u1ED3', 0), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND GRAVE
+    ('[`^o]',   '\u1ED3', '\\u1ED3', 1), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND GRAVE
+    ('[^`o]',   '\u1ED3', '\\u1ED3', 1), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND GRAVE
+    ('[^ò]',    '\u1ED3', '\\u1ED3', 1), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND GRAVE
+    ('[,Ô]',    '\u1ED4', '\\u1ED4', 0), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[,^O]',   '\u1ED4', '\\u1ED4', 1), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[^,O]',   '\u1ED4', '\\u1ED4', 1), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[,ô]',    '\u1ED5', '\\u1ED5', 0), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[,^o]',   '\u1ED5', '\\u1ED5', 1), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[^,o]',   '\u1ED5', '\\u1ED5', 1), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND HOOK ABOVE
+    ('[~Ô]',    '\u1ED6', '\\u1ED6', 0), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND TILDE
+    ('[~^O]',   '\u1ED6', '\\u1ED6', 1), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND TILDE
+    ('[^~O]',   '\u1ED6', '\\u1ED6', 1), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND TILDE
+    ('[^Õ]',    '\u1ED6', '\\u1ED6', 1), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND TILDE
+    ('[~ô]',    '\u1ED7', '\\u1ED7', 0), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND TILDE
+    ('[~^o]',   '\u1ED7', '\\u1ED7', 1), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND TILDE
+    ('[^~o]',   '\u1ED7', '\\u1ED7', 1), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND TILDE
+    ('[^õ]',    '\u1ED7', '\\u1ED7', 1), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND TILDE
+    ('[Ô.]',    '\u1ED8', '\\u1ED8', 0), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND DOT BELOW
+    ('[^O.]',   '\u1ED8', '\\u1ED8', 1), # LATIN CAPITAL LETTER O WITH CIRCUMFLEX AND DOT BELOW
+    ('[ô.]',    '\u1ED9', '\\u1ED9', 0), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND DOT BELOW
+    ('[^o.]',   '\u1ED9', '\\u1ED9', 1), # LATIN SMALL LETTER O WITH CIRCUMFLEX AND DOT BELOW
+    #('[]', '\u1EDA', '\\u1EDA', 0), # LATIN CAPITAL LETTER O WITH HORN AND ACUTE
+    #('[]', '\u1EDB', '\\u1EDB', 0), # LATIN SMALL LETTER O WITH HORN AND ACUTE
+    #('[]', '\u1EDC', '\\u1EDC', 0), # LATIN CAPITAL LETTER O WITH HORN AND GRAVE
+    #('[]', '\u1EDD', '\\u1EDD', 0), # LATIN SMALL LETTER O WITH HORN AND GRAVE
+    #('[]', '\u1EDE', '\\u1EDE', 0), # LATIN CAPITAL LETTER O WITH HORN AND HOOK ABOVE
+    #('[]', '\u1EDF', '\\u1EDF', 0), # LATIN SMALL LETTER O WITH HORN AND HOOK ABOVE
+    #('[]', '\u1EE0', '\\u1EE0', 0), # LATIN CAPITAL LETTER O WITH HORN AND TILDE
+    #('[]', '\u1EE1', '\\u1EE1', 0), # LATIN SMALL LETTER O WITH HORN AND TILDE
+    #('[]', '\u1EE2', '\\u1EE2', 0), # LATIN CAPITAL LETTER O WITH HORN AND DOT BELOW
+    #('[]', '\u1EE3', '\\u1EE3', 0), # LATIN SMALL LETTER O WITH HORN AND DOT BELOW
+    ('[U.]',    '\u1EE4', '\\u1EE4', 0), # LATIN CAPITAL LETTER U WITH DOT BELOW
+    ('[u.]',    '\u1EE5', '\\u1EE5', 0), # LATIN SMALL LETTER U WITH DOT BELOW
+    ('[,U]',    '\u1EE6', '\\u1EE6', 0), # LATIN CAPITAL LETTER U WITH HOOK ABOVE
+    ('[,u]',    '\u1EE7', '\\u1EE7', 0), # LATIN SMALL LETTER U WITH HOOK ABOVE
+    #('[]', '\u1EE8', '\\u1EE8', 0), # LATIN CAPITAL LETTER U WITH HORN AND ACUTE
+    #('[]', '\u1EE9', '\\u1EE9', 0), # LATIN SMALL LETTER U WITH HORN AND ACUTE
+    #('[]', '\u1EEA', '\\u1EEA', 0), # LATIN CAPITAL LETTER U WITH HORN AND GRAVE
+    #('[]', '\u1EEB', '\\u1EEB', 0), # LATIN SMALL LETTER U WITH HORN AND GRAVE
+    #('[]', '\u1EEC', '\\u1EEC', 0), # LATIN CAPITAL LETTER U WITH HORN AND HOOK ABOVE
+    #('[]', '\u1EED', '\\u1EED', 0), # LATIN SMALL LETTER U WITH HORN AND HOOK ABOVE
+    #('[]', '\u1EEE', '\\u1EEE', 0), # LATIN CAPITAL LETTER U WITH HORN AND TILDE
+    #('[]', '\u1EEF', '\\u1EEF', 0), # LATIN SMALL LETTER U WITH HORN AND TILDE
+    #('[]', '\u1EF0', '\\u1EF0', 0), # LATIN CAPITAL LETTER U WITH HORN AND DOT BELOW
+    #('[]', '\u1EF1', '\\u1EF1', 0), # LATIN SMALL LETTER U WITH HORN AND DOT BELOW
+    ('[`Y]',    '\u1EF2', '\\u1EF2', 0), # LATIN CAPITAL LETTER Y WITH GRAVE
+    ('[`y]',    '\u1EF3', '\\u1EF3', 0), # LATIN SMALL LETTER Y WITH GRAVE
+    ('[Y.]',    '\u1EF4', '\\u1EF4', 0), # LATIN CAPITAL LETTER Y WITH DOT BELOW
+    ('[y.]',    '\u1EF5', '\\u1EF5', 0), # LATIN SMALL LETTER Y WITH DOT BELOW
+    ('[,Y]',    '\u1EF6', '\\u1EF6', 0), # LATIN CAPITAL LETTER Y WITH HOOK ABOVE
+    ('[,y]',    '\u1EF7', '\\u1EF7', 0), # LATIN SMALL LETTER Y WITH HOOK ABOVE
+    ('[~Y]',    '\u1EF8', '\\u1EF8', 0), # LATIN CAPITAL LETTER Y WITH TILDE
+    ('[~y]',    '\u1EF9', '\\u1EF9', 0), # LATIN SMALL LETTER Y WITH TILDE
+    #('[]', '\u1EFA', '\\u1EFA', 0), # LATIN CAPITAL LETTER MIDDLE-WELSH LL
+    #('[]', '\u1EFB', '\\u1EFB', 0), # LATIN SMALL LETTER MIDDLE-WELSH LL
+    #('[]', '\u1EFC', '\\u1EFC', 0), # LATIN CAPITAL LETTER MIDDLE-WELSH V
+    #('[]', '\u1EFD', '\\u1EFD', 0), # LATIN SMALL LETTER MIDDLE-WELSH V
+    #('[]', '\u1EFE', '\\u1EFE', 0), # LATIN CAPITAL LETTER Y WITH LOOP
+    #('[]', '\u1EFF', '\\u1EFF', 0), # LATIN SMALL LETTER Y WITH LOOP
+     ('[Alpha]','\u0391', '\\u0391', 0), #
+     ('[alpha]','\u03B1', '\\u03B1', 0), #
+     ('[Beta]', '\u0392', '\\u0392', 0), #
+     ('[beta]', '\u03B2', '\\u03B2', 0), #
+     ('[Gamma]','\u0393', '\\u0393', 0), #
+     ('[gamma]','\u03B3', '\\u03B3', 0), #
+     ('[Delta]','\u0394', '\\u0394', 0), #
+     ('[delta]','\u03B4', '\\u03B4', 0), #
+     ('[Epsilon]', '\u0395', '\\u0395', 0), #
+     ('[epsilon]', '\u03B5', '\\u03B5', 0), #
+     ('[Zeta]', '\u0396', '\\u0396', 0), #
+     ('[zeta]', '\u03B6', '\\u03B6', 0), #
+     ('[Eta]',  '\u0397', '\\u0397', 0), #
+     ('[eta]',  '\u03B7', '\\u03B7', 0), #
+     ('[Theta]','\u0398', '\\u0398', 0), #
+     ('[theta]','\u03B8', '\\u03B8', 0), #
+     ('[Iota]', '\u0399', '\\u0399', 0), #
+     ('[iota]', '\u03B9', '\\u03B9', 0), #
+     ('[Kappa]','\u039A', '\\u039A', 0), #
+     ('[kappa]','\u03BA', '\\u03BA', 0), #
+     ('[Lamda]','\u039B', '\\u039B', 0), #
+     ('[lamda]','\u03BB', '\\u03BB', 0), #
+     ('[Mu]',   '\u039C', '\\u039C', 0), #
+     ('[mu]',   '\u03BC', '\\u03BC', 0), #
+     ('[Nu]',   '\u039D', '\\u039D', 0), #
+     ('[nu]',   '\u03BD', '\\u03BD', 0), #
+     ('[Xi]',   '\u039E', '\\u039E', 0), #
+     ('[xi]',   '\u03BE', '\\u03BE', 0), #
+     ('[Omicron]', '\u039F', '\\u039F', 0), #
+     ('[omicron]', '\u03BF', '\\u03BF', 0), #
+     ('[Pi]',   '\u03A0', '\\u03A0', 0), #
+     ('[pi]',   '\u03C0', '\\u03C0', 0), #
+     ('[Rho]',  '\u03A1', '\\u03A1', 0), #
+     ('[rho]',  '\u03C1', '\\u03C1', 0), #
+     ('[Sigma]','\u03A3', '\\u03A3', 0), #
+     ('[sigma]','\u03C3', '\\u03C3', 0), #
+     ('[Tau]',  '\u03A4', '\\u03A4', 0), #
+     ('[tau]',  '\u03C4', '\\u03C4', 0), #
+     ('[Upsilon]', '\u03A5', '\\u03A5', 0), #
+     ('[upsilon]', '\u03C5', '\\u03C5', 0), #
+     ('[Phi]',  '\u03A6', '\\u03A6', 0), #
+     ('[phi]',  '\u03C6', '\\u03C6', 0), #
+     ('[Chi]',  '\u03A7', '\\u03A7', 0), #
+     ('[chi]',  '\u03C7', '\\u03C7', 0), #
+     ('[Psi]',  '\u03A8', '\\u03A8', 0), #
+     ('[psi]',  '\u03C8', '\\u03C8', 0), #
+     ('[Omega]','\u03A9', '\\u03A9', 0), #
+     ('[omega]','\u03C9', '\\u03C9', 0), #
+     #('\?', '\u037E', '?', 0), #
+     #(';', '\u0387', ';', 0), #
+     ('[Koppa]','\u03D8', '\\u03D8', 0), #
+     ('[koppa]','\u03D9', '\\u03D9', 0), #
+     ('[Digamma]', '\u03DC', '\\u03DC', 0), #
+     ('[digamma]', '\u03DD', '\\u03DD', 0), #
+     ('[Qoppa]','\u03DE', '\\u03DE', 0), #
+     ('[qoppa]','\u03DF', '\\u03DF', 0), #
+     ('[Sampi]','\u03E0', '\\u03E0', 0), #
+     ('[sampi]','\u03E1', '\\U03E1', 0), #
     ]
 
   def __init__(self, args, renc):
     del self.wb[:]
     del self.eb[:]
     del self.bb[:]
+    del self.fnlist[:]
     del self.gk_user[:]
     del self.diacritics_user[:]
     del self.srw[:]
@@ -1390,9 +1396,9 @@ class Book(object):
     self.log = args.log
     self.listcvg = args.listcvg
     self.cvgfilter = args.filter
-    self.wrapper = textwrap.TextWrapper()
-    self.wrapper.break_long_words = False
-    self.wrapper.break_on_hyphens = False
+    #self.wrapper = textwrap.TextWrapper()
+    #self.wrapper.break_long_words = False
+    #self.wrapper.break_on_hyphens = False
     self.nregs["psi"] = "0" # default above/below paragraph spacing for indented text
     self.nregs["pti"] = "1em" # default paragraph indentation for indented text
     self.nregs["psb"] = "1.0em" # default above/below paragraph spacing for block text
@@ -1404,6 +1410,7 @@ class Book(object):
     self.nregs["dcs"] = "250%" # drop cap font size
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string
+    self.bnmatch = re.compile("^⑱.*?⑱$")
 
   def cvglist(self):
     if self.listcvg:
@@ -1418,7 +1425,8 @@ class Book(object):
       f1.write("\r\n\r\nBuilt-in diacritics:\r\n\r\n")
       for s in self.diacritics:
         #f1.write("{:<14}{:<5} {:<5}  {}\r\n".format(s[0], s[1], s[2], s[4]))
-        f1.write("{:<14}{:<5} {:<5}  {}\r\n".format(s[0], s[1], s[2], unicodedata.name(s[1])))
+        ns = "**Non-standard markup; will produce warning" if s[3] else ""
+        f1.write("{:<14}{:<5} {:<5}  {}  {}\r\n".format(s[0], s[1], s[2], unicodedata.name(s[1]), ns))
       f1.close()
       exit(1)
 
@@ -1427,6 +1435,9 @@ class Book(object):
     bailfn = re.sub("-src", "", self.srcfile.split('.')[0]) + "-cvgout-utf8.txt"
     f1 = codecs.open(bailfn, "w", encoding="UTF-8")
     for index,t in enumerate(self.wb):
+      # unprotect temporarily protected characters from Greek strings
+      t = t.replace("⑩", r"\|") # restore temporarily protected \| and \(space)
+      t = t.replace("⑮", r"\ ")
       f1.write( "{:s}\r\n".format(t.rstrip()) )
     f1.close()
     print("Terminating as requested after .cv/.gk processing.\n\tOutput file: {}".format(bailfn))
@@ -1612,7 +1623,7 @@ class Book(object):
     elif ".di" == dotcmd: # dropcap images
       self.doDropimage()
     elif ".dc" == dotcmd: # dropcap alpha
-      self.doDropcap()
+      self.doDropcap(self.cl)
     elif ".na" == dotcmd: # no adjust (ragged right)
       self.doNa()
     elif ".ad" == dotcmd: # adjust (justify l/r margins)
@@ -1657,6 +1668,48 @@ class Book(object):
         sys.stderr.write("   {}\n".format(s))
     sys.stderr.write(" -----\n")
 
+  # Calculate "true" length of a string, accounting for <lang> markup and combining or non-spacing characters in Hebrew
+  def truelen(self,s):
+    #self.dprint("entered: {}".format(s))
+    l = len(s) # get simplistic length
+    for c in s: # examine each character
+      cc = ord(c)
+      if cc > 767: # No non-spacing characters < \u0300 (768)
+        cat = unicodedata.category(c)
+        bidi = unicodedata.bidirectional(c)
+        name = unicodedata.name(c)
+        #self.dprint("name: {}; cat: {}; bidi: {}".format(name, cat, bidi))
+        if cat == "Cf" or (cat == "Mn" and bidi == "NSM"): # Control character, or Modifier Non-Spacing-Mark?
+          l -= 1 # if so, it doesn't take any space
+    return l
+
+  # truefmt: .format() replacement for strings that may contain combining or non-spacing characters
+  # fmtspec: a simplified form of normal format specification, :[^<>]len{}
+  def truefmt(self, fmtspec, s):
+    m = re.match(r"{:([\^<>])(\d+)}", fmtspec)
+    if m:
+      align = m.group(1)
+      width = int(m.group(2))
+      len = self.truelen(s)
+      if len >= width:
+        return s
+      elif align == "^":  # centering
+        pad = " " * ((width - len)//2) # 1/2 the blanks before & after the string
+        padextra = " " * ((width - len)%2) # plus possibly 1 more after
+        s2 = pad + s + pad + padextra
+      elif align == "<":  # left-aligned
+        pad = " " * (width-len)  # all the blanks after
+        s2 = s + pad
+      else: # right-aligned
+        pad = " " * (width-len)  # all the blanks before
+        s2 = pad + s
+      return s2
+    else:
+      raise RuntimeError("ppgen: internal error, unexpected truefmt argument: {}".format(fmtspec))
+
+  # Recognize lines that are bn info
+  def is_bn_line(self, line):
+    return True if (line and line[0] == "⑱" and self.bnmatch.match(line)) else False
 
   # extract content of an optionally quoted string
   # used in .nr
@@ -1790,24 +1843,45 @@ class Book(object):
 
     def gkrepl(gkmatch):
       gkstring = gkmatch.group(1)
+      if self.log:
+        try:
+          print("Processing: {}".format(gkstring))
+        except:
+          print(self.umap("Processing: {}".format(gkstring)))
+      count = 0 # count of built-in Greek characters converted
+      count1 = 0 # count of PPer-provided Greek characters converted
       if len(self.gk_user) > 0:   # if PPer provided any additional Greek mappings apply them first
         for s in self.gk_user:
           try:
-            gkstring, count = re.subn(re.escape(s[0]), s[1], gkstring)
-            print(self.umap("Replaced PPer-provided Greek character {} {} times.".format(s[0], count)))
+            gkstring, count2 = re.subn(re.escape(s[0]), s[1], gkstring)
+            count1 += count2
+            if count2 > 0 and 'l' in self.debug:
+              try:
+                print("Replaced PPer-provided Greek character {} {} times.".format(s[0], count2))
+              except:
+                print(self.umap("Replaced PPer-provided Greek character {} {} times.".format(s[0], count2)))
           except:
             self.warn("Error occurred trying to replace PPer-provided Greek character " +
                       "{} with {}. Check replacement value".format(s[0], s[1]))
       for s in self.gk:
-        gkstring, count = re.subn(s[0], s[1], gkstring)
-        if count > 0:
-          print("Replaced Greek {} {} times.".format(s[0], count))
+        gkstring, count2 = re.subn(s[0], s[1], gkstring)
+        count += count2
+        if count2 > 0 and 'l' in self.debug:
+          try:
+            print("Replaced Greek {} {} times.".format(s[0], count2))
+          except:
+            print(self.umap("Replaced Greek {} {} times.".format(s[0], count2)))
+      if self.log:
+        if len(self.gk_user) > 0:
+          print("Replaced {} PPer-provided Greek characters and {} built-in Greek characters".format(count1, count))
+        else:
+          print("Replaced {} built-in Greek characters".format(count))
       gkorigb = ""
       gkoriga = ""
       if self.gkkeep.lower().startswith("b"): # original before?
-        gkorigb = gkmatch.group(0) + " "
+        gkorigb = gkmatch.group(0)
       elif self.gkkeep.lower().startswith("a"): # original after?
-        gkoriga = " " + gkmatch.group(0)
+        gkoriga = gkmatch.group(0)
       gkfull = gkorigb + self.gkpre + gkstring + self.gksuf + gkoriga
       gkfull = gkfull.replace(r"\|", "⑩") # temporarily protect \| and \(space)
       gkfull = gkfull.replace(r"\ ", "⑮")
@@ -1869,9 +1943,338 @@ class Book(object):
         buffer[i] = buffer[i].rstrip()
         i += 1
 
+    def doGreek():
+      # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+      # process [Greek: ...] in UTF-8 output if requested to via .gk command
+      i = 0
+      self.gk_requested = False
+      gk_done = False
+      self.gkpre = ""
+      self.gksuf = ""
+      self.gkkeep = "n"
+      self.gk_quit = "n"
+      while i < len(self.wb) and not gk_done:
+        if self.wb[i].startswith(".gk"):
+          gkin = ""
+          gkout = ""
+          if "pre=" in self.wb[i]:
+            self.wb[i], self.gkpre = self.get_id("pre", self.wb[i])
+            self.gkpre = re.sub(r"\\n", "\n", self.gkpre)
+          if "suf=" in self.wb[i]:
+            self.wb[i], self.gksuf = self.get_id("suf", self.wb[i])
+            self.gksuf = re.sub(r"\\n", "\n", self.gksuf)
+          if "keep=" in self.wb[i]:
+            self.wb[i], self.gkkeep = self.get_id("keep", self.wb[i])
+          if "in=" in self.wb[i]:
+            self.wb[i], gkin = self.get_id("in", self.wb[i])
+          if "out=" in self.wb[i]:
+            self.wb[i], gkout = self.get_id("out", self.wb[i])
+          if "quit=" in self.wb[i]:
+            self.wb[i], self.gk_quit = self.get_id("quit", self.wb[i])
+          if "done" in self.wb[i]:
+            gk_done = True
+          del self.wb[i]
+          self.gk_requested = True
+
+          if gkin and gkout:
+            m = re.search(r"\\u[0-9a-fA-F]{4}", gkout) # find any characters defined by unicode constants in output string
+            while m:
+              found = m.group(0)
+              rep = bytes(m.group(0),"utf-8").decode('unicode-escape')
+              gkout = re.sub(re.escape(found), rep, gkout)
+              m = re.search(r"\\u[0-9a-fA-F]{4}", gkout)
+            self.gk_user.append((gkin, gkout))
+          continue
+        i += 1
+      #if self.gk_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
+      if self.renc == "u" or self.renc == "h" or self.cvgfilter:
+        text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
+        if self.gk_requested:
+          text = re.sub(r"\[Greek: ?(.*?)]", gkrepl, text, flags=re.DOTALL)
+        # even if Greek processing not requested, [Greek: ...] strings could have \| and \(space) 
+        # characters we need to protect
+        count = 1
+        while count:
+          text, count = re.subn(r"(\[Greek:.*?)\\\|(.*?\])", r"\1⑩\2", text, flags=re.DOTALL)
+        count = 1
+        while count:
+          text, count = re.subn(r"(\[Greek:.*?)\\ (.*?\])", r"\1⑮\2", text, flags=re.DOTALL)
+
+        self.wb = text.splitlines()
+        text = ""
+
+    def doDiacritics():
+      # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+      # process diacritic markup in UTF-8 output if requested to via .cv command
+      i = 0
+      self.dia_requested = False
+      dia_done = False
+      dia_blobbed = False
+      diapre = ""
+      diasuf = ""
+      diakeep = "n"
+      diatest = False
+      self.dia_quit = "n"
+      dia_italic = "n"
+      dia_bold = "n"
+      while i < len(self.wb) and not dia_done:
+        if self.wb[i].startswith(".cv"):
+          self.dia_requested = True
+          orig = self.wb[i]
+          diain = ""
+          diaout = ""
+          if "pre=" in self.wb[i]:
+            self.wb[i], diapre = self.get_id("pre", self.wb[i])
+            diapre = re.sub(r"\\n", "\n", diapre)
+            if diapre:
+              diatest = True
+          if "suf=" in self.wb[i]:
+            self.wb[i], diasuf = self.get_id("suf", self.wb[i])
+            diasuf = re.sub(r"\\n", "\n", diasuf)
+            if diasuf:
+              diatest = True
+          if "keep=" in self.wb[i]:
+            self.wb[i], diakeep = self.get_id("keep", self.wb[i])
+            if not diakeep.lower().startswith("n"):
+              diatest = True
+          if "in=" in self.wb[i]:
+            self.wb[i], diain = self.get_id("in", self.wb[i])
+          if "out=" in self.wb[i]:
+            self.wb[i], diaout = self.get_id("out", self.wb[i])
+          if "quit=" in self.wb[i]:
+            self.wb[i], self.dia_quit = self.get_id("quit", self.wb[i])
+          if "italic=" in self.wb[i]:
+            self.wb[i], dia_italic = self.get_id("italic", self.wb[i])
+          if "bold=" in self.wb[i]:
+            self.wb[i], dia_bold = self.get_id("bold", self.wb[i])
+          if "done" in self.wb[i]:
+            dia_done = True
+          del self.wb[i]
+          if (diain and not diaout) or (diaout and not diain):
+            self.warn("Missing in= or out= value: {}".format(orig))
+          if diain:
+            if diain[0] != "[" or diain[-1] != "]" or len(diain) > 10 or len(diain) < 3:
+              self.warn("Ignoring invalid in= value {}: {}".format(diain, orig))
+              diain = ""
+            inner = diain[1:-1]
+            if inner.isdigit():
+              self.warn("in= value {} may conflict with footnote processing: {}".format(diain, orig))
+          if diain and diaout:
+            m = re.search(r"\\u[0-9a-fA-F]{4}", diaout) # find any characters defined by unicode constants in output string
+            while m:
+              found = m.group(0)
+              rep = bytes(m.group(0),"utf-8").decode('unicode-escape')
+              diaout = re.sub(re.escape(found), rep, diaout)
+              m = re.search(r"\\u[0-9a-fA-F]{4}", diaout)
+            if diaout != "ignore":
+              self.diacritics_user.append((diain, diaout))
+            else:
+              ignored = False
+              for s in self.diacritics:
+                if s[0] == diain:
+                  self.diacritics.remove(s)
+                  ignored = True
+                  break
+              if not ignored:
+                self.warn("No builtin diacritic {} to ignore: {}".format(diain, orig))
+          continue
+        i += 1
+      if self.dia_requested and (dia_italic.lower().startswith("y") or dia_bold.lower().startswith("y")):
+        text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
+        dia_blobbed = True
+        #
+        # Correct diacritics with <i> markup in them if requested
+        #
+        if dia_italic.lower().startswith("y"):
+          print("Checking for <i> within diacritic markup and correcting")
+          for s in self.diacritics_user:
+            si = "[<i>" + s[0][1:-1] + "</i>]"
+            so = "<i>" + s[0] + "</i>"
+            try:
+              text, count = re.subn(re.escape(si), so, text)
+              if count:
+                print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+            except:
+              self.warn("Error occurred trying to replace {} with {}.".format(si, so))
+          for s in self.diacritics:
+            si = "[<i>" + s[0][1:-1] + "</i>]"
+            so = "<i>" + s[0] + "</i>"
+            try:
+              text, count = re.subn(re.escape(si), so, text)
+              if count:
+                print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+            except:
+              self.warn("Error occurred trying to replace {} with {}.".format(si, so))
+        if dia_bold.lower().startswith("y"):
+          print("Checking for <b> within diacritic markup and correcting")
+          for s in self.diacritics_user:
+            si = "[<b>" + s[0][1:-1] + "</b>]"
+            so = "<b>" + s[0] + "</b>"
+            try:
+              text, count = re.subn(re.escape(si), so, text)
+              if count:
+                print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+            except:
+              self.warn("Error occurred trying to replace {} with {}.".format(si, so))
+          for s in self.diacritics:
+            si = "[<b>" + s[0][1:-1] + "</b>]"
+            so = "<b>" + s[0] + "</b>"
+            try:
+              text, count = re.subn(re.escape(si), so, text)
+              if count:
+                print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+            except:
+              self.warn("Error occurred trying to replace {} with {}.".format(si, so))
+      if self.dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
+        if not dia_blobbed:
+          text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
+          dia_blobbed = True
+        if not diatest:
+          if len(self.diacritics_user) > 0:
+            for s in self.diacritics_user:
+              try:
+                text, count = re.subn(re.escape(s[0]), s[1], text)
+                print(self.umap("Replaced PPer-provided diacritic {} {} times.".format(s[0], count)))
+              except:
+                self.warn("Error occurred trying to replace PPer-provided diacritic " +
+                          "{} with {}. Check replacement value".format(s[0], s[1]))
+          for s in self.diacritics:
+            text, count = re.subn(re.escape(s[0]), s[1], text)
+            if count > 0:
+              print("Replaced {} {} times.".format(s[0], count))
+              if s[3]:
+                self.warn("{} is a non-standard markup for {}. Please examine images to confirm character is correct".format(s[0], s[1]))
+        else:
+          if len(self.diacritics_user) > 0:
+            for s in self.diacritics_user:
+              if diakeep.lower().startswith("b"): # original before?
+                diaorigb = s[0]
+                diaoriga = ""
+              elif diakeep.lower().startswith("a"): # original after?
+                diaoriga = s[0]
+                diaorigb = ""
+              repl = diaorigb + diapre + s[1] + diasuf + diaoriga
+              try:
+                text, count = re.subn(re.escape(s[0]), repl, text)
+                print(self.umap("Replaced PPer-provided diacritic {} {} times.".format(s[0], count)))
+              except:
+                self.warn("Error occurred trying to replace PPer-provided Greek character" +
+                          "{} with {}. Check replacement value".format(s[0], s[1]))
+          for s in self.diacritics:
+            if diakeep.lower().startswith("b"): # original before?
+              diaorigb = s[0]
+              diaoriga = ""
+            elif diakeep.lower().startswith("a"): # original after?
+              diaoriga = s[0]
+              diaorigb = ""
+            repl = diaorigb + diapre + s[1] + diasuf + diaoriga
+            text, count = re.subn(re.escape(s[0]), repl, text)
+            if count > 0:
+              print("Replaced {} {} times.".format(s[0], count))
+              if s[3]:
+                self.warn("{} is a non-standard markup for {}. Please examine images to confirm character is correct".format(s[0], s[1]))
+        if self.log:
+          header_needed = True
+          text2 = text
+          m = re.search(r"\[([^*\]].{1,7}?)]", text2)
+          while m:
+            matched = m.group(0)
+            inner = m.group(1)
+            text2, count = re.subn(re.escape(m.group(0)), "", text2)
+            if count > 0 and not inner.isdigit():
+              if header_needed:
+                print("Potential diacritics not converted:")
+                header_needed = False
+              try:
+                print(" {} occurred {} times.".format(m.group(0), count))
+              except:
+                print(self.umap("**{} occurred {} times. (Safe-printed due to error.)".format(m.group(0), count)))
+            m = re.search(r"\[([^*\]].{1,7}?)]", text2)
+          if header_needed:
+            print("No unconverted diacritics seem to remain after conversion.")
+          del text2
+
+      if dia_blobbed:
+        self.wb = text.splitlines()
+        del text
+
+    def doFilterSR():
+      # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+      # capture and remove search/replace directives that specify f for filtering
+      # .sr f[p]? /search/replace/
+      # which is a string containing some combination of ulthf (UTF-8, Latin-1, Text, HTML, filtering)
+      #   or b (before processing, rather than in postprocessing) or p (prompt whether to replace or not)
+      # search is  reg-ex search string
+      # replace is a reg-ex replace string
+      # / is any character not contained within either search or replace
+      #
+      # Values gathered during preprocessCommon and used during filtering
+      i = 0
+      filter_sr = False
+      sr_error = False
+      while i < len(self.wb):
+        if self.wb[i].startswith(".sr"):
+          m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
+          if m:
+            if m.group(5) != "":           # if anything here then the user's expression was wrong, somehow
+              self.warn("Problem with .sr arguments: " +
+                        "1={} 2={} 3={} 4={} Unexpected 5={}\n             {}".format(
+                        m.group(1),m.group(2), m.group(3), m.group(4), m.group(5), self.wb[i]))
+              sr_error = True
+            if "f" in m.group(1):  # if request to do s/r during filtering
+              filter_sr = True     # remember the request
+              if ("u" in m.group(1) or "l" in m.group(1) or
+                  "t" in m.group(1) or "h" in m.group(1) or "b" in m.group(1)):
+                self.warn(".sr f option can not be used with u, l, t, h, or b options:" +
+                          "\n             {}".format(self.wb[i]))
+                sr_error = True
+              if not self.cvgfilter:
+                self.warn(".sr f option can only be used with -f command line option:" +
+                          "\n             {}".format(self.wb[i]))
+                sr_error = True
+              if (("\\n" in m.group(3)) and
+                  ("p" in m.group(1))): # Can't do prompting with \n in request
+                self.warn(".sr p option can not be used with \\n in search string:" +
+                          "\n             {}".format(self.wb[i]))
+                sr_error = True
+              self.srw.append(m.group(1))
+              self.srs.append(m.group(3))
+              self.srr.append(m.group(4))
+
+              del self.wb[i]       # delete this record
+              continue
+          else:
+            self.crash_w_context("Problem parsing .sr arguments.", i)
+
+        i += 1
+
+      if sr_error: # if any .sr parsing problems noted
+        self.fatal("Terminating due to the .sr issues listed previously.")
+
+      if self.cvgfilter and filter_sr: # if user wants some .sr directives applied in filtering mode do them now
+        for i in range(len(self.srw)):
+          if ('f' in self.srw[i]):     # if this one applies to filtering mode
+            self.process_SR(self.wb, i)
+        self.srw = []
+        self.srs = []
+        self.srr = []
+
     #
     # Begin Pre-process Common
     #
+
+    # load cvg filter file if specified
+    if self.cvgfilter:
+      loadFilter()
+
+    # Handle Greek, Diacritics, .sr for filtering, and terminate with cvg-bailout text if filtering or user requested it
+    doGreek()
+    doDiacritics()
+    if self.cvgfilter:
+      doFilterSR()
+    if self.gk_quit.lower().startswith("y") or self.dia_quit.lower().startswith("y") or self.cvgfilter:
+      self.cvgbailout()  # bail out after .cv/.gk or filter processing if user requested early termination
+
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # Remove comments in pre-processor
@@ -1887,7 +2290,10 @@ class Book(object):
       if re.match(r"\.ig ",self.wb[i]): # single line
         del self.wb[i]
       elif ".ig" == self.wb[i]: # multi-line
+        del self.wb[i]
         while i < len(self.wb) and self.wb[i] != ".ig-":
+          if self.wb[i].startswith(".ig"): # hit a .ig while looking for a .ig-?
+            self.crash_w_context("Missing .ig- directive: found another .ig inside a .ig block", i)
           del self.wb[i]
         if i < len(self.wb):
           del self.wb[i] # the ".ig-"
@@ -1900,10 +2306,15 @@ class Book(object):
     if not self.cvgfilter:
       text = []
       keep = True
-      for line in self.wb:
+      inIf = False
+      for i, line in enumerate(self.wb):
 
         m = re.match(r"\.if (\w)", line)  # start of conditional
         if m:
+          if inIf:
+            self.crash_w_context("Nested .if not supported", i)
+          inIf = True
+          ifloc = i
           keep = False
           keepType = m.group(1)
           if m.group(1) == 't' and self.renc in "lut":
@@ -1913,8 +2324,11 @@ class Book(object):
           continue
 
         if line == ".if-":
+          if not inIf:
+            self.crash_w_context(".if- has no matching .if", i)
           keep = True
           keepType = None
+          inIf = False
           continue
 
         if keep:
@@ -1929,254 +2343,11 @@ class Book(object):
               if m3:
                 self.warn(".sr command for text skipped by .if h: {}".format(self.umap(line)))
 
+      if inIf: # unclosed .if?
+        self.crash_w_context("Unclosed .if directive", ifloc)
       self.wb = text
       text = []
 
-    # load cvg filter file if specified
-    if self.cvgfilter:
-      loadFilter()
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # process [Greek: ...] in UTF-8 output if requested to via .gk command
-    i = 0
-    self.gk_user = []
-    self.gk_requested = False
-    gk_done = False
-    self.gkpre = ""
-    self.gksuf = ""
-    self.gkkeep = "n"
-    gk_quit = "n"
-    while i < len(self.wb) and not gk_done:
-      if self.wb[i].startswith(".gk"):
-        gkin = ""
-        gkout = ""
-        if "pre=" in self.wb[i]:
-          self.wb[i], self.gkpre = self.get_id("pre", self.wb[i])
-          self.gkpre = re.sub(r"\\n", "\n", self.gkpre)
-        if "suf=" in self.wb[i]:
-          self.wb[i], self.gksuf = self.get_id("suf", self.wb[i])
-          self.gksuf = re.sub(r"\\n", "\n", self.gksuf)
-        if "keep=" in self.wb[i]:
-          self.wb[i], self.gkkeep = self.get_id("keep", self.wb[i])
-        if "in=" in self.wb[i]:
-          self.wb[i], gkin = self.get_id("in", self.wb[i])
-        if "out=" in self.wb[i]:
-          self.wb[i], gkout = self.get_id("out", self.wb[i])
-        if "quit=" in self.wb[i]:
-          self.wb[i], gk_quit = self.get_id("quit", self.wb[i])
-        if "done" in self.wb[i]:
-          gk_done = True
-        del self.wb[i]
-        self.gk_requested = True
-
-        if gkin and gkout:
-          m = re.search(r"\\u[0-9a-fA-F]{4}", gkout) # find any characters defined by unicode constants in output string
-          while m:
-            found = m.group(0)
-            rep = bytes(m.group(0),"utf-8").decode('unicode-escape')
-            gkout = re.sub(re.escape(found), rep, gkout)
-            m = re.search(r"\\u[0-9a-fA-F]{4}", gkout)
-          self.gk_user.append((gkin, gkout))
-        continue
-      i += 1
-    if self.gk_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
-      text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
-      text = re.sub(r"\[Greek: (.*?)]", gkrepl, text, flags=re.DOTALL)
-
-      self.wb = text.splitlines()
-      text = ""
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # process diacritic markup in UTF-8 output if requested to via .cv command
-    i = 0
-    self.diacritics_user = []
-    self.dia_requested = False
-    dia_done = False
-    dia_blobbed = False
-    diapre = ""
-    diasuf = ""
-    diakeep = "n"
-    diatest = False
-    dia_quit = "n"
-    dia_italic = "n"
-    dia_bold = "n"
-    while i < len(self.wb) and not dia_done:
-      if self.wb[i].startswith(".cv"):
-        self.dia_requested = True
-        orig = self.wb[i]
-        diain = ""
-        diaout = ""
-        if "pre=" in self.wb[i]:
-          self.wb[i], diapre = self.get_id("pre", self.wb[i])
-          diapre = re.sub(r"\\n", "\n", diapre)
-          if diapre:
-            diatest = True
-        if "suf=" in self.wb[i]:
-          self.wb[i], diasuf = self.get_id("suf", self.wb[i])
-          diasuf = re.sub(r"\\n", "\n", diasuf)
-          if diasuf:
-            diatest = True
-        if "keep=" in self.wb[i]:
-          self.wb[i], diakeep = self.get_id("keep", self.wb[i])
-          if not diakeep.lower().startswith("n"):
-            diatest = True
-        if "in=" in self.wb[i]:
-          self.wb[i], diain = self.get_id("in", self.wb[i])
-        if "out=" in self.wb[i]:
-          self.wb[i], diaout = self.get_id("out", self.wb[i])
-        if "quit=" in self.wb[i]:
-          self.wb[i], dia_quit = self.get_id("quit", self.wb[i])
-        if "italic=" in self.wb[i]:
-          self.wb[i], dia_italic = self.get_id("italic", self.wb[i])
-        if "bold=" in self.wb[i]:
-          self.wb[i], dia_bold = self.get_id("bold", self.wb[i])
-        if "done" in self.wb[i]:
-          dia_done = True
-        del self.wb[i]
-        if (diain and not diaout) or (diaout and not diain):
-          self.warn("Missing in= or out= value: {}".format(orig))
-        if diain:
-          if diain[0] != "[" or diain[-1] != "]" or len(diain) > 10 or len(diain) < 3:
-            self.warn("Ignoring invalid in= value {}: {}".format(diain, orig))
-            diain = ""
-          inner = diain[1:-1]
-          if inner.isdigit():
-            self.warn("in= value {} may conflict with footnote processing: {}".format(diain, orig))
-        if diain and diaout:
-          m = re.search(r"\\u[0-9a-fA-F]{4}", diaout) # find any characters defined by unicode constants in output string
-          while m:
-            found = m.group(0)
-            rep = bytes(m.group(0),"utf-8").decode('unicode-escape')
-            diaout = re.sub(re.escape(found), rep, diaout)
-            m = re.search(r"\\u[0-9a-fA-F]{4}", diaout)
-          if diaout != "ignore":
-            self.diacritics_user.append((diain, diaout))
-          else:
-            ignored = False
-            for s in self.diacritics:
-              if s[0] == diain:
-                self.diacritics.remove(s)
-                ignored = True
-                break
-            if not ignored:
-              self.warn("No builtin diacritic {} to ignore: {}".format(diain, orig))
-        continue
-      i += 1
-    if self.dia_requested and (dia_italic.lower().startswith("y") or dia_bold.lower().startswith("y")):
-      text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
-      dia_blobbed = True
-      #
-      # Correct diacritics with <i> markup in them if requested
-      #
-      if dia_italic.lower().startswith("y"):
-        print("Checking for <i> within diacritic markup and correcting")
-        for s in self.diacritics_user:
-          si = "[<i>" + s[0][1:-1] + "</i>]"
-          so = "<i>" + s[0] + "</i>"
-          try:
-            text, count = re.subn(re.escape(si), so, text)
-            if count:
-              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
-          except:
-            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
-        for s in self.diacritics:
-          si = "[<i>" + s[0][1:-1] + "</i>]"
-          so = "<i>" + s[0] + "</i>"
-          try:
-            text, count = re.subn(re.escape(si), so, text)
-            if count:
-              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
-          except:
-            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
-      if dia_bold.lower().startswith("y"):
-        print("Checking for <b> within diacritic markup and correcting")
-        for s in self.diacritics_user:
-          si = "[<b>" + s[0][1:-1] + "</b>]"
-          so = "<b>" + s[0] + "</b>"
-          try:
-            text, count = re.subn(re.escape(si), so, text)
-            if count:
-              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
-          except:
-            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
-        for s in self.diacritics:
-          si = "[<b>" + s[0][1:-1] + "</b>]"
-          so = "<b>" + s[0] + "</b>"
-          try:
-            text, count = re.subn(re.escape(si), so, text)
-            if count:
-              print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
-          except:
-            self.warn("Error occurred trying to replace {} with {}.".format(si, so))
-    if self.dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
-      if not dia_blobbed:
-        text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
-        dia_blobbed = True
-      if not diatest:
-        if len(self.diacritics_user) > 0:
-          for s in self.diacritics_user:
-            try:
-              text, count = re.subn(re.escape(s[0]), s[1], text)
-              print(self.umap("Replaced PPer-provided diacritic {} {} times.".format(s[0], count)))
-            except:
-              self.warn("Error occurred trying to replace PPer-provided diacritic " +
-                        "{} with {}. Check replacement value".format(s[0], s[1]))
-        for s in self.diacritics:
-          text, count = re.subn(re.escape(s[0]), s[1], text)
-          if count > 0:
-            print("Replaced {} {} times.".format(s[0], count))
-      else:
-        if len(self.diacritics_user) > 0:
-          for s in self.diacritics_user:
-            if diakeep.lower().startswith("b"): # original before?
-              diaorigb = s[0]
-              diaoriga = ""
-            elif diakeep.lower().startswith("a"): # original after?
-              diaoriga = s[0]
-              diaorigb = ""
-            repl = diaorigb + diapre + s[1] + diasuf + diaoriga
-            try:
-              text, count = re.subn(re.escape(s[0]), repl, text)
-              print(self.umap("Replaced PPer-provided diacritic {} {} times.".format(s[0], count)))
-            except:
-              self.warn("Error occurred trying to replace PPer-provided Greek character" +
-                        "{} with {}. Check replacement value".format(s[0], s[1]))
-        for s in self.diacritics:
-          if diakeep.lower().startswith("b"): # original before?
-            diaorigb = s[0]
-            diaoriga = ""
-          elif diakeep.lower().startswith("a"): # original after?
-            diaoriga = s[0]
-            diaorigb = ""
-          repl = diaorigb + diapre + s[1] + diasuf + diaoriga
-          text, count = re.subn(re.escape(s[0]), repl, text)
-          if count > 0:
-            print("Replaced {} {} times.".format(s[0], count))
-      if self.log:
-        header_needed = True
-        text2 = []
-        text2.extend(text)
-        m = re.search(r"\[([^*\]].{1,7}?)]", text2)
-        while m:
-          matched = m.group(0)
-          inner = m.group(1)
-          text2, count = re.subn(re.escape(m.group(0)), "", text2)
-          if count > 0 and not inner.isdigit():
-            if header_needed:
-              print("Potential diacritics not converted:")
-              header_needed = False
-            try:
-              print(" {} occurred {} times.".format(m.group(0), count))
-            except:
-              print(self.umap("**{} occurred {} times. (Safe-printed due to error.)".format(m.group(0), count)))
-          m = re.search(r"\[([^*\]].{1,7}?)]", text2)
-        if header_needed:
-          print("No unconverted diacritics seem to remain after conversion.")
-        del text2[:]
-
-    if dia_blobbed:
-      self.wb = text.splitlines()
-      text = ""
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # capture and remove search/replace directives
@@ -2233,15 +2404,6 @@ class Book(object):
     if sr_error: # if any .sr parsing problems noted
       self.fatal("Terminating due to the .sr issues listed previously.")
 
-    if self.cvgfilter and filter_sr: # if user wants some .sr directives applied in filtering mode do them now
-      self.dprint("processing .sr for filtering")
-      for i in range(len(self.srw)):
-        if ('f' in self.srw[i]):     # if this one applies to filtering mode
-          self.process_SR(self.wb, i)
-
-
-    if gk_quit.lower().startswith("y") or dia_quit.lower().startswith("y") or self.cvgfilter:
-      self.cvgbailout()  # bail out after .cv/.gk or filter processing if user requested early termination
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # process character mappings
@@ -2678,6 +2840,22 @@ class Book(object):
     if override:
       self.pnshow = False # disable visible page numbers
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # Examine footnote markers (.fm)
+    #   Look for .fm with lz=
+    #     If any found, set flags for later
+    self.footnoteLzT = False
+    self.footnoteLzH = False
+    for i, t in enumerate(self.wb):
+      if t.startswith(".fm"):
+        if "lz=" in t:
+          t, lz = self.get_id("lz", t)
+          if lz == "t" or lz == "th" or lz == "ht":
+           self.footnoteLzT = True
+          if lz == "h" or lz == "th" or lz == "ht":
+            self.footnoteLzH = True
+
+
 # ====== ppt ============================================================================
 
 # this class is used to generate UTF-8 or Latin-1 (ANSI) text
@@ -2686,9 +2864,6 @@ class Book(object):
 # a transliteration is provided by the post-processor
 
 class Ppt(Book):
-  eb = [] # emit buffer for generated text
-  wb = [] # working buffer
-  bb = [] # GG .bin buffer
 
   long_table_line_count = 0
 
@@ -2722,18 +2897,6 @@ class Ppt(Book):
     f1.close()
     exit(1)
 
-  def line_len_diff(self, x):
-    """ calculate max diff between longest and shortest line of data x[] """
-    longest_line_len = 0
-    shortest_line_len = 1000
-    for line in x:
-      tline = line
-      if self.bnPresent:  # remove .bn info if any before doing calculation
-        tline = re.sub("⑱.*?⑱","",tline)
-      longest_line_len = max(longest_line_len, len(tline))
-      shortest_line_len = min(shortest_line_len, len(tline))
-    return longest_line_len - shortest_line_len
-
   def shortest_line_len(self, x):
     """ return length of shotest line in x[] """
     shortest_line_len = 1000
@@ -2741,7 +2904,7 @@ class Ppt(Book):
       tline = line
       if self.bnPresent: # remove .bn info if any before doing calculation
         tline = re.sub("⑱.*?⑱","",tline)
-      shortest_line_len = min(shortest_line_len, len(tline))
+      shortest_line_len = min(shortest_line_len, self.truelen(tline))
     return shortest_line_len
 
   # wrap string into paragraph in t[]
@@ -2775,9 +2938,10 @@ class Ppt(Book):
 
     # at this point, s is ready to wrap
     mywidth = ll - indent
-    t =[]
+    t = []
     twidth = mywidth
-    while len(s) > twidth:
+    true_len_s = self.truelen(s)
+    while true_len_s > twidth:
       twidth2 = 0
       if self.bnPresent:
         m = re.match("(.*?)(⑱.*?⑱)(.*)",s)
@@ -2787,24 +2951,21 @@ class Ppt(Book):
             twidth += len(m.group(2)) # allow wider split to account for .bn info
             stemp = m.group(3)
             m = re.match("(.*?)(⑱.*?⑱)(.*)",stemp)
-      if len(s) > twidth:
+      if true_len_s > twidth:
         try:
-          snip_at = s.rindex(" ", 0, twidth) # Plan A: snip at a last blank within first twidth characters
+          snip_at = s.rindex(" ", 0, twidth+1) # Plan A: snip at a last blank within first twidth+1 characters
         except:
           # could not find a place to wrap
           try: # this one might fail, too, so catch exceptions
             snip_at = s.index(" ") # Plan B: snip at any blank, even if line is wide
           except:
             snip_at = len(s) # Plan C: leave the line wide
-          #if len(t) == 0:
-          #  self.warn("wide line: {}".format(hold + s)) # include any "hold" characters if wrapping first line
-          #else:
-          #  self.warn("wide line: {}".format(s)) # else just include the current line.
         t.append(s[:snip_at])
-        if snip_at < len(s):
+        if snip_at < true_len_s:
           s = s[snip_at+1:]
         else:
           s = ""
+        true_len_s = self.truelen(s)
         twidth = mywidth
     if len(t) == 0 or len(s) > 0: #ensure t has something in it, but don't add a zero length s (blank line) to t unless t is empty
       t.append(s)
@@ -2820,6 +2981,8 @@ class Ppt(Book):
   def wrap(self, s,  indent=0, ll=72, ti=0):
     ta = [] # list of paragraph (lists)
     ts = [] # paragraph stats
+    while '  ' in s:   # squash any repeated spaces
+      s = s.replace('  ', ' ')
     for i in range(0, -8, -2):
       t = self.wrap_para(s, indent, ll+i, ti)
       ta.append(t)
@@ -2837,12 +3000,6 @@ class Ppt(Book):
         t = ta[i]
         longest_short = ts[i]
         besti = i
-
-    # z = self.meanstdv(t[0:-1])
-    # lld = self.line_len_diff(t[0:-1])
-    # zs = "b:{0:d}  t:{1:d}  std dev:{2:.1f}  max diff:{3:d}".format(besti, z[0],z[2],bestdiff)
-    # t.append(zs)
-
     return t
 
   # -------------------------------------------------------------------------------------
@@ -2964,10 +3121,9 @@ class Ppt(Book):
         if m:
           fncr = int(m.group(1)) + 1
 
-        elif ".fn #" == self.wb[i]:### test this spacing
-          self.wb[i:i+1] = [".sp 1",".fn {}".format(fncr)]
+        elif ".fn #" == self.wb[i]:### remember to generate footnote spacing in text
+          self.wb[i] = ".fn {}".format(fncr)
           fncr += 1
-          i += 1
 
         else:
           m=re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)", self.wb[i])
@@ -2979,7 +3135,7 @@ class Ppt(Book):
           self.crash_w_context("Error: .fn- has no opening .fn command", i)
         fnlevel -= 1
 
-      i += 1
+      i += 1###
     if fnlevel != 0:
       self.crash_w_context("Error: Unclosed .fn block", fn0)
 
@@ -3054,7 +3210,13 @@ class Ppt(Book):
         m = re.match(r"\.nr Sidenote (.+)", self.wb[i])
         if m:
           tempSidenote = m.group(1) # remember new Sidenote name value
-      self.wb[i], l = re.subn("<sn(?: class=[^>]*)?>", "[{}: ".format(tempSidenote), self.wb[i])
+      m = re.match("(.*?<sn(?: class=[^>]+)?>)(.*?\|.*?)(</sn>.*?)$", self.wb[i])
+      while m:
+        tmp = m.group(2)
+        tmp = re.sub(r"\s*\|\s*", " ", tmp)
+        self.wb[i] = m.group(1) + tmp + m.group(3)
+        m = re.match("(.*?<sn(?: class=[^>]+)?>)(.*?\|.*?)(</sn>.*?)$", self.wb[i])
+      self.wb[i], l = re.subn("<sn(?: class=[^>]+)?>", "[{}: ".format(tempSidenote), self.wb[i])
       self.wb[i] = re.sub("</sn>", "]", self.wb[i])
       if l and (in_nf or in_ta or in_fn):
         self.warn_w_context("Inline sidenote probably won't work well here:", i)
@@ -3083,7 +3245,7 @@ class Ppt(Book):
     #
     # Handle any .sr for text that have the b option specified
     if self.filter_b:
-      self.dprint("Processing .sr for text with b specified")
+      #self.dprint("Processing .sr for text with b specified")
       for i in range(len(self.srw)):
         if ((('t' in self.srw[i]) or (self.renc in self.srw[i])) and
             ('b' in self.srw[i])): # if this one is for pre-processing and applies to the text form we're generating
@@ -3100,30 +3262,22 @@ class Ppt(Book):
     i = 0
     if self.bnPresent:
       while i < len(self.eb) - 2:
-        if self.eb[i].startswith(".RS") and self.eb[i+1].startswith("⑱"):  # if .RS and possibly .bn info
-          m = re.match("^⑱.*?⑱(.*)$",self.eb[i+1])  # confirm .bn info only (no other data on line)
-          if m and m.group(1) == "":         # if so
-
-                # handle case of .RS , .bn (from above), .bn by advancing over a sequence of .bn until we find .RS or data
-                # if we end on .RS then remove that .RS and insert it before the first .bn in the sequence
-                # i => first .RS
-                # i + 1 => first .bn
-                # i + 2,3,... => possible subsequent .bn
-                j = i + 2
-                m = True
-                while m and j < len(self.eb) - 1:
-                  m = False
-                  if self.eb[j].startswith("⑱"):  # possible .bn info
-                    m  =  re.match("^⑱.*?⑱(.*)$",self.eb[j])  # confirm .bn info only (no other data on line)
-                    if m and m.group(1) == "":
-                      j += 1
-                  elif self.eb[j].startswith(".RS"): # .RS line; need to move it
-                    temp = self.eb[j]    # make a copy
-                    del self.eb[j]  # delete the .RS line
-                    self.eb.insert(i+1, temp)  # insert it after the first .RS
-                  else:
-                    m = False
-                  # everything else (data, or .bn + data) falls through as it can't affect .RS combining
+        if self.eb[i].startswith(".RS") and self.is_bn_line(self.eb[i+1]):  # if .RS and possibly .bn info
+          # handle case of .RS , .bn (from above), .bn by advancing over a sequence of .bn until we find .RS or data
+          # if we end on .RS then remove that .RS and insert it before the first .bn in the sequence
+          # i => first .RS
+          # i + 1 => first .bn
+          # i + 2,3,... => possible subsequent .bn
+          j = i + 2
+          while j < len(self.eb) - 1:
+            if self.is_bn_line(self.eb[j]):  # .bn info
+              j += 1
+            elif self.eb[j].startswith(".RS"): # .RS line; need to move it
+              temp = self.eb[j]    # make a copy
+              del self.eb[j]  # delete the .RS line
+              self.eb.insert(i+1, temp)  # insert it after the first .RS
+            else: # everything else (data, or .bn + data) falls through as it can't affect .RS combining
+              break
         i += 1
 
     # combine space requests
@@ -3183,6 +3337,10 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("◺", "_{")
       self.eb[i] = self.eb[i].replace("◿", "}")
 
+      # unprotect temporarily protected characters from Greek strings
+      self.eb[i] = self.eb[i].replace("⑩", r"\|") # restore temporarily protected \| and \(space)
+      self.eb[i] = self.eb[i].replace("⑮", r"\ ")
+
       if self.renc == 'u':
         if "[oe]" in self.eb[i]:
           self.warn("unconverted [oe] ligature written to UTF-8 file.")
@@ -3206,7 +3364,7 @@ class Ppt(Book):
     # process saved search/replace strings for text, if any
     # but only if our output format matches something in the saved "which" value
 
-    self.dprint("processing .sr for text without b specified")
+    #self.dprint("processing .sr for text without b specified")
     for i in range(len(self.srw)):
       if ((('t' in self.srw[i]) or (self.renc in self.srw[i])) and not
           ('b' in self.srw[i])): # if this one is for post-processing and applies to the text form we're generating
@@ -3244,7 +3402,7 @@ class Ppt(Book):
     f1 = codecs.open(fn, "w", "utf-8")
     for index,t in enumerate(self.eb):
       s = t.rstrip()
-      if len(s) > self.linelimitwarning:
+      if self.truelen(s) > self.linelimitwarning:
         longcount += 1
         if longcount == 4:
           self.warn("additional long lines not reported")
@@ -3330,14 +3488,19 @@ class Ppt(Book):
 
   # .li literal block (pass-through)
   def doLit(self):
-    self.cl += 1 # skip the .li
-    while (self.cl < len(self.wb)) and self.wb[self.cl] != ".li-":
-      self.eb.append(self.wb[self.cl])
-      self.cl += 1
-    if self.cl < len(self.wb):
-      self.cl += 1 # skip the .li-
+    if self.wb[self.cl] == ".li":
+      self.cl += 1 # skip the .li
+      while (self.cl < len(self.wb)) and self.wb[self.cl] != ".li-":
+        self.eb.append(self.wb[self.cl])
+        self.cl += 1
+      if self.cl < len(self.wb):
+        self.cl += 1 # skip the .li-
+      else:
+        self.crash_w_context("unclosed .li", self.cl)
+    elif self.wb[self.cl] == ".li-":
+      self.crash_w_context(".li- occurred with no preceding .li", self.cl)
     else:
-      self.crash_w_context("unclosed .li", self.cl)
+      self.crash_w_context("Malformed .li directive", self.cl)
 
   # .pb page break
   def doPb(self):
@@ -3390,14 +3553,14 @@ class Ppt(Book):
     else:
       self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
     self.eb.append(".RS 1")
-    if self.bnPresent and self.wb[self.cl+1].startswith("⑱"):    # account for a .bn that immediately follows a .h1/2/3/etc
-      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl+1])
-      if m and m.group(1) == "":
-        self.eb.append(self.wb[self.cl+1])    # append the .bn info to eb as-is
-        self.cl += 1                                           # and ignore it for handling this .h"n"
+    if self.bnPresent and self.is_bn_line(self.wb[self.cl+1]):    # account for a .bn that immediately follows a .h1/2/3/etc
+      self.eb.append(self.wb[self.cl+1])    # append the .bn info to eb as-is
+      self.cl += 1                          # and ignore it for handling this .h"n"
     h2a = self.wb[self.cl+1].split('|')
     for line in h2a:
-      self.eb.append((fmt.format(line)).rstrip())
+      line = line.strip()
+      self.eb.append(self.truefmt(fmt, line).rstrip())
+
     self.eb.append(".RS 1")
     self.cl += 2
 
@@ -3502,10 +3665,10 @@ class Ppt(Book):
                 s = re.sub(ss,self.wb[self.cl], s)
                 k += 1
                 self.cl += 1
-                if len(s) > self.regLL: # must wrap the string, and indent the leftover part
+                if self.truelen(s) > self.regLL: # must wrap the string, and indent the leftover part
                   m = re.match(r"(\s*)(.*)",s)
                   if m:
-                    tempindent = len(m.group(1)) + 2
+                    tempindent = self.truelen(m.group(1)) + 2
                     s = m.group(2)
                     t = self.wrap(s, tempindent, self.regLL, -2)
                   else:
@@ -3513,7 +3676,7 @@ class Ppt(Book):
                 else:
                   t.append(s) # no need to wrap, as it's short enough already
               else: # caption line does not have marker, so it's literal text, just wrap to LL if necessary and assume user knows what he's doing
-                if len(s) > self.regLL:
+                if self.truelen(s) > self.regLL:
                   t = self.wrap(s, 0, self.regLL, 0)
                 else: # no need to wrap if it's short enough
                   t.append(s)
@@ -3629,29 +3792,48 @@ class Ppt(Book):
     i = self.cl + 1 # skip the .nf c line
     while self.wb[i] != ".nf-":
       bnInBlock = False
-      if self.bnPresent and self.wb[i].startswith("⑱"):   #just copy .bn info lines, don't change them at all
-        m =re.match("^⑱.*?⑱(.*)", self.wb[i])
-        if m and m.group(1) == "":
-          bnInBlock = True
-          t.append(self.wb[i])
-          i += 1
-          continue
+      if self.bnPresent and self.is_bn_line(self.wb[i]): #just copy .bn info lines, don't change them at all
+        bnInBlock = True
+        t.append(self.wb[i])
+        i += 1
+        continue
+
+      if self.wb[i].startswith(".dc") or self.wb[i].startswith(".di"):
+        del self.wb[i]
+        continue
 
       xt = self.regLL - self.regIN # width of centered line
       xs = "{:^" + str(xt) + "}"
-      t.append(" " * self.regIN + xs.format(self.wb[i].strip()))
+      line = self.wb[i].strip()
+      len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+      if len2 <= xt:
+        t.append(" " * self.regIN + self.truefmt(xs, line)) # just format it if it fits within the wideh
+      else:                                                 # else wrap it with a hanging indent
+        s = line
+        wi = 0
+        m = re.match("^(\s+)(.*)", s)
+        if m:
+          wi = len(m.group(1))
+          s = m.group(2)
+        u = self.wrap(s, wi+3, xt, -3)
+        line = u[0]
+        u[0] = " " * self.regIN + self.truefmt(xs, line)
+        t.append(u[0]) # output first line
+        bcnt = 0
+        while bcnt < len(u[0]) and u[0][bcnt] == " ": bcnt += 1 # count leading blanks in first line
+        blanks = " " * bcnt
+        for line in u[1:]: # then output other lines, padded with that number of blanks
+          t.append(blanks + line)
+
       i += 1
     self.cl = i + 1 # skip the closing .nf-
     # see if the block has hit the left margin
     need_pad = False
     for line in t:
       if line and line[0] != " ":
-        if bnInBlock and line[0] == "⑱":
-          m =re.match("^⑱.*?⑱(.*)", line)
-          if not (m and m.group(1) == ""):
-            need_pad = True
-        else:
+        if not bnInBlock or not self.is_bn_line(line):
           need_pad = True
+          break
     if need_pad:
       self.warn("inserting leading space in wide .nf c (or .ce)")
       for i,line in enumerate(t):
@@ -3665,8 +3847,8 @@ class Ppt(Book):
     i = self.cl + 1
     startloc = i
     maxw = 0
-    while i < len(self.wb) and not re.match(lookfor, self.wb[i]):
-      maxw = max(maxw, len(self.wb[i]))
+    while i < len(self.wb) and not self.wb[i] == lookfor:
+      maxw = max(maxw, self.truelen(self.wb[i]))
       i += 1
     if i == len(self.wb):
       # unterminated block
@@ -3683,9 +3865,13 @@ class Ppt(Book):
       self.warn("no-fill, left block at left margin starting:\n  {}".format(self.wb[self.cl+1]))
 
     self.eb.append(".RS 1")
-    regBW = self.calculateBW(".nf-")
+    regBW = min(self.calculateBW(".nf-"), self.regLL)
     i = self.cl + 1 # skip the .nf l line
     while self.wb[i] != ".nf-":
+
+      if self.wb[i].startswith(".dc") or self.wb[i].startswith(".di"):
+        del self.wb[i]
+        continue
 
       # special cases: .ce and .rj
       m = re.search(r"\.ce (\d+)", self.wb[i])
@@ -3693,14 +3879,13 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .ce
         while count > 0:
-          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
-            if m and m.group(1) == "":
-              self.eb.append(self.wb[i])
-              i += 1
-              continue
+          if self.bnPresent and self.is_bn_line(self.wb[i]):  # if this line is bn info then just put it in the output as-is
+            self.eb.append(self.wb[i])
+            i += 1
+            continue
           xs = "{:^" + str(regBW) + "}"
-          self.eb.append(" " * self.regIN + xs.format(self.wb[i].strip()))
+          line = self.wb[i].strip()
+          self.eb.append(" " * self.regIN + self.truefmt(line))
           i += 1
           count -= 1
         continue
@@ -3710,30 +3895,28 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .rj
         while count > 0:
-          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
-            if m and m.group(1) == "":
-              self.eb.append(self.wb[i])
-              i += 1
-              continue
+          if self.bnPresent and self.is_bn_line(self.wb[i]):  # if this line is bn info then just put it in the output as-is
+            self.eb.append(self.wb[i])
+            i += 1
+            continue
           xs = "{:>" + str(regBW) + "}"
-          self.eb.append(" " * self.regIN + xs.format(self.wb[i].strip()))
+          line = self.wb[i].strip()
+          self.eb.append(" " * self.regIN + self.truefmt(xs, line))
+          # but it may look off with proportional fonts, esp. if the rj text is Hebrew or another rtl language
           i += 1
           count -= 1
         continue
 
-      if self.bnPresent and self.wb[i].startswith("⑱"):   #just copy .bn info lines, don't change them at all
-        m =re.match("^⑱.*?⑱(.*)", self.wb[i])
-        if m and m.group(1) == "":
-          self.eb.append(self.wb[i])
-          i += 1
-          continue
+      if self.bnPresent and self.is_bn_line(self.wb[i]):   # just copy .bn info lines, don't change them at all
+        self.eb.append(self.wb[i])
+        i += 1
+        continue
 
       s = (" " * self.regIN + self.wb[i])
-      # if the line is shorter than 72 characters, just send it to emit buffer
+      # if the line is shorter than 72 characters (really, the line length), just send it to emit buffer
       # if longer, calculate the leading spaces on line and use as shift amount.
       # a .ti lets it wrap
-      if len(s) > 72:
+      if self.truelen(s) > self.regLL:
         wi = 0
         m = re.match("^(\s+)(.*)", s)
         if m:
@@ -3751,12 +3934,17 @@ class Ppt(Book):
   # no-fill, block (text)
   def doNfb(self, mo):
     t = []
-    regBW = self.calculateBW(".nf-")
+    firstline = self.cl
+    regBW = min(self.calculateBW(".nf-"), self.regLL)
     i = self.cl + 1 # skip the .nf b line
     xt = self.regLL - self.regIN
     lmar = (xt - regBW)//2
     bnInBlock = False                # no .bn info encountered in this block yet
     while self.wb[i] != ".nf-":
+
+      if self.wb[i].startswith(".dc") or self.wb[i].startswith(".di"):
+        del self.wb[i]
+        continue
 
       # special cases: .ce and .rj
       m = re.search(r"\.ce (\d+)", self.wb[i])
@@ -3764,15 +3952,14 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .ce
         while count > 0:
-          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
-            if m and m.group(1) == "":
-              bnInBlock = True
-              t.append(self.wb[i])
-              i += 1
-              continue
+          if self.bnPresent and self.is_bn_line(self.wb[i]): # if this line is bn info then just put it in the output as-is
+            bnInBlock = True
+            t.append(self.wb[i])
+            i += 1
+            continue
           xs = "{:^" + str(regBW) + "}"
-          t.append(" " * lmar + xs.format(self.wb[i].strip()))
+          line = self.wb[i].strip()
+          t.append(" " * lmar + self.truefmt(line))
           i += 1
           count -= 1
         continue
@@ -3782,28 +3969,36 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .rj
         while count > 0:
-          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
-            if m and m.group(1) == "":
-              bnInBlock = True
-              t.append(self.wb[i])
-              i += 1
-              continue
+          if self.bnPresent and self.is_bn_line(self.wb[i]):  # if this line is bn info then just put it in the output as-is
+            bnInBlock = True
+            t.append(self.wb[i])
+            i += 1
+            continue
           xs = "{:>" + str(regBW) + "}"
-          t.append(" " * lmar + xs.format(self.wb[i].strip()))
+          line = self.wb[i].strip()
+          t.append(" " * lmar + self.truefmt(xs, line))
           i += 1
           count -= 1
         continue
 
-      if self.bnPresent and self.wb[i].startswith("⑱"):   #just copy .bn info lines, don't change them at all
-        m =re.match("^⑱.*?⑱(.*)", self.wb[i])
-        if m and m.group(1) == "":
-          bnInBlock = True
-          t.append(self.wb[i])
-        else:
-          t.append(" " * self.regIN + " " * lmar + self.wb[i].rstrip())
+      if self.bnPresent and self.is_bn_line(self.wb[i]):   #just copy .bn info lines, don't change them at all
+        bnInBlock = True
+        t.append(self.wb[i])
+        i += 1
+        continue
+
+      s = (" " * self.regIN + " " * lmar + self.wb[i].rstrip())
+      if self.truelen(s) > self.regLL:
+        wi = 0
+        m = re.match("^(\s+)(.*)", s)
+        if m:
+          wi = len(m.group(1))
+          s = m.group(2)
+        u = self.wrap(s, wi+3, self.regLL, -3)
+        for line in u:
+          t.append(line)
       else:
-        t.append(" " * self.regIN + " " * lmar + self.wb[i].rstrip())
+        t.append(s)
       i += 1
     self.cl = i + 1 # skip the closing .nf-
 
@@ -3811,14 +4006,11 @@ class Ppt(Book):
     need_pad = False
     for line in t:
       if line and line[0] != " ":
-        if bnInBlock and line[0] == "⑱":
-          m =re.match("^⑱.*?⑱(.*)", line)
-          if not (m and m.group(1) == ""):
-            need_pad = True
-        else:
+        if not bnInBlock or not self.is_bn_line(line):
           need_pad = True
+          break
     if need_pad:
-      self.warn("inserting leading space in wide .nf b")
+      self.warn_w_context("inserting leading space in wide .nf b", firstline)
       for i,line in enumerate(t):
         t[i] = " "+ t[i]
     t.insert(0, ".RS 1")
@@ -3828,10 +4020,14 @@ class Ppt(Book):
   # no-fill, right (text)
   def doNfr(self, mo):
     self.eb.append(".RS 1")
-    regBW = self.calculateBW(".nf-")
+    regBW = min(self.calculateBW(".nf-"), self.regLL)
     fixed_indent = self.regIN + (self.regLL - regBW)
     i = self.cl + 1 # skip the .nf r line
     while self.wb[i] != ".nf-":
+
+      if self.wb[i].startswith(".dc") or self.wb[i].startswith(".di"):
+        del self.wb[i]
+        continue
 
       # special cases: .ce and .rj
       m = re.search(r"\.ce (\d+)", self.wb[i])
@@ -3839,14 +4035,13 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .ce
         while count > 0:
-          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
-            if m and m.group(1) == "":
-              self.eb.append(self.wb[i])
-              i += 1
-              continue
+          if self.bnPresent and self.is_bn_line(self.wb[i]):  # if this line is bn info then just put it in the output as-is
+            self.eb.append(self.wb[i])
+            i += 1
+            continue
           xs = "{:^" + str(regBW) + "}"
-          self.eb.append(" " * fixed_indent + xs.format(self.wb[i].strip()))
+          line = self.wb[i].strip()
+          self.eb.append(" " * fixed_indent + self.truefmt(xs, line))
           i += 1
           count -= 1
         continue
@@ -3856,19 +4051,34 @@ class Ppt(Book):
         count = int(m.group(1))
         i += 1 # skip the .rj
         while count > 0:
-          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just put it in the output as-is
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
-            if m and m.group(1) == "":
-              self.eb.append(self.wb[i])
-              i += 1
-              continue
+          if self.bnPresent and self.is_bn_line(self.wb[i]):  # if this line is bn info then just put it in the output as-is
+            self.eb.append(self.wb[i])
+            i += 1
+            continue
           xs = "{:>" + str(regBW) + "}"
-          self.eb.append(" " * fixed_indent + xs.format(self.wb[i].strip()))
+          line = self.wb[i].strip()
+          self.eb.append(" " * fixed_indent + self.truefmt(xs, line))
           i += 1
           count -= 1
         continue
 
-      self.eb.append(" " * fixed_indent + self.wb[i].strip())
+      if self.bnPresent and self.is_bn_line(self.wb[i]):   #just copy .bn info lines, don't change them at all
+        self.eb.append(self.wb[i])
+        i += 1
+        continue
+
+      s = (" " * fixed_indent + self.wb[i].strip())
+      if self.truelen(self.wb[i].strip()) > self.regLL:
+        wi = 0
+        m = re.match("^(\s+)(.*)", s)
+        if m:
+          wi = len(m.group(1))
+          s = m.group(2)
+        u = self.wrap(s, wi+3, self.regLL, -3)
+        for line in u:
+          self.eb.append(line)
+      else:
+        self.eb.append(s)
       i += 1
     self.cl = i + 1 # skip the closing .nf-
     self.eb.append(".RS 1")
@@ -3908,34 +4118,94 @@ class Ppt(Book):
   # note: in text do not check for duplicate footnotes. they occur in the wild
   # note: invalid footnote names generated warning messages earlier during pre-processing
   def doFnote(self):
-
     m = re.match(r"\.fn-", self.wb[self.cl])
     if m: # footnote ends
+      if self.footnoteLzT and not self.keepFnHere: # if special footnote landing zone in effect (and not disabled for this footnote)
+        self.grabFootnoteT()
       self.wb[self.cl] = ".in -2"
       return
-
-    fnname = ""
-    m = re.match(r"\.fn (\d+)( |$)", self.wb[self.cl]) # First look for numeric
-    if m: # footnote start
-      fnname = m.group(1)
-    else:                       # then check for named footnote
-      m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)", self.wb[self.cl])
-      if m:
+    else: # footnote begins
+      fnname = ""
+      m = re.match(r"\.fn (\d+)( |$)(lz=here|tlz=here)?", self.wb[self.cl]) # First look for numeric
+      if m: # footnote start
         fnname = m.group(1)
-      else:
-        fnname = "<<Invalid footnote name; see messages>>"
-    self.eb.append("{} {}:".format(self.nregs["Footnote"], fnname))
-    self.wb[self.cl] = ".in +2"
+        self.keepFnHere = True if (m.group(3)) else False # test for lz=here and remember for .fn- processing
+      else:                       # then check for named footnote
+        m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)(lz=here|tlz=here)?", self.wb[self.cl])
+        if m:
+          fnname = m.group(1)
+          self.keepFnHere = True if (m.group(3)) else False # test for lz=here and remember for .fn- processing
+        else:
+          fnname = "<<Invalid footnote name; see messages>>"
+      self.eb.append("{} {}:".format(self.nregs["Footnote"], fnname))
+      if self.keepFnHere and not self.footnoteLzT:
+        if m.group(3).startswith("tlz"):
+          self.warn(".fn specifies tlz=here but landing zones not in effect for text output:{}".format(self.wb[self.cl]))
+        elif m.group(3).startswith("lz") and not self.footnoteLzT and not self.footnoteLzH:
+          self.warn(".fn specifies lz=here but no landing zones are in effect:{}".format(self.wb[self.cl]))
+      if self.footnoteLzT and not self.keepFnHere: # if special footnote landing zone processing in effect
+        self.footnoteStart = len(self.eb) - 1 # remember where this footnote started
+      self.wb[self.cl] = ".in +2"
 
+  # grab a complete footnote out of self.eb and save it for later
+  def grabFootnoteT(self):
+    t = [] # buffer for the footnote label and text
+    i = self.footnoteStart
+    while i < len(self.eb):
+      t.append(self.eb[i]) # grab a line then delete it
+      del self.eb[i]
+    self.fnlist.append(t) # when done, append complete list into fnlist for later use
 
   # footnote mark
   def doFmark(self):
-    self.eb.append(".RS 1")
-    self.eb.append("-----")
-    self.eb.append(".RS 1")
+    rend = True
+    lz = False
+    m = re.match(r"\.fm (.*)", self.wb[self.cl])
+    if m:
+      options = m.group(1)
+      if "norend" in options:
+        rend = False
+      if "rend=" in options:
+        options, rendvalue = self.get_id("rend", options)
+        if rendvalue == "no" or rendvalue == "norend" or not "t" in rendvalue:
+          rend = False
+      rendafter = False
+      if "rendafter=" in options:
+        options, rendaval = self.get_id("rendafter", options)
+        if rendaval.startswith("y"):
+          rendafter = True
+      if "lz=" in options:
+        options, lzvalue = self.get_id("lz", options)
+        if "t" in lzvalue:
+          lz = True
+        else:
+          rend = False  # If this .fm is a landing zone for html but not text, don't do rend for it either
+      if "=" in options:
+        self.warn("Unrecognized option in .fm command: {}".format(self.wb[self.cl]))
+    if rend and ((not lz) or (lz and len(self.fnlist))):
+      self.eb.append(".RS 1")
+      self.eb.append("-----")
+      self.eb.append(".RS 1")
+    else:
+      rend = False
+    if lz:
+      # emit saved footnotes
+      if len(self.fnlist): # make sure there's something to generate
+        for t in self.fnlist:
+          for s in t:
+            self.eb.append(s)
+        del self.fnlist[:]  # remove everything we handled
+        self.fnlist = []
+        if rend and rendafter:
+          self.eb.append(".RS 1")
+          self.eb.append("-----")
+          self.eb.append(".RS 1")
+      else:
+        self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
     self.cl += 1
 
   # Table code, text
+  # Note: tables center in a 72-character line. Should they instead center in the PPer-specified line width?
   def doTable(self):
 
     # get maximum width of specified cell by scanning all rows in table
@@ -3950,9 +4220,9 @@ class Ppt(Book):
           continue
         u = self.wb[j].split("|")
         if len(u) != ncols:
-            self.fatal("table has wrong number of columns:\n{}".format(self.wb[j]))
+            self.crash_w_context("table has wrong number of columns:{}".format(self.wb[j]), j)
         t = u[c].strip()
-        maxw = max(maxw, len(t)) # ignore lead/trail whitespace
+        maxw = max(maxw, self.truelen(t)) # ignore lead/trail whitespace and account for lang markup
         j += 1
       return maxw
 
@@ -4009,6 +4279,7 @@ class Ppt(Book):
           cwidth = getMaxWidth(i,ncols) # width
           s += "{}t:{} ".format(t0[i],cwidth)
         self.wb[self.cl] = s.strip()  # replace with widths specified
+    #self.dprint("doTable (text), specified or calculated column widths: {}".format(self.wb[self.cl]))
 
     # if vertical alignment not specified, default to "top" now
     # .ta l:6 r:22 => .ta lt:6 rt:22
@@ -4036,6 +4307,7 @@ class Ppt(Book):
       totalwidth += int(u[1]) + 1 # added space between columns
       j += 1
     totalwidth -= 1
+    #self.dprint("doTable (text), total table width not including indent: {}".format(totalwidth))
 
     # margin to center table in 72 character text field
     if totalwidth >= 72:
@@ -4045,16 +4317,17 @@ class Ppt(Book):
                   "between columns) of {} is greater than 72 characters:\n           {}".format(totalwidth+1, self.wb[self.cl]))
     else:
       tindent = (72 - totalwidth) // 2
+    #self.dprint("doTable (text), table indent: {}".format(tindent))
 
     self.eb.append(".RS 1")  # request blank line above table
 
     self.cl += 1 # move into the table rows
-    self.twrap = textwrap.TextWrapper()
+    #self.twrap = textwrap.TextWrapper()
 
     # if any cell wraps, put a vertical gap between rows
     rowspace = False
     k1 = self.cl
-    while self.wb[k1] != ".ta-":
+    while self.wb[k1] != ".ta-" and not rowspace:
 
       # lines that we don't check: centered or blank (or .bn info)
       if empty.match(self.wb[k1]) or not "|" in self.wb[k1]:
@@ -4062,8 +4335,10 @@ class Ppt(Book):
         continue
 
       t = self.wb[k1].split("|")
+      if len(t) != ncols:
+        self.crash_w_context("table has wrong number of columns:{}".format(self.wb[k1]), k1)
       for i in range(0,ncols):
-        k2 = textwrap.wrap(t[i].strip(), widths[i])
+        k2 = self.wrap_para(t[i].strip(), 0, widths[i], 0) # should handle combining characters properly
         if len(k2) > 1:
           rowspace = True
       k1 += 1
@@ -4079,17 +4354,16 @@ class Ppt(Book):
         continue
 
       # .bn info line
-      if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-        m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
-        if m and m.group(1) == "":
-          self.eb.append(self.wb[self.cl])   # copy the .bn info into the table (deleted much later during postprocessing)
-          self.cl += 1
-          continue
+      if self.bnPresent and self.is_bn_line(self.wb[self.cl]):
+        self.eb.append(self.wb[self.cl])   # copy the .bn info into the table (deleted much later during postprocessing)
+        self.cl += 1
+        continue
 
       # centered line
       # a line in source that has no vertical pipe
       if not "|" in self.wb[self.cl]:
-        self.eb.append("{:^72}".format(self.wb[self.cl]))
+        line = self.wb[self.cl].strip()
+        self.eb.append(self.truefmt("{:^72}", line))
         self.cl += 1
         continue
 
@@ -4100,9 +4374,9 @@ class Ppt(Book):
       w = [None] * ncols  # a list of lists for this row
       heights = [None] * ncols  # lines in each cell
       for i in range(0,ncols):
-        w[i] = textwrap.wrap(t[i].strip(), widths[i])
+        w[i] = self.wrap_para(t[i].strip(), 0, widths[i], 0) # should handle combining characters properly
         for j,line in enumerate(w[i]):
-          w[i][j] =line.strip()  # marginal whitespace
+          w[i][j] = line.strip()  # marginal whitespace
         heights[i] = len(w[i])
         maxheight = max(maxheight, heights[i])
 
@@ -4129,7 +4403,8 @@ class Ppt(Book):
           s = " " * tindent  # center the table
         for col in range(0,ncols):
           fmt = "{" + ":{}{}".format(haligns[col],widths[col]) + "}"
-          s += fmt.format(w[col][g])
+          line = w[col][g]
+          s += self.truefmt(fmt, line)
           if col != ncols - 1:
             s += " "  # inter-column space so "rl" isn't contingent
         self.eb.append(s)
@@ -4144,8 +4419,8 @@ class Ppt(Book):
   def doDropimage(self):
     del self.wb[self.cl] # ignore the directive in text
 
-  def doDropcap(self):
-    del self.wb[self.cl] # ignore the directive in text
+  def doDropcap(self, line): # line is always self.cl in text version
+    del self.wb[line] # ignore the directive in text
 
   def doNa(self):
     del self.wb[self.cl] # ignore the directive in text
@@ -4166,10 +4441,11 @@ class Ppt(Book):
       nlines = int(m.group(1))
       self.cl += 1
       self.eb.append(".RS 1")
+      t1 = self.regLL - self.regIN
+      xs = "{:>" + str(t1) + "}"
       while nlines > 0:
-        t1 = self.regLL - self.regIN
-        xs = "{:>" + str(t1) + "}"
-        self.eb.append(" "*self.regIN + xs.format(self.wb[self.cl].strip()))
+        line = self.wb[self.cl].strip()
+        self.eb.append(" " * self.regIN + self.truefmt(xs, line))
         self.cl += 1
         nlines -= 1
       self.eb.append(".RS 1")
@@ -4192,7 +4468,20 @@ class Ppt(Book):
     m = re.match(r"\.sn (.*)", self.wb[self.cl])
     if m:
       self.eb.append(".RS 1") # request at least one space in text before sidenote
-      self.eb.append("[{}: {}]".format(self.nregs["Sidenote"], m.group(1)))
+      t = m.group(1).split("|") # split the sidenote on | characters, if any
+      t[0] = t[0].strip()
+      header_len = len(self.nregs["Sidenote"]) + 3
+      for i in range(1, len(t)): # offset subsequent lines of the sidenote for alignment with first line of sidenote text
+          t[i] = (' ' * header_len + t[i].strip()).rstrip()
+      if len(t) > 1: # handle a multi-line sidenote
+        self.eb.append("[{}: {}".format(self.nregs["Sidenote"], t[0]))
+        t[-1] += "]"
+        self.eb.extend(t[1:])
+      else: # single, possibly long, sidenote
+        self.eb.extend(self.wrap_para("[{}: {}]".format(self.nregs["Sidenote"], t[0]), # string to wrap
+                                      header_len, # indent
+                                      self.regLL, # line length
+                                      (0 - header_len))) # ti
       self.eb.append(".RS 1") # request at least one space in text after sidenote
       self.cl += 1
     else:
@@ -4251,6 +4540,7 @@ class Ppt(Book):
     self.cl = pend
 
   def process(self):
+    self.keepFnHere = False
     self.cl = 0
     while self.cl < len(self.wb):
       if "a" in self.debug:
@@ -4261,11 +4551,9 @@ class Ppt(Book):
         continue
 
       # don't turn standalone .bn info lines into paragraphs
-      if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-        m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])  # look for standalone .bn info
-        if m and m.group(1) == "":   # and just append to eb if found
-          self.eb.append(self.wb[self.cl])
-          self.cl += 1
+      if self.bnPresent and self.is_bn_line(self.wb[self.cl]):
+        self.eb.append(self.wb[self.cl])
+        self.cl += 1
         continue
 
       # will hit either a dot directive or wrappable text
@@ -4273,6 +4561,9 @@ class Ppt(Book):
         self.doDot()
         continue
       self.doPara()
+
+    if len(self.fnlist):  # any saved footnotes that didn't have a .fm to generate them?
+      self.warn("Footnotes encountered after last \".fm lz=t\" have not been generated. Missing a .fm somewhere?")
 
   def run(self): # Text
     self.loadFile(self.srcfile)
@@ -4305,6 +4596,7 @@ class Pph(Book):
   fsz = "100%" # font size for paragraphs
   pdc = "" # pending drop cap
   igc = 1 # illustration geometry counter
+  fnlist = [] # list of footnotes
 
   def __init__(self, args, renc):
     Book.__init__(self, args, renc)
@@ -4455,6 +4747,7 @@ class Pph(Book):
     i = 0
     while i < len(self.wb):
       m = re.search("(.*?)(<p class='drop-capa.*>)(<span class='pageno'.*?>.*?</span>)(.*)$", self.wb[i])  # look for drop-cap HTML before pageno HTML
+      ### replicate for div for .nf blocks?
       if m:
         t = []
         if m.group(1):
@@ -4473,7 +4766,7 @@ class Pph(Book):
   # of letters, digits ([0-9]), hyphens ("-"), underscores ("_"), colons (":"), and periods (".").
   def checkId(self, s):
     if not re.match(r"[A-Za-z][A-Za-z0-9\-_\:\.]*", s):
-      self.warn("illegal identifier: {}".format(s))
+      self.warn_w_context("illegal identifier: {}".format(s), self.id_loc)
 
   # -------------------------------------------------------------------------------------
   # preprocess working buffer (HTML)
@@ -4663,11 +4956,9 @@ class Pph(Book):
             self.wb[i] += " pn={}".format(pnum)
             found = True
           # don't place on a .bn info line
-          if self.bnPresent and self.wb[i].startswith("⑱"):
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
-            if m and m.group(1) == "":
-              i += 1
-              continue
+          if self.bnPresent and self.is_bn_line(self.wb[i]):
+            i += 1
+            continue
           # plain text
           if self.wb[i] and not self.wb[i].startswith("."):
             self.wb[i] = "⑯{}⑰".format(pnum) + self.wb[i]
@@ -4804,6 +5095,7 @@ class Pph(Book):
     # target references
     i = 0
     while i < len(self.wb):
+      self.id_loc = i # save location for possible error message about id= value
       if "<target id" in self.wb[i]:
         m = re.search("<target id='(.*?)'>", self.wb[i])
         while m:
@@ -4835,11 +5127,9 @@ class Pph(Book):
             if self.wb[i].startswith(".nf "):
               self.crash_w_context("nested no-fill block:", i)
             # ignore .bn lines; just pass them through
-            if self.bnPresent and self.wb[i].startswith("⑱"):
-              m = re.match("^⑱.*?⑱(.*)",self.wb[i])
-              if m and m.group(1) == "":
-                i += 1
-                continue
+            if self.bnPresent and self.is_bn_line(self.wb[i]):
+              i += 1
+              continue
             # find all tags on this line; ignore <a and </a tags completely for this purpose
             tmpline = re.sub("<a [^>]*>", "", self.wb[i])
             tmpline = re.sub("</a>", "", tmpline)
@@ -5106,14 +5396,22 @@ class Pph(Book):
 
       # <sn>...</sn> becomes a span
       tmpline = self.wb[i]
-      self.wb[i], count = re.subn("<sn>", "<span class='sni'><span class='hidev'>⓫</span>", self.wb[i])
-      m = re.search(r"<sn class=([\"'])(\w*)\1>", self.wb[i])
+      m = re.search(r"<sn[^>]*>.*?</sn>", tmpline) # find sidenote contents and replace any | with <br/>
       while m:
-        self.wb[i], count2 = re.subn(re.escape(m.group(0)), "<span class='sni {}'><span class='hidev'>⓫</span>".format(m.group(2)), self.wb[i])
+        sn = m.group(0).replace('|', '<br/>')
+        self.wb[i] = re.sub(re.escape(m.group(0)), sn, self.wb[i])
+        tmpline = re.sub(re.escape(m.group(0)), "", tmpline)
+        m = re.search(r"<sn[^>]*>.*?</sn>", tmpline)
+      self.wb[i], count = re.subn("<sn>", "<span class='sni'><span class='hidev'>⓫</span>", self.wb[i]) # replace <sn>
+      m = re.search(r"<sn class=([\"'])(\w*)\1>", self.wb[i])  # replace <sn class=...>
+      while m:
+        self.wb[i], count2 = re.subn(re.escape(m.group(0)), "<span class='sni {}'><span class='hidev'>⓫</span>".format(m.group(2)),
+                                     self.wb[i])
         count += count2
         m = re.search(r"<sn class=([\"'])(\w*)\1>", self.wb[i])
-      self.wb[i] = re.sub("</sn>", "<span class='hidev'>⓫</span></span>", self.wb[i])
-      if not self.snPresent and tmpline != self.wb[i]:
+      self.wb[i] = re.sub("</sn>", "<span class='hidev'>⓫</span></span>", self.wb[i]) # replace </sn>
+      #if not self.snPresent and tmpline != self.wb[i]:
+      if count:
         self.snPresent = True
       if count and (in_nf or in_ta or in_fn):
         self.warn_w_context("Inline sidenote probably won't work well here:", i)
@@ -5121,7 +5419,7 @@ class Pph(Book):
     #
     # Handle any .sr for HTML that have the b option specified
     if self.filter_b:
-      self.dprint("processing .sr for HTML with b specified")
+      #self.dprint("processing .sr for HTML with b specified")
       for i in range(len(self.srw)):
         if ('h' in self.srw[i]) and ('b' in self.srw[i]): # if this one is for pre-processing and applies to HTML
           self.process_SR(self.wb, i)
@@ -5151,6 +5449,12 @@ class Pph(Book):
     text = re.sub("⑫", ">", text)
     text = re.sub("⑬", "[", text)
     text = re.sub("⑭", "]", text)
+
+    # unprotect temporarily protected characters from Greek strings
+    text = re.sub("⑩", "\|", text) # restore temporarily protected \| and \(space)
+    text = re.sub("⑮", "\ ", text)
+
+
     return text
 
 
@@ -5203,6 +5507,7 @@ class Pph(Book):
     # which at this point are actually using ⑲ instead of the # signs
     for i in range(len(self.wb)):
 
+      self.id_loc = i # save location for possible error message about id= value
       m = re.search(r"⑲(\d+?)⑲", self.wb[i])
       while m: # page number reference
         s = "<a href='⫉Page_{0}'>{0}</a>".format(m.group(1)) # link to it
@@ -5331,7 +5636,7 @@ class Pph(Book):
   # process saved search/replace strings, if any
   # but only if our output format matches something in the saved "which" value
   def doHTMLSr(self):
-    self.dprint("processing .sr for HTML without b specified")
+    #self.dprint("processing .sr for HTML without b specified")
     for i in range(len(self.srw)):
       if ('h' in self.srw[i]) and not ('b' in self.srw[i]): # if this one applies to HTML and was not already handled
         self.process_SR(self.wb, i)
@@ -5498,13 +5803,11 @@ class Pph(Book):
     del self.wb[self.cl] # the .h line
 
     # if we have .bn info after the .h and before the header join them together
-    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
-      if m and m.group(1) == "":
-        i = self.cl
-        if i < len(self.wb) -1:
-          self.wb[i] = self.wb[i] + self.wb[i+1]
-          del self.wb[i+1]
+    if self.bnPresent and self.is_bn_line(self.wb[self.cl]):
+      i = self.cl
+      if i < len(self.wb) - 1:
+        self.wb[i] = self.wb[i] + self.wb[i+1]
+        del self.wb[i+1]
     s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
     s = re.sub("\|", "<br />", s)
     t = []
@@ -5568,13 +5871,11 @@ class Pph(Book):
     del self.wb[self.cl] # the .h line
 
     # if we have .bn info after the .h and before the header join them together
-    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
-      if m and m.group(1) == "":
-        i = self.cl
-        if i < len(self.wb) -1:
-          self.wb[i] = self.wb[i] + self.wb[i+1]
-          del self.wb[i+1]
+    if self.bnPresent and self.is_bn_line(self.wb[self.cl]):
+      i = self.cl
+      if i < len(self.wb) - 1:
+        self.wb[i] = self.wb[i] + self.wb[i+1]
+        del self.wb[i+1]
     s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
     s = re.sub("\|", "<br />", s)
     t = []
@@ -5647,13 +5948,11 @@ class Pph(Book):
     del self.wb[self.cl] # the .h line
 
     # if we have .bn info after the .h and before the header join them together
-    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
-      if m and m.group(1) == "":
-        i = self.cl
-        if i < len(self.wb) -1:
-          self.wb[i] = self.wb[i] + self.wb[i+1]
-          del self.wb[i+1]
+    if self.bnPresent and self.is_bn_line(self.wb[self.cl]):
+      i = self.cl
+      if i < len(self.wb) -1:
+        self.wb[i] = self.wb[i] + self.wb[i+1]
+        del self.wb[i+1]
     s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
     s = re.sub("\|", "<br />", s)
     t = []
@@ -5722,13 +6021,11 @@ class Pph(Book):
     del self.wb[self.cl] # the .h line
 
     # if we have .bn info after the .h and before the header join them together
-    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
-      if m and m.group(1) == "":
-        i = self.cl
-        if i < len(self.wb) -1:
-          self.wb[i] = self.wb[i] + self.wb[i+1]
-          del self.wb[i+1]
+    if self.bnPresent and self.is_bn_line(self.wb[self.cl]):
+      i = self.cl
+      if i < len(self.wb) - 1:
+        self.wb[i] = self.wb[i] + self.wb[i+1]
+        del self.wb[i+1]
     s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
     s = re.sub("\|", "<br />", s)
     t = []
@@ -5794,13 +6091,11 @@ class Pph(Book):
     del self.wb[self.cl] # the .h line
 
     # if we have .bn info after the .h and before the header join them together
-    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
-      if m and m.group(1) == "":
-        i = self.cl
-        if i < len(self.wb) -1:
-          self.wb[i] = self.wb[i] + self.wb[i+1]
-          del self.wb[i+1]
+    if self.bnPresent and self.is_bn_line(self.wb[self.cl]):
+      i = self.cl
+      if i < len(self.wb) - 1:
+        self.wb[i] = self.wb[i] + self.wb[i+1]
+        del self.wb[i+1]
     s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
     s = re.sub("\|", "<br />", s)
     t = []
@@ -5866,13 +6161,11 @@ class Pph(Book):
     del self.wb[self.cl] # the .h line
 
     # if we have .bn info after the .h and before the header join them together
-    if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-      m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
-      if m and m.group(1) == "":
-        i = self.cl
-        if i < len(self.wb) -1:
-          self.wb[i] = self.wb[i] + self.wb[i+1]
-          del self.wb[i+1]
+    if self.bnPresent and self.is_bn_line(self.wb[self.cl]):
+      i = self.cl
+      if i < len(self.wb) - 1:
+        self.wb[i] = self.wb[i] + self.wb[i+1]
+        del self.wb[i+1]
     s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
     s = re.sub("\|", "<br />", s)
     t = []
@@ -6065,6 +6358,7 @@ class Pph(Book):
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # entry point to process illustration (HTML)
 
+    self.id_loc = self.cl # save location for possible error message about id= value
     ia = parse_illo(self.wb[self.cl]) # parse .il line
 
     caption_present = False
@@ -6312,6 +6606,8 @@ class Pph(Book):
     i = self.cl
     t = []
     t.append("")
+    nf_pdi = False
+    nf_pdc = False
 
     if self.pindent:
       t.append("<div class='nf-center-c0'>")
@@ -6334,22 +6630,38 @@ class Pph(Book):
     pending_mt = 0
     while self.wb[i] != ".nf-":
 
-      if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just leave it in the output as-is
-        m = re.match("^⑱.*?⑱(.*)",self.wb[i])
-        if m and m.group(1) == "":
-          i += 1
-          continue
+      if self.bnPresent and self.is_bn_line(self.wb[i]):  # if this line is bn info then just leave it in the output as-is
+        i += 1
+        continue
+
+      if self.wb[i].startswith(".dc"):
+        self.warn(".dc not supported within .nf c block: {}".format(self.wb[i]))
+        del self.wb[i]
+        continue
+
+      if self.wb[i].startswith(".di"):
+        self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
+        del self.wb[i]
+        continue
 
       if "" == self.wb[i]:
         pending_mt += 1
         i += 1
         continue
       if pending_mt > 0:
-        t.append("    <div style='margin-top:{}em'>".format(pending_mt) + self.wb[i].strip() + "</div>")
+        if nf_pdc:
+          nf_pdc = False
+          t.append("    <div  class='{}' style='margin-top:{}em'>".format(self.pdc, pending_mt) + self.wb[i].strip() + "</div>")
+        else:
+          t.append("    <div style='margin-top:{}em'>".format(pending_mt) + self.wb[i].strip() + "</div>")
         printable_lines_in_block += 1
         pending_mt = 0
       else:
-        t.append("    <div>" + self.wb[i].strip() + "</div>")
+        if nf_pdc:
+          nf_pdc = False
+          t.append("    <div  class='{}'>".format(self.pdc) + self.wb[i].strip() + "</div>")
+        else:
+          t.append("    <div>" + self.wb[i].strip() + "</div>")
         printable_lines_in_block += 1
       i += 1
     # at block end.
@@ -6375,6 +6687,8 @@ class Pph(Book):
   # in epub/mobi, the @media handheld ... (explain....)
   def doNfb(self, nft, mo):
     # any poetry triggers the same CSS
+    nf_pdc = False
+    nf_pdi = False
     if 'b' == nft:
       self.css.addcss("[1215] .lg-container-b { text-align: center; }")  # alignment of entire block
       self.css.addcss("[1216] @media handheld { .lg-container-b { clear: both; }}")
@@ -6403,16 +6717,12 @@ class Pph(Book):
     i = self.cl
     t = []
 
-    closing = ""
     if 'b' == nft:
       t.append("<div class='lg-container-b'{}>".format(ssty))
-      closing = ".nf-"
-    if 'l' == nft:
+    elif 'l' == nft:
       t.append("<div class='lg-container-l'{}>".format(ssty))
-      closing = ".nf-"
-    if 'r' == nft:
+    elif 'r' == nft:
       t.append("<div class='lg-container-r'{}>".format(ssty))
-      closing = ".nf-"
     t.append("  <div class='linegroup'>")
     if mo:
       t.append("    <div class='group0'>")
@@ -6422,53 +6732,78 @@ class Pph(Book):
     i += 1
     cpvs = 0
     printable_lines_in_block = 0
-    while self.wb[i] != closing:
+    while self.wb[i] != ".nf-":
 
       # if this line is just bn info then just leave it in the output as-is
-      if self.bnPresent and self.wb[i].startswith("⑱"):
-        m = re.match("^⑱.*?⑱(.*)",self.wb[i])
-        if m and m.group(1)=="":
-          i += 1
-          continue
+      if self.bnPresent and self.is_bn_line(self.wb[i]):
+        i += 1
+        continue
 
-      # a centered line inside a no-fill block
+      # a centered line inside a no-fill block (Note: support for drop-cap not implemented here)
       m = re.match(r"\.ce (\d+)", self.wb[i])
       if m:
         count = int(m.group(1))
         i += 1 # skip the .ce
         while count > 0 and i < len(self.wb):
-          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just leave it in the output as-is
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
-            if m and m.group(1) == "":
-              i += 1
-              continue
+          if self.bnPresent and self.is_bn_line(self.wb[i]):  # if this line is bn info then just leave it in the output as-is
+            i += 1
+            continue
           pst = "text-align: center;"
-          t.append("    <div style='{}'>{}</div>".format(pst, self.wb[i]))
+          if cpvs > 1:
+            spvs = " margin-top:{}em; ".format(cpvs)
+          else:
+            spvs = ""
+          cpvs = 0;
+          if self.wb[i].startswith(".dc"):
+            self.warn(".dc not supported on centered line within .nf block: {}".format(self.wb[i]))
+          elif self.wb[i].startswith(".di"):
+            self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
+          else:
+            t.append("    <div style='{}{}'>{}</div>".format(pst, spvs, self.wb[i]))
           i += 1
           count -= 1
         continue
 
-      # a right-justified line inside a no-fill block
+      # a right-justified line inside a no-fill block (Note: support for drop-cap not implemented here)
       m = re.match(r"\.rj (\d+)", self.wb[i])
       if m:
         count = int(m.group(1))
         i += 1 # skip the .rj
         while count > 0:
-          if self.bnPresent and self.wb[i].startswith("⑱"):  # if this line is bn info then just leave it in the output as-is
-            m = re.match("^⑱.*?⑱(.*)",self.wb[i])
-            if m and m.group(1) == "":
-              i += 1
-              continue
+          if self.bnPresent and self.is_bn_line(self.wb[i]):  # if this line is bn info then just leave it in the output as-is
+            i += 1
+            continue
           pst = "text-align: right;"
-          t.append("    <div style='{}'>{}</div>".format(pst, self.wb[i]))
+          if cpvs > 1:
+            spvs = " margin-top:{}em; ".format(cpvs)
+          else:
+            spvs = ""
+          cpvs = 0;
+          if self.wb[i].startswith(".dc"):
+            self.warn(".dc not supported on right-justified line within .nf block: {}".format(self.wb[i]))
+          elif self.wb[i].startswith(".di"):
+            self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
+          else:
+            t.append("    <div style='{}{}'>{}</div>".format(pst, spvs, self.wb[i]))
           i += 1
           count -= 1
+        continue
+
+      if self.wb[i].startswith(".dc"):
+        nf_pdc = True
+        self.doDropcap(i, type="nf")
+        continue
+
+      if self.wb[i].startswith(".di"):
+        self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
+        del self.wb[i]
         continue
 
       if self.wb[i] == "":
         if cpvs == 0:
           t.append("    </div>")
           t.append("    <div class='group'>")
+          cpvs += 1
         else:
           cpvs += 1
       else:
@@ -6482,19 +6817,29 @@ class Pph(Book):
           tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp, 1)
           m = re.match(r"^<[^>]+>|⑯\w+⑰", tmp)
         leadsp = len(tmp) - len(tmp.lstrip())
-        if cpvs > 0:
+        if cpvs > 1:
           spvs = " style='margin-top:{}em' ".format(cpvs)
         else:
           spvs = ""
-        if leadsp > 0:
-          # create an indent class
-          iclass = "in{}".format(leadsp)
-          iamt = str(-3 + leadsp/2) # calculate based on -3 base
+        if leadsp > 0: # (Note: support for drop-cap not fully implemented for indented lines)
+          if nf_pdc:
+            self.warn("drop-cap may not work well on indented line in .nf block: {}".format(ss+tmp))
+            nf_pdc = False
+            iclass = "in{}dc".format(leadsp)  # create an indent class
+            iamt = "0"
+            t.append("      <div class='linedc {0} {1}' {2}>{3}</div>".format(iclass, self.pdc, spvs, ss+tmp.lstrip()))
+          else:
+            iclass = "in{}".format(leadsp)  # create an indent class
+            iamt = str(-3 + leadsp/2) # calculate based on -3 base
+            t.append("      <div class='line {0}' {1}>{2}</div>".format(iclass, spvs, ss+tmp.lstrip()))
           self.css.addcss("[1227] .linegroup .{} {{ text-indent: {}em; }}".format(iclass, iamt))
-          t.append("      <div class='line {0}' {1}>{2}</div>".format(iclass, spvs, ss+tmp.lstrip()))
           printable_lines_in_block += 1
         else:
-          t.append("      <div class='line' {0}>{1}</div>".format(spvs, ss+tmp))
+          if nf_pdc:
+            nf_pdc = False
+            t.append("    <div  class='linedc {0}' {1}>{2}</div>".format(self.pdc, spvs, ss+tmp))
+          else:
+            t.append("      <div class='line' {0}>{1}</div>".format(spvs, ss+tmp))
           printable_lines_in_block += 1
         cpvs = 0  # reset pending vertical space
       i += 1
@@ -6504,7 +6849,7 @@ class Pph(Book):
         self.fatal("empty .nf block")
 
     # there may be a pending mt at the block end.
-    if cpvs > 0:
+    if cpvs > 1:
       if "style='" in t[-1]:
         t[-1] = re.sub(r"style='", "style='margin-bottom:{}em; ".format(cpvs), t[-1])
       else:
@@ -6521,7 +6866,7 @@ class Pph(Book):
 
   # .nf no-fill blocks, all types
   def doNf(self):
-    m = re.match(r"\.nf-", self.wb[self.cl])
+    m = re.match(r"\.nf-", self.wb[self.cl]) ### this can't happen, can it?  Also, HTML processing doesn't verify .nf- occurs
     if m:
       self.crash_w_context("attempting to close an unopened block with {}".format(self.wb[self.cl]),self.cl)
     nf_handled = False
@@ -6544,8 +6889,54 @@ class Pph(Book):
 
   # .fm footnote mark
   def doFmark(self):
-    self.wb[self.cl] = "<hr style='border:none; border-bottom:1px solid; width:10%; margin-left:0; margin-top:1em; text-align:left;' />"
-    self.cl += 1
+    rend = True
+    lz = False
+    m = re.match(r"\.fm (.*)", self.wb[self.cl])
+    if m:
+      options = m.group(1)
+      if "norend" in options:
+        rend = False
+      if "rend=" in options:
+        options, rendvalue = self.get_id("rend", options)
+        if rendvalue == "no" or rendvalue == "norend" or not "h" in rendvalue:
+          rend = False
+      rendafter = False
+      if "rendafter=" in options:
+        options, rendaval = self.get_id("rendafter", options)
+        if rendaval.startswith("y"):
+          rendafter = True
+      if "lz=" in options:
+        options, lzvalue = self.get_id("lz", options)
+        if "h" in lzvalue:
+          lz = True
+        else:
+          rend = False  # If this .fm is a landing zone for text but not html, don't do rend for it either
+      if "=" in options:
+        self.warn("Unrecognized option in .fm command: {}".format(self.wb[self.cl]))
+    if rend and ((not lz) or (lz and len(self.fnlist))):
+      self.wb[self.cl] = "<hr style='border:none; border-bottom:1px solid; width:10%; margin-left:0; margin-top:1em; text-align:left;' />"
+      self.cl += 1
+    else:
+      rend = False
+      del self.wb[self.cl]
+    if lz:
+      # emit saved footnotes
+      if len(self.fnlist): # make sure there's something to generate
+        for t in self.fnlist:
+          for s in t:
+            if self.cl < len(self.wb):
+              self.wb.insert(self.cl, s)
+            else:
+              self.wb.append(s)
+            self.cl += 1
+        del self.fnlist[:]  # remove everything we handled
+        self.fnlist = []
+        if rend and rendafter:
+          self.wb.append("<hr style='border:none; border-bottom:1px solid; width:10%; margin-left:0; margin-top:1em; text-align:left;' />")
+          self.cl += 1
+      else:
+        self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
+
 
   # .fn footnote
   # here on footnote start or end
@@ -6559,17 +6950,26 @@ class Pph(Book):
     if m: # footnote ends
       self.wb[self.cl] = "</div>"
       self.cl += 1
+      if self.footnoteLzH and not self.keepFnHere: # if special footnote landing zone in effect and not disabled for this footnote
+        self.grabFootnoteH()
       return
 
-    m = re.match(r"\.fn (\d+)( |$)", self.wb[self.cl]) # First try numeric footnote
+    m = re.match(r"\.fn (\d+)( |$)(lz=here|hlz=here)?", self.wb[self.cl]) # First try numeric footnote
     if m: # footnote start
       fnname = m.group(1)
+      self.keepFnHere = True if (m.group(3)) else False # test for lz=here and remember for .fn- processing
     else:
-      m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)", self.wb[self.cl]) # then named
+      m = re.match(r"\.fn ([A-Za-z0-9\-_\:\.]+)( |$)(lz=here|hlz=here)?", self.wb[self.cl]) # then named
       if m:
         fnname = m.group(1)
+        self.keepFnHere = True if (m.group(3)) else False # test for lz=here and remember for .fn- processing
       else:
         fnname = "<<Invalid footnote name; see messages>>"
+    if self.keepFnHere and not self.footnoteLzH:
+      if m.group(3).startswith("hlz"):
+        self.warn(".fn specifies hlz=here but landing zones not in effect for HTML output:{}".format(self.wb[self.cl]))
+      elif m.group(3).startswith("lz") and not self.footnoteLzT and not self.footnoteLzH:
+        self.warn(".fn specifies lz=here but no landing zones are in effect:{}".format(self.wb[self.cl]))
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     if self.pindent: # indented paragraphs
@@ -6583,6 +6983,8 @@ class Pph(Book):
       self.css.addcss("[1431] div.footnote>:first-child { margin-top:1em; }")
       self.css.addcss("[1432] div.footnote p {{ text-indent:1em;margin-top:{0}em;margin-bottom:{1}em; }}".format(s2,s2))
       self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
+      if self.footnoteLzH: # if special footnote landing zone processing in effect
+        self.footnoteStart = self.cl # remember where this footnote started
       self.cl += 1
       # self.wb[self.cl] = "<a href='#r{0}'>[{0}]</a> {1}".format(fnname, self.wb[self.cl])
       self.wb[self.cl] = "<a href='#r{0}'>{0}</a>. {1}".format(fnname, self.wb[self.cl])
@@ -6606,9 +7008,22 @@ class Pph(Book):
         self.wb[self.cl] = "<div class='footnote' id='f{}' style='{}'>".format(fnname, hcss)
       else:
         self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
+      if self.footnoteLzH: # if special footnote landing zone processing in effect
+        self.footnoteStart = self.cl # remember where this footnote started
       s = "<span class='label'><a href='#r{0}'>{0}</a>.&nbsp;&nbsp;</span>".format(fnname)
       self.cl += 1
       self.wb[self.cl] = s + self.wb[self.cl]
+
+  # grab a complete footnote out of self.wb and save it for later
+  def grabFootnoteH(self):
+    t = [] # buffer for the footnote label and text
+    i = self.footnoteStart
+    while i < self.cl:
+      t.append(self.wb[i]) # grab a line then delete it
+      del self.wb[i]
+      self.cl -= 1
+    self.fnlist.append(t) # when done, append complete list into fnlist for later use
+    #self.cl = i
 
 
   # tables .ta r:5 l:20 r:5 or .ta rlr
@@ -6633,9 +7048,9 @@ class Pph(Book):
           continue
         u = self.wb[j].split("|")
         if len(u) != ncols:
-            self.fatal("table has wrong number of columns:\n{}".format(self.wb[j]))
+            self.crash_w_context("table has wrong number of columns:{}".format(self.wb[j]), j)
         t = re.sub(r"<.*?>", "", u[c].strip())  # adjust column width for inline tags
-        maxw = max(maxw, len(t))
+        maxw = max(maxw, self.truelen(t))
         j += 1
       return maxw
 
@@ -6803,12 +7218,10 @@ class Pph(Book):
     while self.wb[self.cl] != ".ta-":
 
       # see if .bn info line
-      if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-        m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])
-        if m and m.group(1) == "":
-          t.append(self.wb[self.cl])   # copy the .bn info into the table (deleted much later during postprocessing)
-          self.cl += 1
-          continue
+      if self.bnPresent and self.is_bn_line(self.wb[self.cl]):
+        t.append(self.wb[self.cl])   # copy the .bn info into the table (deleted much later during postprocessing)
+        self.cl += 1
+        continue
 
       # see if blank line
       if "" == self.wb[self.cl]:
@@ -6832,6 +7245,8 @@ class Pph(Book):
         self.wb[self.cl] = re.sub(m.group(1), "", self.wb[self.cl])
 
       v = self.wb[self.cl].split('|') #
+      if len(v) != ncols:
+        self.crash_w_context("table has wrong number of columns:{}".format(self.wb[self.cl]), self.cl)
       t.append("  <tr>")
       # iterate over the td elements
       for k,data in enumerate(v):
@@ -6857,30 +7272,26 @@ class Pph(Book):
     self.wb[startloc:self.cl+1] = t
     self.cl = startloc + len(t)
 
-  # Drop Image
-  # two formats:
-  #   .di i_b_009.jpg 100 170 1.3 (width, height, adjust specified)
-  #   .di i_b_009.jpg 100 1.3 (width, adjust specified)
-  def doDropimage(self):
-    m = re.match(r"\.di (\S+) (\d+) (\S+)$",self.wb[self.cl])
+  # Guts of doDropimage
+  # (split out during development of drop caps for .nf blocks)
+  def doDropimageGuts(self, line, type="p"):
+    di={}
+    m = re.match(r"\.di (\S+) (\d+) (\S+)$",self.wb[line]) # 3 argument version: image, width, adjust
     if m:
-      d_image = m.group(1)
-      d_width = m.group(2)
-      d_height = ""
+      di["d_image"] = m.group(1)
+      di["d_width"] = m.group(2)
+      di["d_height"] = ""
       d_adj = m.group(3)
     else:
       m = re.match(r"\.di (\S+) (\d+) (\d+) (\S+)$",self.wb[self.cl])
       if m:
-        d_image = m.group(1)
-        d_width = m.group(2)
-        d_height = m.group(3)
+        di["d_image"] = m.group(1)
+        di["d_width"] = m.group(2)
+        di["d_height"] = m.group(3)
         d_adj = m.group(4)
       else:
-        self.crash_w_context("malformed .di directive", self.cl)
-
-    self.warn("CSS3 drop-cap. Please note in upload.")
-    self.css.addcss("[1920] img.drop-capi { float:left;margin:0 0.5em 0 0;position:relative;z-index:1; }")
-    s_adj = re.sub(r"\.","_", str(d_adj))
+        self.crash_w_context("malformed drop image directive", line)
+    di["s_adj"] = re.sub(r"\.","_", str(d_adj))
     if self.pindent:
       s0 = re.sub("em", "", self.nregs["psi"]) # drop the "em"
     else:
@@ -6889,26 +7300,43 @@ class Pph(Book):
     s2 = (s1//2)/100 # forces one decimal place
     mtop = s2
     mbot = mtop
-    self.css.addcss("[1921] p.drop-capi{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(s_adj,mtop,mbot))
-    self.css.addcss("[1922] p.drop-capi{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(s_adj,d_adj))
+    self.css.addcss("[1920] img.drop-capi { float:left;margin:0 0.5em 0 0;position:relative;z-index:1; }")
+    if type == "p":
+      self.css.addcss("[1921] p.drop-capi{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(di["s_adj"],mtop,mbot))
+      self.css.addcss("[1922] p.drop-capi{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(di["s_adj"],d_adj))
+      self.css.addcss("[1923] @media handheld {")
+      self.css.addcss("[1924]   img.drop-capi { display:none; visibility:hidden; }")
+      self.css.addcss("[1925]   p.drop-capi{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(di["s_adj"]))
+      self.css.addcss("[1926] }")
+    else:
+      self.css.addcss("[1941] div.drop-capinf{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(di["s_adj"],mtop,mbot))
+      self.css.addcss("[1942] div.drop-capinf{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(di["s_adj"],d_adj))
+      self.css.addcss("[1943] @media handheld {")
+      self.css.addcss("[1944]   img.drop-capinf { display:none; visibility:hidden; }")
+      self.css.addcss("[1945]   div.drop-capinf{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(di["s_adj"]))
+      self.css.addcss("[1946] }")
+    self.warn("CSS3 drop-cap. Please note in upload.")
+    return di
 
-    self.css.addcss("[1923] @media handheld {")
-    self.css.addcss("[1924]   img.drop-capi { display:none; visibility:hidden; }")
-    self.css.addcss("[1925]   p.drop-capi{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(s_adj))
-    self.css.addcss("[1926] }")
+  # Drop Image
+  # two formats:
+  #   .di i_b_009.jpg 100 170 1.3 (width, height, adjust specified)
+  #   .di i_b_009.jpg 100 1.3 (width, adjust specified)
+  def doDropimage(self):
 
+    di = self.doDropimageGuts(self.cl)
     t = []
     t.append("<div>")
-    if d_height == "":
-      t.append("  <img class='drop-capi' src='images/{}' width='{}' alt='' />".format(d_image,d_width))
+    if di["d_height"] == "":
+      t.append("  <img class='drop-capi' src='images/{}' width='{}' alt='' />".format(di["d_image"],di["d_width"]))
     else:
-      t.append("  <img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(d_image,d_width,d_height))
-    t.append("</div><p class='drop-capi{}'>".format(s_adj))
+      t.append("  <img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"]))
+    t.append("</div><p class='drop-capi{}'>".format(di["s_adj"]))
     self.wb[self.cl:self.cl+1] = t
 
   # Drop Cap. a single, capital letter
-  def doDropcap(self):
-    m = re.match(r"\.dc (.*?)\s(.*)", self.wb[self.cl]) # optional adjust
+  def doDropcap(self, line, type="p"):
+    m = re.match(r"\.dc (.*?)\s(.*)", self.wb[line]) # optional adjust
     dcadjs = ""
     dcadj = 0
     if m:
@@ -6919,15 +7347,24 @@ class Pph(Book):
       mt = (250.0 / float(re.sub("%","",self.nregs["dcs"]))) * 0.1
       mr = (250.0 / float(re.sub("%","",self.nregs["dcs"]))) * 0.1
     else:
-      self.fatal("incorrect format for .dc arg1 arg2 command")
-    self.css.addcss("[1930] p.drop-capa{} {{ text-indent:-{}em; }}".format(dcadjs,dcadj))
-    self.css.addcss("[1931] p.drop-capa{}:first-letter {{ float:left;margin:{:0.3f}em {:0.3f}em 0em 0em;font-size:{};line-height:{}em;text-indent:0 }}".format(dcadjs,mt,mr,self.nregs["dcs"],dclh))
-    self.css.addcss("[1933] @media handheld {")
-    self.css.addcss("[1935]   p.drop-capa{} {{ text-indent:0 }}".format(dcadjs))
-    self.css.addcss("[1936]   p.drop-capa{}:first-letter {{ float:none;margin:0;font-size:100%; }}".format(dcadjs))
-    self.css.addcss("[1937] }")
-    self.pdc = "drop-capa{}".format(dcadjs)
-    del self.wb[self.cl]
+      self.crash_w_context("incorrect format for .dc arg1 arg2 command", line)
+    if type == "p":
+      self.css.addcss("[1930] p.drop-capa{} {{ text-indent:-{}em; }}".format(dcadjs,dcadj))
+      self.css.addcss("[1931] p.drop-capa{}:first-letter {{ float:left;margin:{:0.3f}em {:0.3f}em 0em 0em;font-size:{};line-height:{}em;text-indent:0 }}".format(dcadjs,mt,mr,self.nregs["dcs"],dclh))
+      self.css.addcss("[1933] @media handheld {")
+      self.css.addcss("[1935]   p.drop-capa{} {{ text-indent:0 }}".format(dcadjs))
+      self.css.addcss("[1936]   p.drop-capa{}:first-letter {{ float:none;margin:0;font-size:100%; }}".format(dcadjs))
+      self.css.addcss("[1937] }")
+      self.pdc = "drop-capa{}".format(dcadjs)
+    else:
+      self.css.addcss("[1950] div.drop-capanf{} {{ text-indent:-{}em; }}".format(dcadjs,dcadj))
+      self.css.addcss("[1951] div.drop-capanf{}:first-letter {{ float:left;margin:{:0.3f}em {:0.3f}em 0em 0em;font-size:{};line-height:{}em;text-indent:0 }}".format(dcadjs,mt,mr,self.nregs["dcs"],dclh))
+      self.css.addcss("[1953] @media handheld {")
+      self.css.addcss("[1955]   div.drop-capanf{} {{ text-indent:0 }}".format(dcadjs))
+      self.css.addcss("[1956]   div.drop-capanf{}:first-letter {{ float:none;margin:0;font-size:100%; }}".format(dcadjs))
+      self.css.addcss("[1957] }")
+      self.pdc = "drop-capanf{}".format(dcadjs)
+    del self.wb[line]
 
   # no adjust
   def doNa(self):
@@ -7070,11 +7507,15 @@ class Pph(Book):
     self.snPresent = True  # remember we have sidenotes
     m = re.match(r"\.sn (.*)", self.wb[self.cl])
     if m:
+      t = m.group(1).split("|") # split sidenote on | characters if any
+      for i in range(len(t)):
+        t[i] = t[i].strip()
+      t = "<br/>".join(t)
       if self.pvs > 0: # handle any pending vertical space before the .sn
-        self.wb[self.cl] = "<div class='sidenote' style='margin-top: {}em;'>{}</div>".format(self.pvs, m.group(1))
+        self.wb[self.cl] = "<div class='sidenote' style='margin-top: {}em;'>{}</div>".format(self.pvs, t)
         self.pvs = 0
       else:
-        self.wb[self.cl] = "<div class='sidenote'>{}</div>".format(m.group(1))
+        self.wb[self.cl] = "<div class='sidenote'>{}</div>".format(t)
       self.cl += 1
     else:
       self.crash_w_context("malformed .sn directive", self.cl)
@@ -7141,11 +7582,8 @@ class Pph(Book):
     i = self.cl - 1
     # if para ended with .bn info, place the </p> before it, not after it to avoid extra
     # blank lines after we remove the .bn info later
-    if self.bnPresent and self.wb[i].startswith("⑱"):
-      m = re.match("^⑱.*?⑱(.*)",self.wb[i])
-      while m and m.group(1) == "":
-        i -= 1
-        m = re.match("^⑱.*?⑱(.*)",self.wb[i])
+    while self.bnPresent and self.is_bn_line(self.wb[i]):
+      i -= 1
     self.wb[i] = self.wb[i] + "</p>"
 
     self.regTI = 0 # any temporary indent has been used.
@@ -7214,6 +7652,7 @@ class Pph(Book):
 
   def process(self):
 
+    self.keepFnHere = False
     self.cl = 0
     while self.cl < len(self.wb):
       if "a" in self.debug:
@@ -7234,13 +7673,14 @@ class Pph(Book):
         continue
 
       # don't turn standalone .bn info lines into paragraphs
-      if self.bnPresent and self.wb[self.cl].startswith("⑱"):
-        m = re.match("^⑱.*?⑱(.*)",self.wb[self.cl])  # look for standalone .bn info
-        if m and m.group(1) == "":   # and skip over it if found
-          self.cl += 1
+      if self.bnPresent and self.is_bn_line(self.wb[self.cl]):
+        self.cl += 1
         continue
 
       self.doPara() # it's a paragraph to wrap
+
+    if len(self.fnlist):  # any saved footnotes that didn't have a .fm to generate them?
+      self.warn("Footnotes encountered after last \".fm lz=h\" have not been generated. Missing a .fm somewhere?")
 
   def makeHTML(self):
     self.doHeader()
@@ -7271,14 +7711,15 @@ class Pph(Book):
 # debug options:
 # 'd' enables dprint, 's' retains runtime-generated styles,
 # 'a' shows lines as they are processed, 'p' shows architecture
+# 'r' shows regex results for .sr, 'l' provides detailed logging for Greek conversions
 
 def main():
   # process command line
   parser = argparse.ArgumentParser(description='ppgen generator')
   parser.add_argument('-i', '--infile', help='UTF-8 or Latin-1 input file')
   parser.add_argument('-l', '--log', help="display Latin-1, diacritic, and Greek conversion logs", action="store_true")
-  parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r)') # r = report regex results
-  parser.add_argument('-o', '--output_format', default="ht", help='output format (HTML:h, text:t, u or l)')
+  parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r,l)')
+  parser.add_argument('-o', '--output_format', default="hu", help='output format (HTML:h, text:t, u or l)')
   parser.add_argument('-a', '--anonymous', action='store_true', help='do not identify version/timestamp in HTML')
   parser.add_argument("-v", "--version", help="display version and exit", action="store_true")
   parser.add_argument("-cvg", "--listcvg", help="list Greek and diacritic table to file ppgen-cvglist.txt and exit", action="store_true")
@@ -7307,15 +7748,18 @@ def main():
     ppt = Ppt(args, "l")
     ppt.run()
 
+
   # UTF-8 only
   if 'u' in args.output_format:
     ppt = Ppt(args, "U")  # if PPer explicitly asked for utf-8 always create it, even if input is encoded in Latin-1 or ASCII
     ppt.run()
 
+
   # Latin-1 only
   if 'l' in args.output_format:
    ppt = Ppt(args, "l")
    ppt.run()
+
 
   if 'h' in args.output_format:
     print("creating HTML version")
