@@ -22,11 +22,11 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.48l"    # 3-Apr-2015
-# Further adjustment of Greek stigma processing. Stigma is now either {st} or {St} or {ST} to allow
-#   proper processing of the much more common case where st means sigma tau not stigma.
-# When keeping original Greek, remove extraneous space we were adding before or after the original.
-# When scanning for Greek allow [Greek:text] with no space after the colon.
+VERSION="3.48m"    # 4-Apr-2015
+# Protect \| and \(space) in all [Greek: ...] strings whether we're doing Greek processing or not,
+#   so they will pass through into the output transparently instead of being lost
+# Detect .li- outside of .li block and fail the run.
+# When wrapping text, remove any consecutive space characters (e.g., '  ' becomes ' ')
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1986,9 +1986,19 @@ class Book(object):
             self.gk_user.append((gkin, gkout))
           continue
         i += 1
-      if self.gk_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
+      #if self.gk_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
+      if self.renc == "u" or self.renc == "h" or self.cvgfilter:
         text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
-        text = re.sub(r"\[Greek: ?(.*?)]", gkrepl, text, flags=re.DOTALL)
+        if self.gk_requested:
+          text = re.sub(r"\[Greek: ?(.*?)]", gkrepl, text, flags=re.DOTALL)
+        # even if Greek processing not requested, [Greek: ...] strings could have \| and \(space) 
+        # characters we need to protect
+        count = 1
+        while count:
+          text, count = re.subn(r"(\[Greek:.*?)\\\|(.*?\])", r"\1⑩\2", text, flags=re.DOTALL)
+        count = 1
+        while count:
+          text, count = re.subn(r"(\[Greek:.*?)\\ (.*?\])", r"\1⑮\2", text, flags=re.DOTALL)
 
         self.wb = text.splitlines()
         text = ""
@@ -2971,6 +2981,8 @@ class Ppt(Book):
   def wrap(self, s,  indent=0, ll=72, ti=0):
     ta = [] # list of paragraph (lists)
     ts = [] # paragraph stats
+    while '  ' in s:   # squash any repeated spaces
+      s = s.replace('  ', ' ')
     for i in range(0, -8, -2):
       t = self.wrap_para(s, indent, ll+i, ti)
       ta.append(t)
@@ -3325,6 +3337,10 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("◺", "_{")
       self.eb[i] = self.eb[i].replace("◿", "}")
 
+      # unprotect temporarily protected characters from Greek strings
+      self.eb[i] = self.eb[i].replace("⑩", r"\|") # restore temporarily protected \| and \(space)
+      self.eb[i] = self.eb[i].replace("⑮", r"\ ")
+
       if self.renc == 'u':
         if "[oe]" in self.eb[i]:
           self.warn("unconverted [oe] ligature written to UTF-8 file.")
@@ -3472,14 +3488,19 @@ class Ppt(Book):
 
   # .li literal block (pass-through)
   def doLit(self):
-    self.cl += 1 # skip the .li
-    while (self.cl < len(self.wb)) and self.wb[self.cl] != ".li-":
-      self.eb.append(self.wb[self.cl])
-      self.cl += 1
-    if self.cl < len(self.wb):
-      self.cl += 1 # skip the .li-
+    if self.wb[self.cl] == ".li":
+      self.cl += 1 # skip the .li
+      while (self.cl < len(self.wb)) and self.wb[self.cl] != ".li-":
+        self.eb.append(self.wb[self.cl])
+        self.cl += 1
+      if self.cl < len(self.wb):
+        self.cl += 1 # skip the .li-
+      else:
+        self.crash_w_context("unclosed .li", self.cl)
+    elif self.wb[self.cl] == ".li-":
+      self.crash_w_context(".li- occurred with no preceding .li", self.cl)
     else:
-      self.crash_w_context("unclosed .li", self.cl)
+      self.crash_w_context("Malformed .li directive", self.cl)
 
   # .pb page break
   def doPb(self):
@@ -3621,7 +3642,6 @@ class Ppt(Book):
             self.eb.append("")
             i = self.cl        # remember where we started
             while (self.cl < len(self.wb)) and not (self.wb[self.cl]).startswith(".ca-"):
-              #self.wb[self.cl] = re.sub(r"</?lang[^>]*>", "", self.wb[self.cl]) # remove any language tagging
               s = self.wb[self.cl]
               t = self.wrap(s, 4, self.regLL, -2)
               self.eb += t
@@ -5429,6 +5449,12 @@ class Pph(Book):
     text = re.sub("⑫", ">", text)
     text = re.sub("⑬", "[", text)
     text = re.sub("⑭", "]", text)
+
+    # unprotect temporarily protected characters from Greek strings
+    text = re.sub("⑩", "\|", text) # restore temporarily protected \| and \(space)
+    text = re.sub("⑮", "\ ", text)
+
+
     return text
 
 
