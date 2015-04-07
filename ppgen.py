@@ -22,8 +22,9 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.49"    # 4-Apr-2015
-# Roll 3.48m into production.
+VERSION="3.49b"    # 7-Apr-2015
+# Add a backtracking paragraph rewrapping algorithm to try to recover from 
+#   short-line situations, especially with chapter summaries
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -2905,8 +2906,14 @@ class Ppt(Book):
     return shortest_line_len
 
   # wrap string into paragraph in t[]
-  def wrap_para(self, s,  indent, ll, ti):
+  def wrap_para(self, s,  indent, ll, ti, perturb=False):
     # if ti < 0, strip off characters that will be in the hanging margin
+    # peturb is usually False, but during paragraph rewrapping may be set to True
+    # if wrap() discovered that all lines wrapped shorter than 55. In that case
+    # wrap() will call wrap_para() again specifying perturb=True. This will cause
+    # wrap_para() to monitor the line length, and if a line is less than 55
+    # it will backtrack, trying to remove a word from a prior line to increase the
+    # length of this one, repeating as necessary.
     hold = ""
     if ti < 0:
       howmany = -1 * ti
@@ -2936,6 +2943,7 @@ class Ppt(Book):
     # at this point, s is ready to wrap
     mywidth = ll - indent
     t = []
+    perturb_limit = -1   # index of earliest line we can try to perturb 
     twidth = mywidth
     true_len_s = self.truelen(s)
     while true_len_s > twidth:
@@ -2957,13 +2965,59 @@ class Ppt(Book):
             snip_at = s.index(" ") # Plan B: snip at any blank, even if line is wide
           except:
             snip_at = len(s) # Plan C: leave the line wide
-        t.append(s[:snip_at])
-        if snip_at < true_len_s:
-          s = s[snip_at+1:]
-        else:
-          s = ""
-        true_len_s = self.truelen(s)
-        twidth = mywidth
+        if not perturb or (snip_at + indent) >= 55 or not t: # for normal processing:
+                                                  #   Not perturbing, line long enough, or first line
+          t.append(s[:snip_at])
+          if snip_at < true_len_s:
+            s = s[snip_at+1:]
+          else:
+            s = ""
+          true_len_s = self.truelen(s)
+          twidth = mywidth
+        else:          # here only if wrap() wanted us to try to avoid short lines, 
+                       # this line is short, and it's not the first line (which we can't fix)
+          savet = t[:]    # save t, s in case need to restore them
+          saves = s
+          while len(t) > perturb_limit: # While t has data and is long enough to try perturbing
+            try:
+              snip2 = t[-1].rindex(' ') # any place to remove a word on the last line of t?
+              if snip2 + indent >= 55:  # if yes, and it would leave that line long enough
+                s = t[-1][snip2+1:] + ' ' + s # move last word of the last line of t to front of s
+                t[-1] = t[-1][:snip2]
+                true_len_s = self.truelen(s)
+                twidth = mywidth
+                break
+              elif len(t) > 1:          # can't perturb last line; try further back
+                s = t.pop() + ' ' + s   # first add last line back to s
+                continue
+              else:                     # perturbing failed; leave this line short
+                perturb = False
+                break
+            except ValueError:           # no blanks on last saved line; perturbing needs to go back
+                                         # an additional line if possible
+              if len(t) > 2:             # can we backup meaningfully? (if t[-1] has no blanks, and t[-2] is
+                                         # the first line, it doesn't make any sense to try perturbing further
+                                         # as it can't help. Otherwise,
+                s = t.pop() + ' ' + s    # add last line back to s
+                continue                 # and try perturbing the next one back
+              else:                      # else perturbing failed; leave this line short
+                perturb = False
+                break
+          else:                          # 
+            perturb = False 
+          if not perturb:                # if perturbing failed leave this line short
+            t = savet[:]                 # restore t, s
+            s = saves
+            perturb = True               # we can keep going in perturb mode, but can't backtrack beyond here
+            peturb_limit = len(t)        # so remember where we failed
+            t.append(s[:snip_at])
+            if snip_at < true_len_s:
+              s = s[snip_at+1:]
+            else:
+              s = ""
+            true_len_s = self.truelen(s)
+            twidth = mywidth
+
     if len(t) == 0 or len(s) > 0: #ensure t has something in it, but don't add a zero length s (blank line) to t unless t is empty
       t.append(s)
 
@@ -2981,12 +3035,22 @@ class Ppt(Book):
     while '  ' in s:   # squash any repeated spaces
       s = s.replace('  ', ' ')
     for i in range(0, -8, -2):
+    #for i in range(0, -12, -2):###
       t = self.wrap_para(s, indent, ll+i, ti)
       ta.append(t)
       sll = self.shortest_line_len(t[0:-1])
       if sll >= 55:
         return t # just bail if already good enough
       ts.append(sll)
+
+    # All had a line shorter than 55. Tell wrap_para() to
+    # try again, perturbing the word layout.
+    t = self.wrap_para(s, indent, ll, ti, perturb=True)
+    ta.append(t)
+    sll = self.shortest_line_len(t[0:-1])
+    if sll >= 55:
+      return t # just bail if already good enough
+    ts.append(sll)
 
     # if we are here all test paragraphs had some short lines
     # choose the best one we found
