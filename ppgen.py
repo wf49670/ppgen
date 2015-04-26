@@ -22,9 +22,10 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.49b"    # 7-Apr-2015
-# Add a backtracking paragraph rewrapping algorithm to try to recover from 
-#   short-line situations, especially with chapter summaries
+VERSION="3.49c"    # 11-Apr-2015
+# When validating links & targets add a check for case mismatches and warn user
+# Detect .ta- outside of table and crash with message
+# Squash multiple spaces in headers
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1989,7 +1990,7 @@ class Book(object):
         text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
         if self.gk_requested:
           text = re.sub(r"\[Greek: ?(.*?)]", gkrepl, text, flags=re.DOTALL)
-        # even if Greek processing not requested, [Greek: ...] strings could have \| and \(space) 
+        # even if Greek processing not requested, [Greek: ...] strings could have \| and \(space)
         # characters we need to protect
         count = 1
         while count:
@@ -2943,7 +2944,7 @@ class Ppt(Book):
     # at this point, s is ready to wrap
     mywidth = ll - indent
     t = []
-    perturb_limit = -1   # index of earliest line we can try to perturb 
+    perturb_limit = -1   # index of earliest line we can try to perturb
     twidth = mywidth
     true_len_s = self.truelen(s)
     while true_len_s > twidth:
@@ -2974,7 +2975,7 @@ class Ppt(Book):
             s = ""
           true_len_s = self.truelen(s)
           twidth = mywidth
-        else:          # here only if wrap() wanted us to try to avoid short lines, 
+        else:          # here only if wrap() wanted us to try to avoid short lines,
                        # this line is short, and it's not the first line (which we can't fix)
           savet = t[:]    # save t, s in case need to restore them
           saves = s
@@ -3003,8 +3004,8 @@ class Ppt(Book):
               else:                      # else perturbing failed; leave this line short
                 perturb = False
                 break
-          else:                          # 
-            perturb = False 
+          else:                          #
+            perturb = False
           if not perturb:                # if perturbing failed leave this line short
             t = savet[:]                 # restore t, s
             s = saves
@@ -3620,6 +3621,8 @@ class Ppt(Book):
     h2a = self.wb[self.cl+1].split('|')
     for line in h2a:
       line = line.strip()
+      while '  ' in line:   # squash any repeated internal spaces
+        line = line.replace('  ', ' ')
       self.eb.append(self.truefmt(fmt, line).rstrip())
 
     self.eb.append(".RS 1")
@@ -4287,6 +4290,8 @@ class Ppt(Book):
         j += 1
       return maxw
 
+    if self.wb[self.cl] == ".ta-":
+      self.crash_w_context(".ta- found outside of table", self.cl)
     haligns = list() # 'l', 'r', or 'c'  no default; must specify
     valigns = list() # 't', 'b', or 'm' default 't'
     widths = list() # column widths
@@ -7114,7 +7119,8 @@ class Pph(Book):
         maxw = max(maxw, self.truelen(t))
         j += 1
       return maxw
-
+    if self.wb[self.cl] == ".ta-":
+      self.crash_w_context(".ta- found outside of table", self.cl)
     haligns = list() # 'l', 'r', or 'c'  no default; must specify
     valigns = list() # 't', 'b', or 'm' default 't'
     widths = list() # column widths
@@ -7653,15 +7659,25 @@ class Pph(Book):
     rb = [] # report buffer
     links = {} # map of links
     targets = {} # map of targets
+    nonlowerl = {} # mixed-case links
+    nonlowert = {}
     # build links
     for i,line in enumerate(self.wb):
       m = re.search(r"href=[\"']#(.*?)[\"']", line)
       while m:            # could have more than one in a line
         t = m.group(1)
+        if not "Page" in t:
+          tl = t.lower()
+          if t != tl: # remember any mixed- or upper-case links in a set in nonlowerl
+            if tl in nonlowerl:
+              nonlowerl[tl].add(t)
+            else:
+              nonlowerl[tl] = set()
+              nonlowerl[tl].add(t)
         if t in links:
           if not "Page" in t:
-            self.linkinfo.add("[6] ")
-            self.linkinfo.add("[6]Note: duplicate link: {}".format(t))
+            self.linkinfo.add("[7] ")
+            self.linkinfo.add("[7]Note: duplicate link: {}".format(t))
         else:
           links[t] = 1
         line = re.sub(re.escape(m.group(0)), "", line, 1) # remove the one we found
@@ -7682,9 +7698,17 @@ class Pph(Book):
       m = re.search(r"id=[\"'](.+?)[\"']", line)
       while m:
         t = m.group(1)
+        if not "Page" in t:
+          tl = t.lower()
+          if t != tl: # remember any mixed- or upper-case targets in a set in nonlowert
+            if tl in nonlowert:
+              nonlowert[tl].add(t)
+            else:
+              nonlowert[tl] = set()
+              nonlowert[tl].add(t)
         if t in targets:
           self.linkinfo.add("[3] ")
-          self.linkinfo.add("[3]Error: duplicate target: {}".format(t))
+          self.linkinfo.add("[3]Error: Duplicate target: {}".format(t))
         else:
           targets[t] = 1
         line = re.sub(re.escape(m.group(0)), "", line, 1)
@@ -7694,13 +7718,23 @@ class Pph(Book):
     for key in links:
       if key not in targets:
         self.linkinfo.add("[2] ")
-        self.linkinfo.add("[2]Error: missing target: {}".format(key))
+        self.linkinfo.add("[2]Error: Missing target: {}".format(key))
+        kl = key.lower()
+        if kl in nonlowert:
+          self.linkinfo.add("[2]Note:  Check for case mismatch; target {} exists as {}".format(key, nonlowert[kl]))
 
     for key in targets:
-     if key not in links:
-       if not "Page" in key:
-         self.linkinfo.add("[5] ")
-         self.linkinfo.add("[5]Note: unused target: {} ".format(key))
+      if key not in links:
+        if not "Page" in key:
+          self.linkinfo.add("[5] ")
+          self.linkinfo.add("[5]Note: Unused target: {} ".format(key))
+          kl = key.lower()
+          if kl != key:
+            if kl in nonlowerl:
+              self.linkinfo.add("[6]Note: Check for case mismatch; a link to {} exists as {}".format(key, nonlowerl[kl]))
+            elif kl in links:
+              self.linkinfo.add("[6]Note: Check for case mismatch; a link to {} exists as {}".format(key, kl))
+
 
     rb = self.linkinfo.show()
     if len(rb):
