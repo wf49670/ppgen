@@ -22,11 +22,10 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.49c"    # 11-Apr-2015
-# When validating links & targets add a check for case mismatches and warn user
-# Detect .ta- outside of table and crash with message
-# Squash multiple spaces in headers
-# allow title= attribute on .h1 and .h2 to help with epub generation
+VERSION="3.49d"    # 28-Apr-2015
+# add "begin" and "end" operands to .ti to allow a hanging indent to persist across multiple paragraphs
+# add alignment of "h" for table cells to use a hanging indent (1em HTML, 2 characters text)
+# in text output, for an illustration without a caption supplied, use the alt text if present.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -85,6 +84,7 @@ class Book(object):
   regLL = 72 # line length
   regIN = 0 # indent
   regTI = 0 # temporary indent
+  regTIp = 0 # persistent temporary indent
   regAD = 1 # 1 if justified, 0 if ragged right
   latin1only = False
 
@@ -2910,7 +2910,7 @@ class Ppt(Book):
   # wrap string into paragraph in t[]
   def wrap_para(self, s,  indent, ll, ti, perturb=False):
     # if ti < 0, strip off characters that will be in the hanging margin
-    # peturb is usually False, but during paragraph rewrapping may be set to True
+    # perturb is usually False, but during paragraph rewrapping may be set to True
     # if wrap() discovered that all lines wrapped shorter than 55. In that case
     # wrap() will call wrap_para() again specifying perturb=True. This will cause
     # wrap_para() to monitor the line length, and if a line is less than 55
@@ -3678,7 +3678,7 @@ class Ppt(Book):
   # .il illustrations (text)
   def doIllo(self):
 
-    def parse_illo(s):   # simplified parse_illo; supports only caption model (cm=) and ignores rest of .il line
+    def parse_illo(s):   # simplified parse_illo; supports caption model and alt=, ignoring the rest
       s0 = s[:]  # original .il line
       ia = {}
 
@@ -3687,6 +3687,14 @@ class Ppt(Book):
       if "cm=" in s:
         s, cm = self.get_id("cm", s)
       ia["cm"] = cm
+
+      # alt text
+      alt = ""
+      if "alt=" in s:
+        s, alt = self.get_id("alt",s)
+        alt = re.sub("'","&#39;",alt) # escape any '
+      ia["alt"] = alt
+
       return(ia)
 
     m = re.match(r"\.il (.*)", self.wb[self.cl])
@@ -3765,7 +3773,10 @@ class Ppt(Book):
           self.cl += 1 # caption line
       else:
         # no caption, just illustration
-        t = ["[{}]".format(self.nregs["Illustration"])]
+        if ia["alt"]: # use alt text if available
+          t = ["[{}: {}]".format(self.nregs["Illustration"], ia["alt"])]
+        else:
+          t = ["[{}]".format(self.nregs["Illustration"])]
         self.eb += t
       self.eb.append(".RS 1") # request at least one space in text after illustration
 
@@ -3846,9 +3857,24 @@ class Ppt(Book):
 
   # .ti temporary indent
   def doTi(self):
-    m = re.match(r"\.ti (.+)", self.wb[self.cl])
-    if m:         # will always be true, as we converted ".ti" with no argument to ".ti 2" earlier
-      self.regTI += int(m.group(1))
+    s = self.wb[self.cl].split()
+    if len(s) > 1:         # will always be true, as we converted ".ti" with no argument to ".ti 2" earlier
+      if s[1].isdigit() or s[1].startswith('-') or s[1].startswith('+'):
+        self.regTI += int(s[1])
+      elif s[1] == "end": # remove persistent temporary indent?
+        self.regTI = 0
+        self.regTIp = 0
+      else:
+        self.crash_w_context("Malformed .ti directive.", self.cl)
+    if len(s) > 2:
+      if s[2] == "begin":
+        self.regTIp = self.regTI # start persistent temporary indent
+      elif s[2] == "end":
+        self.regTIp = 0
+      else:
+        self.crash_w_context("Malformed .ti directive.", self.cl)
+    else:
+      self.regTIp = 0 # force end of persistent temporary indent if .ti found without "begin"
     self.cl += 1
 
   # no-fill, centered (text)
@@ -3871,8 +3897,14 @@ class Ppt(Book):
       xs = "{:^" + str(xt) + "}"
       line = self.wb[i].strip()
       len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
+      indent = self.regIN
+      ###below is the start of what would be needed if we want text processing to handle .ti in .nf c
+      ###like HTML processing does
+      ###if self.regTI != 0 and self.regTI != -1000: # apply any non-zero temporary indent
+      ###  indent += self.regTI
+      ###  self.regTI = 0
       if len2 <= xt:
-        t.append(" " * self.regIN + self.truefmt(xs, line)) # just format it if it fits within the wideh
+        t.append(" " * indent + self.truefmt(xs, line)) # just format it if it fits within the wideh
       else:                                                 # else wrap it with a hanging indent
         s = line
         wi = 0
@@ -3882,12 +3914,12 @@ class Ppt(Book):
           s = m.group(2)
         u = self.wrap(s, wi+3, xt, -3)
         line = u[0]
-        u[0] = " " * self.regIN + self.truefmt(xs, line)
+        u[0] = " " * indent + self.truefmt(xs, line)
         t.append(u[0]) # output first line
         bcnt = 0
         while bcnt < len(u[0]) and u[0][bcnt] == " ": bcnt += 1 # count leading blanks in first line
         blanks = " " * bcnt
-        for line in u[1:]: # then output other lines, padded with that number of blanks
+        for line in u[1:]: # then output other lines, padded with that number of blanks ### does this work?
           t.append(blanks + line)
 
       i += 1
@@ -4293,7 +4325,7 @@ class Ppt(Book):
 
     if self.wb[self.cl] == ".ta-":
       self.crash_w_context(".ta- found outside of table", self.cl)
-    haligns = list() # 'l', 'r', or 'c'  no default; must specify
+    haligns = list() # 'h', 'l', 'r', or 'c'  no default; must specify
     valigns = list() # 't', 'b', or 'm' default 't'
     widths = list() # column widths
     totalwidth = 0
@@ -4336,10 +4368,10 @@ class Ppt(Book):
     autosize = False
     if not ":" in self.wb[self.cl]:
       autosize = True
-      m = re.match(r"\.ta ([lcr]+)", self.wb[self.cl])
+      m = re.match(r"\.ta ([hlcr]+)", self.wb[self.cl])
       if m:
         t0 = m.group(1) # all the specifiers
-        t = list(t0) # ex: ['r','c','l']
+        t = list(t0) # ex: ['r','c','l', 'h']
         ncols = len(t) # ex: 3
         s = ".ta "
         for i,x in enumerate(t):
@@ -4350,8 +4382,8 @@ class Ppt(Book):
 
     # if vertical alignment not specified, default to "top" now
     # .ta l:6 r:22 => .ta lt:6 rt:22
-    while re.search(r"[^lcr][lcr]:", self.wb[self.cl]):
-      self.wb[self.cl] = re.sub(r"([lcr]):", r'\1t:', self.wb[self.cl])
+    while re.search(r"[^hlcr][hlcr]:", self.wb[self.cl]):
+      self.wb[self.cl] = re.sub(r"([hlcr]):", r'\1t:', self.wb[self.cl])
 
 
     t = self.wb[self.cl].split() # ['.ta', 'lt:6', 'rt:22']
@@ -4360,14 +4392,16 @@ class Ppt(Book):
     while j <= ncols:
       u = t[j].split(':')
 
-      if not u[0][0] in ['l','c','r']:
-        self.fatal("table horizontal alignment must be 'l', 'c', or 'r' in {}".format(self.wb[self.cl]))
+      if not u[0][0] in ['l','c','r', 'h']:
+        self.fatal("table horizontal alignment must be 'l', 'c', 'h', or 'r' in {}".format(self.wb[self.cl]))
       if u[0][0] == 'l':
         haligns.append('<')
       if u[0][0] == 'c':
         haligns.append('^')
       if u[0][0] == 'r':
         haligns.append('>')
+      if u[0][0] == 'h':
+        haligns.append('h') # will use < later for actual formatting of the cell/row
 
       valigns.append(u[0][1])  # ['t', 't']
       widths.append(int(u[1]))  # ['6', '22']
@@ -4441,9 +4475,12 @@ class Ppt(Book):
       w = [None] * ncols  # a list of lists for this row
       heights = [None] * ncols  # lines in each cell
       for i in range(0,ncols):
-        w[i] = self.wrap_para(t[i].strip(), 0, widths[i], 0) # should handle combining characters properly
+        if haligns[i] != 'h': # if not hanging indent, wrap normally
+          w[i] = self.wrap_para(t[i].strip(), 0, widths[i], 0) # should handle combining characters properly
+        else: # use a 2-character indent, -2 ti if hanging indent
+          w[i] = self.wrap_para(t[i].strip(), 2, widths[i], -2)
         for j,line in enumerate(w[i]):
-          w[i][j] = line.strip()  # marginal whitespace
+          w[i][j] = line.rstrip()  # marginal whitespace (only remove spaces at ends of lines)
         heights[i] = len(w[i])
         maxheight = max(maxheight, heights[i])
 
@@ -4469,7 +4506,11 @@ class Ppt(Book):
         else:
           s = " " * tindent  # center the table
         for col in range(0,ncols):
-          fmt = "{" + ":{}{}".format(haligns[col],widths[col]) + "}"
+          if haligns[col] == 'h': # account for possibility of hanging indent alignment character
+            align = '<'
+          else:
+            align = haligns[col]
+          fmt = "{" + ":{}{}".format(align,widths[col]) + "}"
           line = w[col][g]
           s += self.truefmt(fmt, line)
           if col != ncols - 1:
@@ -4558,6 +4599,8 @@ class Ppt(Book):
     t = []
     bnt = []
     pstart = self.cl
+    if self.regTIp != 0: # if persistent temporary indent in effect, pretend we got a .ti directive
+      self.regTI = self.regTIp
 
     # grab the paragraph from the source file into t[]
     # note: we will transform encoded sidenote information within the paragraph into
@@ -6666,14 +6709,29 @@ class Pph(Book):
 
   # .ti temporary indent
   def doTi(self):
-    m = re.match(r"\.ti (.+)", self.wb[self.cl])
-    if m:     # will always be true, as we converted ".ti" with no argument to ".ti 2" earlier
+    s = self.wb[self.cl].split()
+    if len(s) > 1:         # will always be true, as we converted ".ti" with no argument to ".ti 2" earlier
       # special case: forcing a .ti of 0
-      if int(m.group(1)) == 0:
-        self.regTI = -1000
+      if s[1].isdigit() or s[1].startswith('-') or s[1].startswith('+'):
+        if int(s[1]) == 0:
+          self.regTI = -1000
+        else:
+          self.regTI += int(s[1])
+      elif s[1] == "end": # remove persistent temporary indent?
+        self.regTI = 0
+        self.regTIp = 0
       else:
-        self.regTI += int(m.group(1))
-      del self.wb[self.cl]
+        self.crash_w_context("Malformed .ti directive.", self.cl)
+    if len(s) > 2:
+      if s[2] == "begin":
+        self.regTIp = self.regTI
+      elif s[2] == "end":
+        self.regTIp = 0
+      else:
+        self.crash_w_context("Malformed .ti directive.", self.cl)
+    else:
+      self.regTIp = 0 # force end of persistent temporary indent if .ti found without "begin"
+    del self.wb[self.cl]
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # no-fill, centered (HTML)
@@ -7134,7 +7192,7 @@ class Pph(Book):
       return maxw
     if self.wb[self.cl] == ".ta-":
       self.crash_w_context(".ta- found outside of table", self.cl)
-    haligns = list() # 'l', 'r', or 'c'  no default; must specify
+    haligns = list() # 'h', 'l', 'r', or 'c'  no default; must specify
     valigns = list() # 't', 'b', or 'm' default 't'
     widths = list() # column widths
     totalwidth = 0
@@ -7180,10 +7238,10 @@ class Pph(Book):
     autosize = False
     if not ":" in self.wb[self.cl]:
       autosize = True
-      m = re.match(r"\.ta ([lcr]+)", self.wb[self.cl])
+      m = re.match(r"\.ta ([hlcr]+)", self.wb[self.cl])
       if m:
         t0 = m.group(1) # all the specifiers
-        t = list(t0) # ex: ['r','c','l']
+        t = list(t0) # ex: ['r','c','l','h']
         ncols = len(t) # ex: 3
         s = ".ta "
         for i,x in enumerate(t):
@@ -7193,8 +7251,8 @@ class Pph(Book):
 
     # if vertical alignment not specified, default to "top" now
     # .ta l:6 r:22 => .ta lt:6 rt:22
-    while re.search(r"[^lcr][lcr]:", self.wb[self.cl]):
-      self.wb[self.cl] = re.sub(r"([lcr]):", r'\1t:', self.wb[self.cl])
+    while re.search(r"[^hlcr][hlcr]:", self.wb[self.cl]):
+      self.wb[self.cl] = re.sub(r"([hlcr]):", r'\1t:', self.wb[self.cl])
 
     t = self.wb[self.cl].split() # ['.ta', 'lt:6', 'rt:22']
     ncols = len(t) - 1  # skip the .ta piece
@@ -7204,14 +7262,16 @@ class Pph(Book):
     while j <= ncols:
       u = t[j].split(':')
 
-      if not u[0][0] in ['l','c','r']:
-        self.fatal("table horizontal alignment must be 'l', 'c', or 'r' in {}".format(self.wb[self.cl]))
+      if not u[0][0] in ['l','c','r','h']:
+        self.fatal("table horizontal alignment must be 'l', 'c', 'h', or 'r' in {}".format(self.wb[self.cl]))
       if u[0][0] == 'l':
         haligns.append("text-align:left;")
       if u[0][0] == 'c':
         haligns.append("text-align:center;")
       if u[0][0] == 'r':
         haligns.append("text-align:right;")
+      if u[0][0] == 'h': # hanging indent
+        haligns.append("text-align:left; text-indent:-1em; padding-left:1em;")
 
       if not u[0][1] in ['t','m','b']:
         self.fatal("table vertial alignment must be 't', 'm', or 'b'")
@@ -7601,6 +7661,9 @@ class Pph(Book):
       self.crash_w_context("malformed .sn directive", self.cl)
 
   def doPara(self):
+    if self.regTIp != 0: # If persistent temporary indent in effect, pretend we got a .ti command
+      self.regTI = self.regTIp
+
     s = self.fetchStyle() # style line with current parameters
 
     # if there is a pending drop cap, don't indent
