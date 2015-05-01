@@ -22,10 +22,8 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.49d"    # 28-Apr-2015
-# add "begin" and "end" operands to .ti to allow a hanging indent to persist across multiple paragraphs
-# add alignment of "h" for table cells to use a hanging indent (1em HTML, 2 characters text)
-# in text output, for an illustration without a caption supplied, use the alt text if present.
+VERSION="3.49e"    # 30-Apr-2015
+# allow different alignment for selected table cells via <al=l/r/c/h>
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -4319,7 +4317,9 @@ class Ppt(Book):
         if len(u) != ncols:
             self.crash_w_context("table has wrong number of columns:{}".format(self.wb[j]), j)
         t = u[c].strip()
-        maxw = max(maxw, self.truelen(t)) # ignore lead/trail whitespace and account for lang markup
+        if len(t) > 6 and t[0:4] == "<al=": # possible alignment directive?
+          t = re.sub(r"^<al=[lrch]>", "", t, 1) # ignore any alignment directives
+        maxw = max(maxw, self.truelen(t)) # ignore lead/trail whitespace and account for non-spacing characters
         j += 1
       return maxw
 
@@ -4439,6 +4439,9 @@ class Ppt(Book):
       if len(t) != ncols:
         self.crash_w_context("table has wrong number of columns:{}".format(self.wb[k1]), k1)
       for i in range(0,ncols):
+        t1 = t[i].strip()
+        if len(t1) > 6 and t1[0:4] == "<al=":
+          t1 = re.sub(r"^<al=[lrch]>", "", t1, 1) # ignore any alignment directives
         k2 = self.wrap_para(t[i].strip(), 0, widths[i], 0) # should handle combining characters properly
         if len(k2) > 1:
           rowspace = True
@@ -4464,7 +4467,23 @@ class Ppt(Book):
       # a line in source that has no vertical pipe
       if not "|" in self.wb[self.cl]:
         line = self.wb[self.cl].strip()
-        self.eb.append(self.truefmt("{:^72}", line))
+        if len(line) > 6 and line[0:4] == "<al=":
+          m = re.match(r"^<al=([lrch])>", line) # pick up possible alignment directive
+          if m:
+            if m.group(1) == "l":
+              align = "<"
+            elif m.group(1) == "r":
+              align = ">"
+            elif m.group(1) == "c":
+              align = "^"
+            elif m.group(1) == "h":
+              align = "^"
+              self.warn_w_context("<al=h> not supported for centered table lines",self.cl)
+            line = line[6:] # remove the alignment tag
+        else:
+          align = "^"
+        fmtstring = "{:" + align + "72}"
+        self.eb.append(self.truefmt(fmtstring, line))
         self.cl += 1
         continue
 
@@ -4474,11 +4493,26 @@ class Ppt(Book):
       maxheight = 0
       w = [None] * ncols  # a list of lists for this row
       heights = [None] * ncols  # lines in each cell
+      caligns = haligns[:] # copy standard alignment into cell override list
       for i in range(0,ncols):
-        if haligns[i] != 'h': # if not hanging indent, wrap normally
-          w[i] = self.wrap_para(t[i].strip(), 0, widths[i], 0) # should handle combining characters properly
+        cell_text = t[i].strip()
+        if len(cell_text) > 6 and cell_text[0:4] == "<al=":
+          m = re.match(r"^<al=([lrch])>", cell_text) # pick up possible alignment directive
+          if m:
+            if m.group(1) == "l":
+              caligns[i] = "<"
+            elif m.group(1) == "r":
+              caligns[i] = ">"
+            elif m.group(1) == "c":
+              caligns[i]= "^"
+            else:
+              caligns[i] = "h"
+            cell_text = cell_text[6:] # remove the alignment tag
+        if caligns[i] != 'h': # if not hanging indent, wrap normally
+          w[i] = self.wrap_para(cell_text, 0, widths[i], 0) # should handle combining characters properly
         else: # use a 2-character indent, -2 ti if hanging indent
-          w[i] = self.wrap_para(t[i].strip(), 2, widths[i], -2)
+          w[i] = self.wrap_para(cell_text, 2, widths[i], -2)
+          caligns[i] = "<"
         for j,line in enumerate(w[i]):
           w[i][j] = line.rstrip()  # marginal whitespace (only remove spaces at ends of lines)
         heights[i] = len(w[i])
@@ -4506,11 +4540,7 @@ class Ppt(Book):
         else:
           s = " " * tindent  # center the table
         for col in range(0,ncols):
-          if haligns[col] == 'h': # account for possibility of hanging indent alignment character
-            align = '<'
-          else:
-            align = haligns[col]
-          fmt = "{" + ":{}{}".format(align,widths[col]) + "}"
+          fmt = "{" + ":{}{}".format(caligns[col],widths[col]) + "}"
           line = w[col][g]
           s += self.truefmt(fmt, line)
           if col != ncols - 1:
@@ -7371,7 +7401,22 @@ class Pph(Book):
 
       # see if centered line
       if not "|" in self.wb[self.cl]:
-        t.append("  <tr><td style='text-align:center' colspan='{}'>{}</td></tr>".format(ncols,self.wb[self.cl]))
+        line = self.wb[self.cl].strip()
+        align = "text-align:center;"
+        if len(line) > 6 and line[0:4] == "<al=":
+          m = re.match(r"^<al=([lrch])>", line) # pick up possible alignment directive
+          if m:
+            if m.group(1) == "l":
+              align = "text-align:left;"
+            elif m.group(1) == "r":
+              align = "text-align:right;"
+            elif m.group(1) == "c":
+              align = "text-align:center;"
+            elif m.group(1) == "h":
+              align = "text-align:center;"
+              self.warn_w_context("<al=h> not supported for centered table lines", self.cl)
+          line = line[6:]
+        t.append("  <tr><td style='{}' colspan='{}'>{}</td></tr>".format(align, ncols,line))
         self.cl += 1
         continue
 
@@ -7389,7 +7434,21 @@ class Pph(Book):
         self.crash_w_context("table has wrong number of columns:{}".format(self.wb[self.cl]), self.cl)
       t.append("  <tr>")
       # iterate over the td elements
+      caligns = haligns[:] # copy alignment specifications
       for k,data in enumerate(v):
+        # adjust alignment if override given
+        if len(v[k]) > 6 and v[k][0:4] == "<al=":
+          m = re.match(r"^<al=([lrch])>", v[k]) # pick up possible alignment directive
+          if m:
+            if m.group(1) == "l":
+              caligns[k] = "text-align:left;"
+            elif m.group(1) == "r":
+              caligns[k] = "text-align:right;"
+            elif m.group(1) == "c":
+              caligns[k]= "text-align:center;"
+            else: # must be h
+              caligns[k] = "text-align:left; text-indent:-1em; padding-left:1em;"
+            v[k] = v[k][6:] # remove the alignment tag
         valgn = ""
         padding = ""
 
@@ -7404,7 +7463,7 @@ class Pph(Book):
         # inject saved page number if this is first column
         if k == 0:
           v[k] = savedpage + t2
-        t.append("    <td style='{}{}{}'>".format(valigns[k],haligns[k],padding) + v[k].strip() + "</td>")
+        t.append("    <td style='{}{}{}'>".format(valigns[k],caligns[k],padding) + v[k].strip() + "</td>")
       t.append("  </tr>")
       self.cl += 1
     t.append("</table>")
