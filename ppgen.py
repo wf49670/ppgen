@@ -7437,6 +7437,7 @@ class Pph(Book):
       caligns = haligns[:] # copy alignment specifications
       for k,data in enumerate(v):
         # adjust alignment if override given
+        v[k] = v[k].strip(' ')
         if len(v[k]) > 6 and v[k][0:4] == "<al=":
           m = re.match(r"^<al=([lrch])>", v[k]) # pick up possible alignment directive
           if m:
