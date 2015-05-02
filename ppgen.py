@@ -22,8 +22,8 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.49e"    # 30-Apr-2015
-# allow different alignment for selected table cells via <al=l/r/c/h>
+VERSION="3.49f"    # 2-May-2015
+# Fix Python fault handling <target id="..."> (only with double quotes; no quotes or single quotes work)
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -5244,7 +5244,7 @@ class Pph(Book):
           m = re.search("<target id='(.*?)'>", self.wb[i])
         m = re.search("<target id=\"(.*?)\">", self.wb[i])
         while m:
-          self.wb[i] = re.sub("<target id=\"(.*?)\">", "<a id='{0}' name='{}'></a>".format(m.group(1)), self.wb[i], 1)
+          self.wb[i] = re.sub("<target id=\"(.*?)\">", "<a id='{0}' name='{0}'></a>".format(m.group(1)), self.wb[i], 1)
           self.checkId(m.group(1))
           m = re.search("<target id=\"(.*?)\">", self.wb[i])
         m = re.search("<target id=(.*?)>", self.wb[i])
