@@ -22,8 +22,8 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.49f"    # 2-May-2015
-# Fix Python fault handling <target id="..."> (only with double quotes; no quotes or single quotes work)
+VERSION="3.49g"    # 3-May-2015
+# Try to combine image classes in HTML so ppgen doesn't make a unique set of classes for each image
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -4737,6 +4737,7 @@ class Pph(Book):
   pdc = "" # pending drop cap
   igc = 1 # illustration geometry counter
   fnlist = [] # list of footnotes
+  imagedict = {} # list of css specifications for illustrations, with the number that defined them.
 
   def __init__(self, args, renc):
     Book.__init__(self, args, renc)
@@ -5718,7 +5719,7 @@ class Pph(Book):
 
     self.css.addcss("[1170] p { text-indent:0;margin-top:0.5em;margin-bottom:0.5em;text-align:justify; }") # para style
 
-    ### generate CSS for sidenotes if any are present in the text
+    # generate CSS for sidenotes if any are present in the text
     if self.snPresent:
       # CSS taken from http://www.pgdp.net/wiki/Sidenotes with changes.
       self.css.addcss("[1500] .sidenote, .sni { text-indent: 0; text-align: left; width: 9em; min-width: 9em; " +
@@ -6546,15 +6547,14 @@ class Pph(Book):
       self.css.addcss("[1602] @media handheld { .figright { float:right; }}")
       self.css.addcss("[1608] .figright img { max-width:100%; height:auto; }")
 
-
     # make CSS names from igc counter
     idn = "id{:03d}".format(self.igc)
     ign = "ig{:03d}".format(self.igc)
     icn = "ic{:03d}".format(self.igc)
-    self.igc += 1
 
-    # set the illustration width
-    self.css.addcss("[1610] .{} {{ width:{}; }}".format(idn, ia["iw"])) # the HTML illustration width
+    # build illustration width info
+    lookup1610 = "[1610] .idn {{ width:{}; }}".format(ia["iw"])
+    build1610a = "[1610] .{} {{ width:{}; }}".format(idn, ia["iw"]) # the HTML illustration width
 
     if ia['ew'] == "":
       if ia["iw"] != "":
@@ -6572,14 +6572,19 @@ class Pph(Book):
       my_width = int(re.sub("%", "", ia["ew"]))
       my_lmar = (100 - my_width) // 2
       my_rmar = 100 - my_width - my_lmar
-      self.css.addcss("[1610] @media handheld {{ .{} {{ margin-left:{}%; width:{}; }}}}".format(idn, my_lmar, ia["ew"]))
+      lookup1610 += "[1610] @media handheld {{ .idn {{ margin-left:{}%; width:{}; }}}}".format(my_lmar, ia["ew"])
+      build1610b = "[1610] @media handheld {{ .{} {{ margin-left:{}%; width:{}; }}}}".format(idn, my_lmar, ia["ew"])
     else:  # floated l or right
-     self.css.addcss("[1610] @media handheld {{ .{} {{ width:{}; }}}}".format(idn, ia["ew"]))
+      lookup1610 += "[1610] @media handheld {{ .idn {{ width:{}; }}}}".format(ia["ew"])
+      build1610b = "[1610] @media handheld {{ .{} {{ width:{}; }}}}".format(idn, ia["ew"])
 
     # if user has set caption width (in percent) we use that for both HTML and epub.
     # If user hasn’t specified it, we use the width of the image in a browser or
     # 80% in epub using a @media handheld because we cannot rely on max-width on these devices
     #
+    lookup161113 = ""
+    build1611 = ""
+    build1613 = ""
     if caption_present:
 
       ocw, oml, omr = (0,0,0)  # width, left, right margins as percent
@@ -6594,21 +6599,59 @@ class Pph(Book):
         if ia["cj"] == 'r':
           omr = (100 - ocw) // 2  # fixed
           oml = 100 - ocw - omr
-        self.css.addcss("[1611] .{} {{ width:{}%; margin-left:{}%; margin-right:{}%; }} ".format(icn, ocw, oml, omr))
+        lookup161113 += "[1611] .icn {{ width:{}%; margin-left:{}%; margin-right:{}%; }} ".format(ocw, oml, omr)
+        build1611 = "[1611] .{} {{ width:{}%; margin-left:{}%; margin-right:{}%; }} ".format(icn, ocw, oml, omr)
       else:
-        self.css.addcss("[1611] .{} {{ width:100%; }} ".format(icn, ia["iw"]))
+        lookup161113 += "[1611] .icn {{ width:100%; }} ".format(ia["iw"])
+        build1611 = "[1611] .{} {{ width:100%; }} ".format(icn, ia["iw"])
 
       if ia["cj"] != "":
         if ia["cj"] == 'l':
-          self.css.addcss("[1613] div.{} p {{ text-align:left; }} ".format(icn))
+          lookup161113 += "[1613] div.icn p { text-align:left; } "
+          build1613 = "[1613] div.{} p {{ text-align:left; }} ".format(icn)
         elif ia["cj"] == 'r':
-          self.css.addcss("[1613] div.{} p {{ text-align:right; }} ".format(icn))
+          lookup161113 += "[1613] div.icn p { text-align:right; } "
+          build1613 = "[1613] div.{} p {{ text-align:right; }} ".format(icn)
         elif ia["cj"] == 'c':
-          self.css.addcss("[1613] div.{} p {{ text-align:center; }} ".format(icn))
+          lookup161113 += "[1613] div.icn p { text-align:center; } "
+          build1613 = "[1613] div.{} p {{ text-align:center; }} ".format(icn)
         elif ia["cj"] == 'f':
-          self.css.addcss("[1613] div.{} p {{ text-align:justify; }} ".format(icn))
+          lookup161113 += "[1613] div.icn p { text-align:justify; } "
+          build1613 = "[1613] div.{} p {{ text-align:justify; }} ".format(icn)
 
-    self.css.addcss("[1614] .{} {{ width:100%; }} ".format(ign, ia["iw"]))
+    lookup1614 = "[1614] .ign {{ width:100%; }} ".format(ia["iw"])
+    build1614 = "[1614] .{} {{ width:100%; }} ".format(ign, ia["iw"])
+
+    # see if we have an image with these characteristics defined already
+    saved1610 = self.imagedict.get(lookup1610) # try to get the definition info
+    if lookup161113:
+      saved161113 = self.imagedict.get(lookup161113)
+    saved1614 = self.imagedict.get(lookup1614)
+    bumpcounter = False
+    if not saved1610: # if no matching [1610] found
+      self.imagedict[lookup1610] = idn # add it to the dictionary, remembering the idn value
+      self.css.addcss(build1610a) # add the [1610] css we just built
+      self.css.addcss(build1610b)
+      bumpcounter = True
+    else:
+      idn = saved1610
+    if lookup161113:
+      if not saved161113: # if no matching [1611/13] found
+        self.imagedict[lookup161113] = icn # add it to the dictionary, remembering the icn value
+        self.css.addcss(build1611) # add the [1611] css we just built
+        if build1613:
+          self.css.addcss(build1613) # add the [1613] css we just built
+        bumpcounter = True
+      else:
+        icn = saved161113
+    if not saved1614: # if no matching [1614] found
+      self.imagedict[lookup1614] = ign # add it to the dictionary, remembering the ign value
+      self.css.addcss(build1614) # add the [1614] css we just built
+      bumpcounter = True
+    else:
+      ign = saved1614
+    if bumpcounter:
+      self.igc += 1 # bump the counter if we used any of the new CSS
 
     # create replacement stanza for illustration
     u = []
