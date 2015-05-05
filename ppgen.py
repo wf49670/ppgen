@@ -22,9 +22,8 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.49h"    # 4-May-2015
-# Implement ".nr nfl <number>" to establish default indentation for .nf l blocks in text output when
-# .in 0 is in effect (Default value is -1, and ppgen will merely warn the user if ".in 0" is in effect.)
+VERSION="3.50"    # 5-May-2015
+# Production version of 3.49h
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
