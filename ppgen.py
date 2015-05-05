@@ -22,8 +22,9 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.49g"    # 3-May-2015
-# Try to combine image classes in HTML so ppgen doesn't make a unique set of classes for each image
+VERSION="3.49h"    # 4-May-2015
+# Implement ".nr nfl <number>" to establish default indentation for .nf l blocks in text output when
+# .in 0 is in effect (Default value is -1, and ppgen will merely warn the user if ".in 0" is in effect.)
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1406,6 +1407,7 @@ class Book(object):
     self.nregs["Illustration"] = "Illustration" # English word for Illustration for text files
     self.nregs["Sidenote"] = "Sidenote" # English word for Sidenote for text files
     self.nregs["dcs"] = "250%" # drop cap font size
+    self.nregs["nfl"] = "-1" # default number of spaces to indent .nf l blocks in text (-1 = disabled)
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string
     self.bnmatch = re.compile("^⑱.*?⑱$")
@@ -3954,10 +3956,20 @@ class Ppt(Book):
   # honors leading spaces; allows .ce and .rj
   def doNfl(self, mo):
 
-    regINforced = False
-    # if self.regIN is 0, force a leading space just for the block and issue a warning
-    if self.regIN == 0:
-      self.warn("no-fill, left block at left margin starting:\n  {}".format(self.wb[self.cl+1]))
+    try: # determine the indentation for this .nf l block
+      indent = int(self.nregs["nfl"])
+    except:
+      self.warn("Invalid .nr nfl value: {}".format(self.nregs["nfl"]))
+      indent = -1
+    if indent < 0:
+      indent = self.regIN
+      if self.regIN == 0:
+        self.warn("no-fill, left block at left margin starting:\n  {}".format(self.wb[self.cl+1]))
+    else:
+      if self.regIN != 0 and self.regIN != indent:
+        indent = self.regIN
+        self.warn("Both .in {} and .nr nfl {} specified; ".format(self.regIN, self.nregs["nfl"]) +
+                  "using .in value for no-fill block starting:\n  {}".format(self.wb[self.cl+1]))
 
     self.eb.append(".RS 1")
     regBW = min(self.calculateBW(".nf-"), self.regLL)
@@ -3980,7 +3992,7 @@ class Ppt(Book):
             continue
           xs = "{:^" + str(regBW) + "}"
           line = self.wb[i].strip()
-          self.eb.append(" " * self.regIN + self.truefmt(line))
+          self.eb.append(" " * indent + self.truefmt(line))
           i += 1
           count -= 1
         continue
@@ -3996,7 +4008,7 @@ class Ppt(Book):
             continue
           xs = "{:>" + str(regBW) + "}"
           line = self.wb[i].strip()
-          self.eb.append(" " * self.regIN + self.truefmt(xs, line))
+          self.eb.append(" " * indent + self.truefmt(xs, line))
           # but it may look off with proportional fonts, esp. if the rj text is Hebrew or another rtl language
           i += 1
           count -= 1
@@ -4007,7 +4019,7 @@ class Ppt(Book):
         i += 1
         continue
 
-      s = (" " * self.regIN + self.wb[i])
+      s = (" " * indent + self.wb[i])
       # if the line is shorter than 72 characters (really, the line length), just send it to emit buffer
       # if longer, calculate the leading spaces on line and use as shift amount.
       # a .ti lets it wrap
