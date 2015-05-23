@@ -22,8 +22,8 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.50"    # 5-May-2015
-# Production version of 3.49h
+VERSION="3.50a"    # 5-May-2015
+# Allow specified table cells to span multiple columns by using <span> in the spanned columns
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -4330,7 +4330,8 @@ class Ppt(Book):
         t = u[c].strip()
         if len(t) > 6 and t[0:4] == "<al=": # possible alignment directive?
           t = re.sub(r"^<al=[lrch]>", "", t, 1) # ignore any alignment directives
-        maxw = max(maxw, self.truelen(t)) # ignore lead/trail whitespace and account for non-spacing characters
+        if t != "<span>": # ignore <span> cells for purposes of figuring max width of this column
+          maxw = max(maxw, self.truelen(t)) # ignore lead/trail whitespace and account for non-spacing characters
         j += 1
       return maxw
 
@@ -4453,7 +4454,13 @@ class Ppt(Book):
         t1 = t[i].strip()
         if len(t1) > 6 and t1[0:4] == "<al=":
           t1 = re.sub(r"^<al=[lrch]>", "", t1, 1) # ignore any alignment directives
-        k2 = self.wrap_para(t[i].strip(), 0, widths[i], 0) # should handle combining characters properly
+        w1 = widths[i]
+        for j in range(i+1, ncols):
+          if t[j].strip() == "<span>":
+            w1 += widths[j]
+          else:
+            break
+        k2 = self.wrap_para(t[i].strip(), 0, w1, 0) # should handle combining characters properly
         if len(k2) > 1:
           rowspace = True
       k1 += 1
@@ -4519,10 +4526,16 @@ class Ppt(Book):
             else:
               caligns[i] = "h"
             cell_text = cell_text[6:] # remove the alignment tag
+        w1 = widths[i]
+        for j in range(i+1, ncols):
+          if t[j].strip() == "<span>":
+            w1 += widths[j] + 1 # account for space between the two columns
+          else:
+            break
         if caligns[i] != 'h': # if not hanging indent, wrap normally
-          w[i] = self.wrap_para(cell_text, 0, widths[i], 0) # should handle combining characters properly
+          w[i] = self.wrap_para(cell_text, 0, w1, 0) # should handle combining characters properly
         else: # use a 2-character indent, -2 ti if hanging indent
-          w[i] = self.wrap_para(cell_text, 2, widths[i], -2)
+          w[i] = self.wrap_para(cell_text, 2, w1, -2)
           caligns[i] = "<"
         for j,line in enumerate(w[i]):
           w[i][j] = line.rstrip()  # marginal whitespace (only remove spaces at ends of lines)
@@ -4551,11 +4564,18 @@ class Ppt(Book):
         else:
           s = " " * tindent  # center the table
         for col in range(0,ncols):
-          fmt = "{" + ":{}{}".format(caligns[col],widths[col]) + "}"
+          w1 = widths[col]
+          for j in range(col+1, ncols):
+            if w[j][0].strip() == "<span>":
+              w1 += widths[j] + 1 # account for space between the two columns
+            else:
+              break
+          fmt = "{" + ":{}{}".format(caligns[col], w1) + "}"
           line = w[col][g]
-          s += self.truefmt(fmt, line)
-          if col != ncols - 1:
-            s += " "  # inter-column space so "rl" isn't contingent
+          if w[col][0] != "<span>":
+            if col > 0:
+              s += " "  # inter-column space so "rl" isn't contingent
+            s += self.truefmt(fmt, line)
         self.eb.append(s)
       if not self.wb[self.cl + 1 ].startswith(".ta-") and rowspace:
         self.eb.append("")
@@ -7507,18 +7527,26 @@ class Pph(Book):
         valgn = ""
         padding = ""
 
-        if k < len(v) - 1: # each column not the last gets padding to the right
-           padding +='padding-right:1em;'
-        # convert leading spaces to padding
-        t1 = v[k]
-        t2 = re.sub(r"^ⓢ+","", v[k])
-        if len(t1) - len(t2) > 0:
-          padleft = (len(t1) - len(t2))*0.7
-          padding += 'padding-left:{}em'.format(padleft)
-        # inject saved page number if this is first column
-        if k == 0:
-          v[k] = savedpage + t2
-        t.append("    <td style='{}{}{}'>".format(valigns[k],caligns[k],padding) + v[k].strip() + "</td>")
+        if v[k] != "<span>":
+          if k < len(v) - 1: # each column not the last gets padding to the right
+             padding +='padding-right:1em;'
+          # convert leading spaces to padding
+          t1 = v[k]
+          t2 = re.sub(r"^ⓢ+","", v[k])
+          if len(t1) - len(t2) > 0:
+            padleft = (len(t1) - len(t2))*0.7
+            padding += 'padding-left:{}em'.format(padleft)
+          # inject saved page number if this is first column
+          if k == 0:
+            v[k] = savedpage + t2
+          colspan = 1 #  look for <span> in next column(s) to setup colspan
+          for kk in range(k+1, len(v)):
+            if v[kk].strip() == "<span>":
+              colspan += 1
+            else:
+              break
+          colspan = "colspan='{}' ".format(colspan) if (colspan > 1) else ""
+          t.append("    <td {}style='{}{}{}'>".format(colspan,valigns[k],caligns[k],padding) + v[k].strip() + "</td>")
       t.append("  </tr>")
       self.cl += 1
     t.append("</table>")
