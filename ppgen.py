@@ -22,8 +22,12 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.50a"    # 5-May-2015
-# Allow specified table cells to span multiple columns by using <span> in the spanned columns
+VERSION="3.50b"    # 27-May-2015
+# If PPer put a blank line between table rows, don't add another one automatically.
+# Allow specification of borders for tables
+# Allow id=value on .ta
+# Fix excess padding issue on cells that start with protected spaces (\  or \_)
+# Added .nr values to control padding within cells when using borders
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -108,6 +112,103 @@ class Book(object):
   mal = [] # user-defined Latin-1
 
   linelimitwarning = 75  # code changes needed if < 60!
+
+  #  text table horizontal rule dictionary
+  #  key is left, up, down, right with * for any undefined positions
+  hrule_text_dict = {
+  #
+  '*││─':'├', '*│*─':'└', '**│─':'┌', # rules with box drawings light vertical, light horizontal
+  #
+  '─││─':'┼', '─│*─':'┴', '─*│─':'┬',
+  #
+  '─││*':'┤', '─│**':'┘', '─*│*':'┐',
+  #
+  '*┃┃━':'┣', '*┃*━':'┗', '**┃━':'┏', # rules with box drawings heavy vertical, heavy horizontal
+  #
+  '━┃┃━':'╋', '━┃*━':'┻', '━*┃━':'┳',
+  #
+  '━┃┃*':'┫', '━┃**':'┛', '━*┃*':'┓',
+  #
+  '*││═':'╞', '*│*═':'╘', '**│═':'╒', # rules with box drawings light vertical, double horizontal
+  #
+  '═││═':'╪', '═│*═':'╧', '═*│═':'╤',
+  #
+  '═││*':'╡', '═│**':'╛', '═*│*':'╕',
+  #
+  '*││━':'┝', '*│*━':'\u2515', '**│━':'\u250d', # rules with box drawings light vertical, heavy horizontal
+  #
+  '━││━':'┿', '━│*━':'┷', '━*│━':'┯',
+  #
+  '━││*':'┥', '━│**':'\u2519', '━*│*':'\u2511',
+  #
+  '*┃┃─':'┠', '*┃*─':'\u2516', '**┃─':'\u250e', # rules with box drawings heavy vertical, light horizontal
+  #
+  '─┃┃─':'╂', '─┃*─':'┸', '─*┃─':'┰',
+  #
+  '─┃┃*':'┨', '─┃**':'\u251a', '─*┃*':'\u2512',
+  #
+  '*┃┃═':'╞', '*┃*═':'╘', '**┃═':'╒', # don't have down heavy, double horizontal, so same as light/light
+  #
+  '═┃┃═':'╪', '═┃*═':'╧', '═*┃═':'╤',
+  #
+  '═┃┃*':'╡', '═┃**':'╛', '═*┃*':'╕',
+  #
+  '*║║─':'╟', '*║*─':'╟', '**║─':'╓',
+  #
+  '─║║─':'╫', '─║*─':'╨', '─*║─':'╥',
+  #
+  '─║║*':'╢', '─║**':'╜', '─*║*':'╖',
+  #
+  '*║║═':'╠', '*║*═':'╚', '**║═':'╔',
+  #
+  '═║║═':'╬', '═║*═':'╩', '═*║═':'╦',
+  #
+  '═║║*':'╣', '═║**':'╝', '═*║*':'╗',
+  #
+  }
+
+  valid_text_hrules = {
+    '_':'─',  # single underscore = box drawings light horizontal
+    #'__':'━', # double underscore = box drawings heavy horizontal
+    '__':'─', # double underscore = box drawings light horizontal (heavy horizontal is wrong width)
+    '=':'═',  # single equal sign = box drawings double horizontal
+    '==':'═', # double equal sign = box drawings double horizontal (text) or heavier one (html)
+    }
+
+  #valid_html_hrules = {
+  #  '_':['t', 'thin solid; }'], # thin
+  #  '__':['m', 'medium solid; }'], # medium
+  #  '=':['td', '4px double; }'], # medium double
+  #  '==':['md', '5px double; }'], # medium double
+  #  }
+
+  valid_html_hrules = {
+    '_':['t', 'btb_'], # thin
+    '__':['m', 'btb__'], # medium
+    '=':['td', 'btb='], # medium double
+    '==':['md', 'btb=='], # medium double
+    }
+
+  #valid_html_vrules = {
+  #  '|':['t', 'thin solid; }'], # thin
+  #  '||':['m', 'medium solid; }'], # medium
+  #  '=':['td', '4px double; }'], # medium double
+  #  '==':['md', '5px double; }'], # medium double
+  #  }
+
+  valid_html_vrules = {
+    '|':['t', 'blr|'], # thin
+    '||':['m', 'blr||'], # medium
+    '=':['td', 'blr='], # medium double
+    '==':['md', 'blr=='], # medium double
+    }
+
+  html_border_names = {
+    'bt':'{ border-top: ',
+    'bb':'{ border-bottom: ',
+    'bl':'{ border-left: ',
+    'br':'{ border-right: ',
+    }
 
   d = {
      '\u00A0':' ', '\u00A1':'¡', '\u00A2':'¢', '\u00A3':'£', '\u00A4':'¤', '\u00A5':'¥', '\u00A6':'¦', '\u00A7':'§',
@@ -1407,6 +1508,19 @@ class Book(object):
     self.nregs["Sidenote"] = "Sidenote" # English word for Sidenote for text files
     self.nregs["dcs"] = "250%" # drop cap font size
     self.nregs["nfl"] = "-1" # default number of spaces to indent .nf l blocks in text (-1 = disabled)
+    self.nregs["btb_"] = "thin solid" # table border: top/bottom using _
+    self.nregs["btb__"] = "medium solid" # table border: top/bottom using __
+    self.nregs["btb="] = "4px double" # table border: top/bottom using =
+    self.nregs["btb=="] = "5px double" # table border: top/bottom using ==
+    self.nregs["blr|"] = "thin solid" # table border: left/right using |
+    self.nregs["blr||"] = "medium solid" # table border: left/right using ||
+    self.nregs["blr="] = "4px double" # table border: left/right using =
+    self.nregs["blr=="] = "5px double" # table border: left/right using =
+    self.nregs["html-cell-padding-left"] = ".5em" # left cell padding for html tables when borders in use
+    self.nregs["html-cell-padding-right"] = ".5em" # rightt cell padding for html tables when borders in use
+    self.nregs["text-cell-padding-left"] = "" # left cell padding for text tables when borders in use
+    self.nregs["text-cell-padding-right"] = "" # right cell padding for html tables when borders in use
+
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string
     self.bnmatch = re.compile("^⑱.*?⑱$")
@@ -4337,6 +4451,7 @@ class Ppt(Book):
 
     if self.wb[self.cl] == ".ta-":
       self.crash_w_context(".ta- found outside of table", self.cl)
+    table_start = self.cl
     haligns = list() # 'h', 'l', 'r', or 'c'  no default; must specify
     valigns = list() # 't', 'b', or 'm' default 't'
     widths = list() # column widths
@@ -4352,7 +4467,7 @@ class Ppt(Book):
         del self.wb[k1+1]
       k1 += 1
     if k1 == len(self.wb):
-      self.fatal("missing .ta- in table starting: {}".format(s))
+      self.crash_w_context("missing .ta- in table starting: {}".format(s), self.cl)
 
     # remove table summary if present.
     if "s=" in self.wb[self.cl]:
@@ -4367,6 +4482,10 @@ class Ppt(Book):
     tw_html = ""
     if "w=" in self.wb[self.cl]:
       self.wb[self.cl], tw_html = self.get_id("w", self.wb[self.cl])
+
+    # remove id= if present
+    if "id=" in self.wb[self.cl]:
+      self.wb[self.cl] = self.get_id("id", self.wb[self.cl], 1)
 
     # table forms:
     # .ta r:5 l:20 l:5  => use specified width and wrap if necessary
@@ -4397,39 +4516,105 @@ class Ppt(Book):
     while re.search(r"[^hlcr][hlcr]:", self.wb[self.cl]):
       self.wb[self.cl] = re.sub(r"([hlcr]):", r'\1t:', self.wb[self.cl])
 
-
     t = self.wb[self.cl].split() # ['.ta', 'lt:6', 'rt:22']
     ncols = len(t) - 1  # skip the .ta piece
     j = 1
+    bbefore = list() # border characters before cells
+    bafter  = list() # and after cells
     while j <= ncols:
       u = t[j].split(':')
 
-      if not u[0][0] in ['l','c','r', 'h']:
-        self.fatal("table horizontal alignment must be 'l', 'c', 'h', or 'r' in {}".format(self.wb[self.cl]))
+      appended = False
+      m = re.match(r"([|=]*)(..)", u[0]) # extract border-before character(s)
+      if m:
+        u[0] = m.group(2)
+        bspec = m.group(1)
+        if bspec == '|':
+          bbefore.append('│' + self.nregs["text-cell-padding-left"]) # box drawings light vertical \u2502
+          appended = True
+        elif bspec == '||':
+          bbefore.append('│' + self.nregs["text-cell-padding-left"]) # box drawings light vertical \u2502
+          appended = True
+        elif bspec == "=":
+          bbefore.append('║' + self.nregs["text-cell-padding-left"]) # box drawings double vertical \u2551
+          appended = True
+        elif bspec == "==":
+          bbefore.append('║' + self.nregs["text-cell-padding-left"]) # box drawings double vertical \u2551
+          appended = True
+        elif not bspec:
+          pass
+        else:
+          self.warn_w_context("Unrecognized cell border specification character(s): {}".format(bspec), self.cl)
+      if not appended: # if no before border appended
+        if len(bbefore) == 0: # assume all columns but first have a blank left border
+          bbefore.append('')
+        else:
+          bbefore.append(' ')
+
+      appended = False
+      m = re.match(r"([^|=]+)([|=]*)", u[1]) # extract border-after character(s)
+      if m:
+        u[1] = m.group(1)
+        bspec = m.group(2)
+        if bspec == '|':
+          bafter.append(self.nregs["text-cell-padding-right"] + '│') # box drawings light vertical \u2502
+          appended = True
+        elif bspec == '||':
+          bafter.append(self.nregs["text-cell-padding-right"] + '│') # box drawings light vertical \u2502
+          appended = True
+        elif bspec == "=":
+          bafter.append(self.nregs["text-cell-padding-right"] + '║') # box drawings double vertical \u2551
+          appended = True
+        elif bspec == "==":
+          bafter.append(self.nregs["text-cell-padding-right"] + '║') # box drawings double vertical \u2551
+          appended = True
+        elif not bspec:
+          pass
+        else:
+          self.warn_w_context("Unrecognized cell border specification character(s): {}".format(bspec), self.cl)
+      if not appended: # if no after border appended
+        bafter.append('') # assume null right border if none specified
+
       if u[0][0] == 'l':
         haligns.append('<')
-      if u[0][0] == 'c':
+      elif u[0][0] == 'c':
         haligns.append('^')
-      if u[0][0] == 'r':
+      elif u[0][0] == 'r':
         haligns.append('>')
-      if u[0][0] == 'h':
+      elif u[0][0] == 'h':
         haligns.append('h') # will use < later for actual formatting of the cell/row
+      else:
+        self.fatal("table horizontal alignment must be 'l', 'c', 'h', or 'r' in {}".format(self.wb[self.cl]))
 
       valigns.append(u[0][1])  # ['t', 't']
-      widths.append(int(u[1]))  # ['6', '22']
-      totalwidth += int(u[1]) + 1 # added space between columns
+      try:
+        widths.append(int(u[1]))  # ['6', '22']
+        totalwidth += int(u[1])   #
+      except ValueError:
+        self.fatal("cell width {} is not numeric: {}".format(u[1], self.wb[self.cl]))
       j += 1
-    totalwidth -= 1
+
+    # figure out amount borders add to total width, ensuring we don't double inner border space when
+    # both are blank
+    totalwidth += len(bbefore[0]) # always add in left border for first column
+    for i in range(1, len(bbefore)):
+      totalwidth += len(bafter[i - 1]) # add in right border of previous column, if any
+      if bafter[i - 1] and (bbefore[i] == ' '): # nullify blank left border following a right border
+        bbefore[i] = ''
+      totalwidth += len(bbefore[i]) # add in left border if it survived
+    totalwidth += len(bafter[-1]) # add in right border of rightmost column
+
     #self.dprint("doTable (text), total table width not including indent: {}".format(totalwidth))
 
     # margin to center table in 72 character text field
     if totalwidth >= 72:
-      tindent = 0
+      tindent = 0 # a 1-space indent will be added later for this case
       if not autosize:
         self.warn("PPer-supplied table width (including leading indent and space\n" + "           " +
                   "between columns) of {} is greater than 72 characters:\n           {}".format(totalwidth+1, self.wb[self.cl]))
     else:
       tindent = (72 - totalwidth) // 2
+    rindent = max(tindent, 1) # position of first rule character in line if using horizontal rules
     #self.dprint("doTable (text), table indent: {}".format(tindent))
 
     self.eb.append(".RS 1")  # request blank line above table
@@ -4438,6 +4623,7 @@ class Ppt(Book):
     #self.twrap = textwrap.TextWrapper()
 
     # if any cell wraps, put a vertical gap between rows
+    # except for cases where the PPer supplies a blank line or a horizontal border
     rowspace = False
     k1 = self.cl
     while self.wb[k1] != ".ta-" and not rowspace:
@@ -4466,7 +4652,16 @@ class Ppt(Book):
       k1 += 1
 
     # process each row of table
+    hrules = list() # keep track of horizontal rules the PPer generates (by line number in self.eb)
     while self.wb[self.cl] != ".ta-":
+
+      # horizontal border
+      # Signified by _ for a single line or = for a double line
+      if len(self.wb[self.cl]) < 3 and self.wb[self.cl] in self.valid_text_hrules:
+        hrules.append(len(self.eb)) # remember this line number for fixup later
+        self.eb.append((rindent * ' ') + (totalwidth * self.valid_text_hrules[self.wb[self.cl]]))
+        self.cl += 1
+        continue
 
       # blank line
       # an empty line in source generates a one char vertical gap
@@ -4483,6 +4678,7 @@ class Ppt(Book):
 
       # centered line
       # a line in source that has no vertical pipe
+      # (Note: Honors <al=r/l> if specified.)
       if not "|" in self.wb[self.cl]:
         line = self.wb[self.cl].strip()
         if len(line) > 6 and line[0:4] == "<al=":
@@ -4529,7 +4725,7 @@ class Ppt(Book):
         w1 = widths[i]
         for j in range(i+1, ncols):
           if t[j].strip() == "<span>":
-            w1 += widths[j] + 1 # account for space between the two columns
+            w1 += widths[j] + len(bafter[j-1]) + len(bbefore[j]) # account for space between columns
           else:
             break
         if caligns[i] != 'h': # if not hanging indent, wrap normally
@@ -4565,22 +4761,99 @@ class Ppt(Book):
           s = " " * tindent  # center the table
         for col in range(0,ncols):
           w1 = widths[col]
+          temp_bafter = ''
           for j in range(col+1, ncols):
             if w[j][0].strip() == "<span>":
-              w1 += widths[j] + 1 # account for space between the two columns
+              w1 += widths[j] + len(bafter[j-1]) + len(bbefore[j]) # account for space between columns
+              temp_bafter = bafter[j]
             else:
               break
           fmt = "{" + ":{}{}".format(caligns[col], w1) + "}"
           line = w[col][g]
           if w[col][0] != "<span>":
-            if col > 0:
-              s += " "  # inter-column space so "rl" isn't contingent
+            s += bbefore[col]
             s += self.truefmt(fmt, line)
+            if temp_bafter:
+              s += temp_bafter
+            else:
+              s += bafter[col]
         self.eb.append(s)
-      if not self.wb[self.cl + 1 ].startswith(".ta-") and rowspace:
+      nextline = self.wb[self.cl + 1].rstrip()
+      if (not nextline.startswith(".ta-") and # if not end of table and
+          rowspace and # cells are multi-line and
+          nextline and # next line is non-blank and
+          not hrules): # and there are no horizontal rules
         self.eb.append("")
 
       self.cl += 1  # go to next row in table
+
+    # Fixup horizontal rules, if any, adding corners and joining the verticals
+    # p = previous self.eb line number in table, or -1
+    # n = next self.eb line number in table, or -1
+    # r = self.eb line number of this horizontal rule
+
+    for i, r in enumerate(hrules):
+      p = r - 1 if (i > 0) else -1
+      n = r + 1 if (r < len(self.eb) - 1) else -1
+
+      if p == -1 and n != -1: # handle top rule
+        #key = 'ludr'
+        kl = '*' # no left to begin with
+        ku = '*' # no up at all for this row
+        line = rindent * ' '
+        temp = self.eb[r][rindent]
+        for l in range(rindent, len(self.eb[r])):
+          kd = self.eb[n][l] # if (l < len(self.eb[n])) else '*' # down character
+          if kd not in '│┃║':
+            kd = '*'
+          kr = self.eb[r][l + 1] if (l < len(self.eb[r]) - 1) else '*' # right character, or *
+          key = kl + ku + kd + kr
+          if kd + ku != '**':
+            line += self.hrule_text_dict[key] # lookup replacement character
+          else:
+            line += temp
+          kl = temp # set next "left" character from remembered first character of the rule
+        self.eb[r] = line
+
+      elif p != -1 and n != -1: # handle a middle rule
+        #key = 'ludr'
+        kl = '*' # no left to begin with
+        line = rindent * ' '
+        temp = self.eb[r][rindent]
+        for l in range(rindent, len(self.eb[r])):
+          ku = self.eb[p][l] #if (l < len(self.eb[p])) else '*' # up character
+          if ku not in '│┃║':
+            ku = '*'
+          kd = self.eb[n][l] #if (l < len(self.eb[n])) else '*' # down character
+          if kd not in '│┃║':
+            kd = '*'
+          kr = self.eb[r][l + 1] if (l < len(self.eb[r]) - 1) else '*' # right character, or *
+          key = kl + ku + kd + kr
+          if kd + ku != '**':
+            line += self.hrule_text_dict[key] # lookup replacement character
+          else:
+            line += temp
+          kl = temp # set next "left" character from remembered first character of rule
+        self.eb[r] = line
+
+      elif p != -1 and n == -1: # handle last rule
+        #key = 'ludr'
+        kl = '*' # no left to begin with
+        kd = '*' # no down at all for this row
+        line = rindent * ' '
+        temp = self.eb[r][rindent]
+        for l in range(rindent, len(self.eb[r])):
+          ku = self.eb[p][l]  #if (l < len(self.eb[p])) else '*' # up character
+          if ku not in '│┃║':
+            ku = '*'
+          kr = self.eb[r][l + 1] if (l < len(self.eb[r]) - 1) else '*' # right character, or *
+          key = kl + ku + kd + kr
+          if kd + ku != '**':
+            line += self.hrule_text_dict[key] # lookup replacement character
+          else:
+            line += temp
+          kl = temp # set next "left" character from remembered character
+        self.eb[r] = line
 
     self.eb.append(".RS 1")  # request blank line below table
     self.cl += 1  # move past .ta-
@@ -7294,6 +7567,28 @@ class Pph(Book):
         maxw = max(maxw, self.truelen(t))
         j += 1
       return maxw
+
+    def make_tb_border_class(line, data_found):
+      classname = 'bb' if (data_found) else 'bt' # first part of class name
+      classname += self.valid_html_hrules[line][0] # finish class name
+      border_css = "[1672] ." + classname + ' '
+      border_css += self.html_border_names[classname[0:2]]
+      key = self.valid_html_hrules[line][1]
+      border_css += self.nregs[key] +'; }'
+      self.css.addcss(border_css)
+      return classname
+
+    def make_lr_border_class(prefix, spec):
+      classname = prefix
+      rule = self.valid_html_vrules[spec]
+      classname += rule[0]
+      key = rule[1]
+      border_css = "[1672] ." + classname + ' '
+      border_css += self.html_border_names[prefix]
+      border_css += self.nregs[key] +'; }'
+      self.css.addcss(border_css)
+      return classname
+
     if self.wb[self.cl] == ".ta-":
       self.crash_w_context(".ta- found outside of table", self.cl)
     haligns = list() # 'h', 'l', 'r', or 'c'  no default; must specify
@@ -7301,15 +7596,18 @@ class Pph(Book):
     widths = list() # column widths
     totalwidth = 0
     il_line = self.wb[self.cl]
+    border_tag = "<" + NOW + ">" # tag showing a horizontal border line is already processed
 
     # look for continuation characters; restore to one line
     k1 = self.cl
-    while self.wb[k1] != ".ta-":
+    while k1 < len(self.wb) and self.wb[k1] != ".ta-":
       while "\\" in self.wb[k1]:
         self.wb[k1] = re.sub(r"\\", "", self.wb[k1])
         self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
         del self.wb[k1+1]
       k1 += 1
+    if k1 == len(self.wb):
+      self.crash_w_context("missing .ta- in table starting: {}".format(s), self.cl)
 
     # pull out summary if present.
     tsum = ""
@@ -7329,6 +7627,14 @@ class Pph(Book):
       self.wb[self.cl], tw_html = self.get_id("w", self.wb[self.cl])
       if "%" not in tw_html:
         self.fatal("please specify table HTML width as percent, i.e. \"{0}%\" \n on line: {1}".format(tw_html, il_line))
+
+    # pull out optional id=
+    tid = ""
+    if "id=" in self.wb[self.cl]:
+      self.wb[self.cl], tid = self.get_id("id", self.wb[self.cl])
+      if tid:
+        tid = " id='{}'".format(tid)
+
 
     # tables forms:
     # .ta r:5 l:20 l:5  => use specified width and wrap if necessary
@@ -7361,10 +7667,44 @@ class Pph(Book):
     t = self.wb[self.cl].split() # ['.ta', 'lt:6', 'rt:22']
     ncols = len(t) - 1  # skip the .ta piece
 
-    # alignment
+    # alignment and borders
+    bbefore = list() # border characters before cells
+    bafter  = list() # and after cells
     j = 1
     while j <= ncols:
       u = t[j].split(':')
+
+      appended = False
+      m = re.match(r"([|=]*)(..)", u[0]) # extract border-before character(s)
+      if m:
+        u[0] = m.group(2)
+        bspec = m.group(1)
+        if bspec in ['|', '||', '=', '==']:
+          class_name = make_lr_border_class('bl', bspec)
+          bbefore.append(class_name)
+          appended = True
+        elif not bspec:
+          pass
+        else:
+          self.warn_w_context("Unrecognized cell border specification character(s): {}".format(bspec), self.cl)
+      if not appended: # if no before border appended
+        bbefore.append('')
+
+      appended = False
+      m = re.match(r"([^|=]+)([|=]*)", u[1]) # extract border-after character(s)
+      if m:
+        u[1] = m.group(1)
+        bspec = m.group(2)
+        if bspec in ['|', '||', '=', '==']:
+          class_name = make_lr_border_class('br', bspec)
+          bafter.append(class_name)
+          appended = True
+        elif not bspec:
+          pass
+        else:
+          self.warn_w_context("Unrecognized cell border specification character(s): {}".format(bspec), self.cl)
+      if not appended: # if no after border appended
+        bafter.append('') # assume null right border if none specified
 
       if not u[0][0] in ['l','c','r','h']:
         self.fatal("table horizontal alignment must be 'l', 'c', 'h', or 'r' in {}".format(self.wb[self.cl]))
@@ -7386,8 +7726,11 @@ class Pph(Book):
       if u[0][1] == 'b':
         valigns.append("vertical-align:bottom;")
 
-      widths.append(int(u[1]))
-      totalwidth += int(u[1]) # no added space in HTML
+      try:
+        widths.append(int(u[1]))
+        totalwidth += int(u[1]) # no added space in HTML
+      except ValueError:
+        self.fatal("cell width {} is not numeric: {}".format(u[1], self.wb[self.cl]))
       j += 1
 
     pwidths = [None] * ncols
@@ -7449,7 +7792,7 @@ class Pph(Book):
       right_indent_pct = 100 - epw - left_indent_pct
       self.css.addcss("[1671] @media handheld {{ .table{} {{ margin-left: {}%; margin-right:{}%; width:{}%; }} }}".format(self.tcnt, left_indent_pct, right_indent_pct, epw))
 
-    t.append("<table class='table{}' summary='{}'>".format(self.tcnt, tsum))
+    t.append("<table class='table{}' summary='{}'{}>".format(self.tcnt, tsum, tid))
 
     # set relative widths of columns
     t.append("<colgroup>")
@@ -7459,6 +7802,9 @@ class Pph(Book):
 
     startloc = self.cl
     self.cl += 1 # move into the table rows
+    data_row_found = False
+    border_top = ''
+    border_bottom = ''
     while self.wb[self.cl] != ".ta-":
 
       # see if .bn info line
@@ -7467,13 +7813,36 @@ class Pph(Book):
         self.cl += 1
         continue
 
-      # see if blank line
+      # see if blank line (will not have borders)
       if "" == self.wb[self.cl]:
         t.append("  <tr><td>&nbsp;</td></tr>")
         self.cl += 1
+        data_row_found = False
+        border_top = ''
+        border_bottom = ''
         continue
 
-      # see if centered line
+      # horizontal border (top, because bottom borders are handled via lookahead while processing
+      # a data row
+      # Signified by _ for a single line or = for a double line (__ or == for medium weight)
+      # Class names generated:
+      # btt (border top thin) / btm (border top medium)
+      # bttd (border top medium double) / btmd (border top medium double)
+      # and correspondingling bbt/btm/bttd/btmd for border top classes
+      if len(self.wb[self.cl]) < 3 and self.wb[self.cl] in self.valid_html_hrules:
+        class_name = make_tb_border_class(self.wb[self.cl], data_row_found)
+        border_top = class_name
+        self.cl += 1
+        continue
+
+      # previously processed horizontal (bottom) border (via lookahead from a data row)
+      # (Restore contents, skip line)
+      if self.wb[self.cl].startswith(border_tag):
+        self.wb[self.cl] = self.wb[self.cl][len(border_tag):]
+        self.cl += 1
+        continue
+
+      # see if centered line (will not have borders)
       if not "|" in self.wb[self.cl]:
         line = self.wb[self.cl].strip()
         align = "text-align:center;"
@@ -7491,6 +7860,9 @@ class Pph(Book):
               self.warn_w_context("<al=h> not supported for centered table lines", self.cl)
           line = line[6:]
         t.append("  <tr><td style='{}' colspan='{}'>{}</td></tr>".format(align, ncols,line))
+        data_row_found = False
+        border_top = ''
+        border_bottom = ''
         self.cl += 1
         continue
 
@@ -7506,12 +7878,23 @@ class Pph(Book):
       v = self.wb[self.cl].split('|') #
       if len(v) != ncols:
         self.crash_w_context("table has wrong number of columns:{}".format(self.wb[self.cl]), self.cl)
+
+      data_row_found = True
+
+      # check for horizontal rule following this row
+      if len(self.wb[self.cl + 1]) < 3 and self.wb[self.cl + 1] in self.valid_html_hrules:
+        class_name = make_tb_border_class(self.wb[self.cl + 1], data_row_found)
+        border_bottom = class_name
+        self.wb[self.cl + 1] = border_tag + self.wb[self.cl + 1] # flag the line for special handling
+
       t.append("  <tr>")
       # iterate over the td elements
       caligns = haligns[:] # copy alignment specifications
       for k,data in enumerate(v):
         # adjust alignment if override given
         v[k] = v[k].strip(' ')
+        #if not v[k]:
+        #  v[k] = '&nbsp;' # force blank cells to nbsp
         if len(v[k]) > 6 and v[k][0:4] == "<al=":
           m = re.match(r"^<al=([lrch])>", v[k]) # pick up possible alignment directive
           if m:
@@ -7528,26 +7911,47 @@ class Pph(Book):
         padding = ""
 
         if v[k] != "<span>":
-          if k < len(v) - 1: # each column not the last gets padding to the right
-             padding +='padding-right:1em;'
-          # convert leading spaces to padding
+          if not bbefore and not bafter: # if no left/right borders in table
+            if k < len(v) - 1: # each column not the last gets padding to the right
+              padding +='padding-right:1em;' 
+          # convert leading protected spaces (\  or \_) to padding
           t1 = v[k]
           t2 = re.sub(r"^ⓢ+","", v[k])
           if len(t1) - len(t2) > 0:
             padleft = (len(t1) - len(t2))*0.7
-            padding += 'padding-left:{}em'.format(padleft)
+            padding += 'padding-left:{}em;'.format(padleft)
+          elif bbefore or bafter: # if no leading spaces, and borders in use, add left-padding
+            padding += 'padding-left:' + self.nregs["html-cell-padding-left"] + ';'
+          if bbefore or bafter: # if borders in use add right-padding
+            padding += 'padding-right:' + self.nregs["html-cell-padding-right"] + ';'
+            
           # inject saved page number if this is first column
           if k == 0:
             v[k] = savedpage + t2
+          else: # added in 3.50b; was missing, resulting in excess padding (both padding and &nbsp;)
+            v[k] = t2
           colspan = 1 #  look for <span> in next column(s) to setup colspan
+          border_after = bafter[k] # figure out colspan and proper "after" border, depending on <span>
           for kk in range(k+1, len(v)):
             if v[kk].strip() == "<span>":
               colspan += 1
+              border_after = bafter[kk]
             else:
               break
-          colspan = "colspan='{}' ".format(colspan) if (colspan > 1) else ""
-          t.append("    <td {}style='{}{}{}'>".format(colspan,valigns[k],caligns[k],padding) + v[k].strip() + "</td>")
+          colspan = " colspan='{}'".format(colspan) if (colspan > 1) else ""
+
+          # force a spanning cell that is all blank to be &nbsp; so it doesn't disappear
+          if colspan and not v[k].strip(): 
+            v[k] = '&nbsp;'
+
+          border_classes = border_top + ' ' + border_bottom + ' ' + bbefore[k] + ' ' + border_after
+          border_classes = border_classes.strip()
+          if border_classes:
+            border_classes = "class='{}' ".format(border_classes)
+          t.append("    <td {}style='{}{}{}'{}>".format(border_classes, valigns[k], caligns[k], padding, colspan) + v[k].strip() + "</td>")
       t.append("  </tr>")
+      border_top = '' # done with these two borders
+      border_bottom = ''
       self.cl += 1
     t.append("</table>")
     self.tcnt += 1
@@ -8202,6 +8606,7 @@ if __name__ == '__main__':
 # 1614      something else about image widths (ign)
 # 1670      .table<number> width
 # 1671      .table<number> width in epub
+# 1672      table border class definitions
 # 1873      .nf c: .nf-center
 # 1876             .nf-center-c0 (if indented paragraphs)
 # 1876             .nf-center-c1 (if block paragraphs)
