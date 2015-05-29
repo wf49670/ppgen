@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.50b"    # 27-May-2015
+VERSION="3.50b2"    # 28-May-2015
 # If PPer put a blank line between table rows, don't add another one automatically.
 # Allow specification of borders for tables
 # Allow id=value on .ta
@@ -1516,6 +1516,7 @@ class Book(object):
     self.nregs["blr||"] = "medium solid" # table border: left/right using ||
     self.nregs["blr="] = "4px double" # table border: left/right using =
     self.nregs["blr=="] = "5px double" # table border: left/right using =
+    self.nregs["border-collapse"] = "collapse" # border-collapse option for table borders
     self.nregs["html-cell-padding-left"] = ".5em" # left cell padding for html tables when borders in use
     self.nregs["html-cell-padding-right"] = ".5em" # rightt cell padding for html tables when borders in use
     self.nregs["text-cell-padding-left"] = "" # left cell padding for text tables when borders in use
@@ -7670,6 +7671,7 @@ class Pph(Book):
     # alignment and borders
     bbefore = list() # border characters before cells
     bafter  = list() # and after cells
+    borders_present = False
     j = 1
     while j <= ncols:
       u = t[j].split(':')
@@ -7683,6 +7685,7 @@ class Pph(Book):
           class_name = make_lr_border_class('bl', bspec)
           bbefore.append(class_name)
           appended = True
+          borders_present = True
         elif not bspec:
           pass
         else:
@@ -7699,6 +7702,7 @@ class Pph(Book):
           class_name = make_lr_border_class('br', bspec)
           bafter.append(class_name)
           appended = True
+          borders_present = True
         elif not bspec:
           pass
         else:
@@ -7784,6 +7788,8 @@ class Pph(Book):
       left_indent_pct = (100 - our_width) // 2
       right_indent_pct = 100 - our_width - left_indent_pct
       s += " margin-left: {}%; margin-right:{}%; width:{}%; ".format( left_indent_pct, right_indent_pct, our_width )
+    if borders_present:
+      s += " border-collapse:{}; ".format(self.nregs["border-collapse"])
     self.css.addcss("[1670] .table{0} {{ {1} }}".format(self.tcnt, s))
 
     if tw_epub != "":
