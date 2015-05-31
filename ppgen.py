@@ -22,12 +22,10 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.50b2"    # 28-May-2015
-# If PPer put a blank line between table rows, don't add another one automatically.
-# Allow specification of borders for tables
-# Allow id=value on .ta
-# Fix excess padding issue on cells that start with protected spaces (\  or \_)
-# Added .nr values to control padding within cells when using borders
+VERSION="3.50c"    # 29-May-2015
+# (b2: added .nr border-collapse)
+# c: Don't generate both id= and name= for <a> elements; only generate id=
+# Fix problem with [#]...:...[#] being taken as a PPer-supplied link rather than two footnotes
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -3228,7 +3226,9 @@ class Ppt(Book):
     text = "\n".join(self.wb)
     text = re.sub(r"#(\d+)#", r"\1", text)
     text = re.sub(r"#([iIvVxXlLcCdDmM]+)#", r"\1", text) # don't forget about Roman numerals as page numbers
-    text = re.sub(r"#(.*?):.*?#", r"\1", text)
+    #text = re.sub(r"#(.*?):.*?#", r"\1", text)
+    #text = re.sub(r"#([^]].*?):[A-Za-z][A-Za-z0-9\-_\:\.]*?#", r"\1", text)
+    text = re.sub(r"#([^]].*?):.*?[^[]#", r"\1", text)
     # if there is a named target, then somewhere there
     # is a <target id...> to remove in the text version
     text = re.sub(r"<target.*?>", "", text)
@@ -5266,7 +5266,9 @@ class Pph(Book):
 
       self.wb[i] = re.sub(r"#(\d+)#", r"⑲\1⑲", self.wb[i])
       self.wb[i] = re.sub(r"#([iIvVxXlLcCdDmM]+)#", r"⑲\1⑲", self.wb[i])
-      self.wb[i] = re.sub(r"#(.*?:.*?)#", r"⑲\1⑲", self.wb[i])
+      #self.wb[i] = re.sub(r"#(.*?:.*?)#", r"⑲\1⑲", self.wb[i])
+      #self.wb[i] = re.sub(r"#([^]].*?:[A-Za-z][A-Za-z0-9\-_\:\.]*?)#", r"⑲\1⑲", self.wb[i])
+      self.wb[i] = re.sub(r"#([^]].*?:.*?[^[])#", r"⑲\1⑲", self.wb[i])
       i += 1
 
     # HTML will always choose the UTF-8 Greek line
@@ -5545,17 +5547,17 @@ class Pph(Book):
       if "<target id" in self.wb[i]:
         m = re.search("<target id='(.*?)'>", self.wb[i])
         while m:
-          self.wb[i] = re.sub("<target id='(.*?)'>", "<a id='{0}' name='{0}'></a>".format(m.group(1)), self.wb[i], 1)
+          self.wb[i] = re.sub("<target id='(.*?)'>", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], 1)
           self.checkId(m.group(1))
           m = re.search("<target id='(.*?)'>", self.wb[i])
         m = re.search("<target id=\"(.*?)\">", self.wb[i])
         while m:
-          self.wb[i] = re.sub("<target id=\"(.*?)\">", "<a id='{0}' name='{0}'></a>".format(m.group(1)), self.wb[i], 1)
+          self.wb[i] = re.sub("<target id=\"(.*?)\">", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], 1)
           self.checkId(m.group(1))
           m = re.search("<target id=\"(.*?)\">", self.wb[i])
         m = re.search("<target id=(.*?)>", self.wb[i])
         while m:
-          self.wb[i] = re.sub("<target id=(.*?)>", "<a id='{0}' name='{0}'></a>".format(m.group(1)), self.wb[i], 1)
+          self.wb[i] = re.sub("<target id=(.*?)>", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], 1)
           self.checkId(m.group(1))
           m = re.search("<target id=(.*?)>", self.wb[i])
       i += 1
@@ -5942,9 +5944,9 @@ class Pph(Book):
           self.wb[i] = re.sub(r"⑯(.+)⑰",
           "<span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ptmp),
           self.wb[i])
-          # "<span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(ptmp)   # pre-3.24M
+          # "<span class='pagenum'><a id='Page_{0}'>{0}</a></span>".format(ptmp)
         elif self.pnlink:  # just the link
-          self.wb[i] = re.sub(r"⑯(.+)⑰", "<a name='Page_{0}' id='Page_{0}'></a>".format(ptmp), self.wb[i])
+          self.wb[i] = re.sub(r"⑯(.+)⑰", "<a id='Page_{0}'></a>".format(ptmp), self.wb[i])
       i += 1
 
     # internal page links
@@ -6268,10 +6270,9 @@ class Pph(Book):
     t.append("<div>")
     if pnum != "":
       if self.pnshow:
-        # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
         t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
       elif self.pnlink:
-        t.append("  <a name='Page_{0}' id='Page_{0}'></a>".format(pnum))
+        t.append("  <a id='Page_{0}'></a>".format(pnum))
     if id != "":
       t.append("  <h1 id='{}' style='{}' {}>{}</h1>".format(id, hcss, title, s))
     else:
@@ -6347,10 +6348,9 @@ class Pph(Book):
       t.append("<div>") # always want a div around the h2
     if pnum != "":
       if self.pnshow:
-        # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
         t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
       elif self.pnlink:
-        t.append("  <a name='Page_{0}' id='Page_{0}'></a>".format(pnum))
+        t.append("  <a id='Page_{0}'></a>".format(pnum))
     if id != "":
       t.append("  <h2 id='{}' style='{}' {}>{}</h2>".format(id, hcss, title, s))
     else:
@@ -6420,10 +6420,9 @@ class Pph(Book):
     if pnum != "":
       t.append("<div>")
       if self.pnshow:
-        # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
         t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
       elif self.pnlink:
-        t.append("  <a name='Page_{0}' id='Page_{0}'></a>".format(pnum))
+        t.append("  <a id='Page_{0}'></a>".format(pnum))
     if id != "":
       t.append("<h3 id='{}' style='{}'>{}</h3>".format(id, hcss, s))
     else:
@@ -6491,10 +6490,9 @@ class Pph(Book):
     if pnum != "":
       t.append("<div>")
       if self.pnshow:
-        # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
         t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
       elif self.pnlink:
-        t.append("  <a name='Page_{0}' id='Page_{0}'></a>".format(pnum))
+        t.append("  <a id='Page_{0}'></a>".format(pnum))
       t.append("</div>")
     if id != "":
       t.append("<h4 id='{}' style='{}'>{}</h4>".format(id, hcss, s))
@@ -6561,10 +6559,9 @@ class Pph(Book):
     if pnum != "":
       t.append("<div>")
       if self.pnshow:
-        # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
         t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
       elif self.pnlink:
-        t.append("  <a name='Page_{0}' id='Page_{0}'></a>".format(pnum))
+        t.append("  <a id='Page_{0}'></a>".format(pnum))
       t.append("</div>")
     if id != "":
       t.append("<h5 id='{}' style='{}'>{}</h5>".format(id, hcss, s))
@@ -6631,10 +6628,9 @@ class Pph(Book):
     if pnum != "":
       t.append("<div>")
       if self.pnshow:
-        # t.append("  <span class='pagenum'><a name='Page_{0}' id='Page_{0}'>{0}</a></span>".format(pnum))
         t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
       elif self.pnlink:
-        t.append("  <a name='Page_{0}' id='Page_{0}'></a>".format(pnum))
+        t.append("  <a id='Page_{0}'></a>".format(pnum))
       t.append("</div>")
     if id != "":
       t.append("<h6 id='{}' style='{}'>{}</h6>".format(id, hcss, s))
@@ -7917,18 +7913,18 @@ class Pph(Book):
         padding = ""
 
         if v[k] != "<span>":
-          if not bbefore and not bafter: # if no left/right borders in table
+          if not borders_present: # if no left/right borders in table
             if k < len(v) - 1: # each column not the last gets padding to the right
               padding +='padding-right:1em;' 
           # convert leading protected spaces (\  or \_) to padding
           t1 = v[k]
           t2 = re.sub(r"^ⓢ+","", v[k])
           if len(t1) - len(t2) > 0:
-            padleft = (len(t1) - len(t2))*0.7
+            padleft = round((len(t1) - len(t2))*0.7, 1)
             padding += 'padding-left:{}em;'.format(padleft)
-          elif bbefore or bafter: # if no leading spaces, and borders in use, add left-padding
+          elif borders_present: # if no leading spaces, and borders in use, add left-padding
             padding += 'padding-left:' + self.nregs["html-cell-padding-left"] + ';'
-          if bbefore or bafter: # if borders in use add right-padding
+          if borders_present: # if borders in use add right-padding
             padding += 'padding-right:' + self.nregs["html-cell-padding-right"] + ';'
             
           # inject saved page number if this is first column
