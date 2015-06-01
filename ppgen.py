@@ -22,10 +22,11 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.50c"    # 29-May-2015
+VERSION="3.50c"    # 1-Jun-2015
 # (b2: added .nr border-collapse)
 # c: Don't generate both id= and name= for <a> elements; only generate id=
 # Fix problem with [#]...:...[#] being taken as a PPer-supplied link rather than two footnotes
+# Allow <br> to break lines when wrapping text
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -3016,11 +3017,12 @@ class Ppt(Book):
       tline = line
       if self.bnPresent: # remove .bn info if any before doing calculation
         tline = re.sub("⑱.*?⑱","",tline)
-      shortest_line_len = min(shortest_line_len, self.truelen(tline))
+      if not tline.endswith("⓬"): # if line does not end with a <br>
+        shortest_line_len = min(shortest_line_len, self.truelen(tline))
     return shortest_line_len
 
   # wrap string into paragraph in t[]
-  def wrap_para(self, s,  indent, ll, ti, perturb=False):
+  def wrap_para(self, s,  indent, ll, ti, perturb=False, keep_br=False, table=False):
     # if ti < 0, strip off characters that will be in the hanging margin
     # perturb is usually False, but during paragraph rewrapping may be set to True
     # if wrap() discovered that all lines wrapped shorter than 55. In that case
@@ -3054,13 +3056,18 @@ class Ppt(Book):
     if ti > 0:
       s = "⑧" * ti + s
 
+    # Convert any <br> in the line to ⓬ for easier processing
+    s = re.sub(" ?\<br\> ?", "⓬", s)
+    #s = s.replace("<br>", "⓬")
+
     # at this point, s is ready to wrap
     mywidth = ll - indent
     t = []
     perturb_limit = -1   # index of earliest line we can try to perturb
     twidth = mywidth
     true_len_s = self.truelen(s)
-    while true_len_s > twidth:
+    brloc = s.find("⓬", 0, twidth+1) # look for a <br> within the width we're looking at
+    while true_len_s > twidth or brloc != -1:
       twidth2 = 0
       if self.bnPresent:
         m = re.match("(.*?)(⑱.*?⑱)(.*)",s)
@@ -3070,15 +3077,44 @@ class Ppt(Book):
             twidth += len(m.group(2)) # allow wider split to account for .bn info
             stemp = m.group(3)
             m = re.match("(.*?)(⑱.*?⑱)(.*)",stemp)
-      if true_len_s > twidth:
-        try:
-          snip_at = s.rindex(" ", 0, twidth+1) # Plan A: snip at a last blank within first twidth+1 characters
-        except:
-          # could not find a place to wrap
-          try: # this one might fail, too, so catch exceptions
-            snip_at = s.index(" ") # Plan B: snip at any blank, even if line is wide
+      brloc = s.find("⓬") # look for a <br> within the string
+      warn = True
+      if true_len_s > twidth or brloc != -1: # if line is long or contains a <br>
+        if brloc != -1 and brloc <= twidth + 1: # if we found a <br> within the wrap width
+          snip_at = brloc + 1 # set to snip after the <br>
+          s = s.replace("⓬", "⓬ ", 1) # add a blank after the <br> (will be skipped by snipping)
+          true_len_s += 1 # account for the added blank
+          warn = False
+        else:
+          try:
+            snip_at = s.rindex(" ", 0, twidth+1) # Plan A: snip at a last blank within first twidth+1 characters
+            warn = False
           except:
-            snip_at = len(s) # Plan C: leave the line wide
+            # could not find a place to wrap using blank
+            # if we're in a table, try wrapping at a hyphen
+            #try: # might fail, so catch exceptions
+            #  hyphen = s.index("-", 0, twidth+1)
+            #  true_len_s += 1 # if here we're going to be adding a blank below, so account for it
+            #  snip_at = hyphen + 1
+            #  s = s.replace("-", "- ", 1)
+            #  warn = False
+            #except:
+            try: # this one might fail, too, so catch exceptions
+              blindex = s.index(" ") # Plan B: snip at any blank, leaving wide, unless <br> comes first
+              if brloc == -1 or blindex < brloc:
+                snip_at = blindex
+              else:
+                snip_at = brloc + 1 # set to snip after the <br>
+                s = s.replace("⓬", "⓬ ", 1) # add a blank after the <br> (will be skipped by snipping)
+            except:
+              if brloc == -1:
+                snip_at = len(s) # Plan C: leave the line wide unless <br>
+              else:
+                snip_at = brloc + 1 # set to snip after the <br>
+                s = s.replace("⓬", "⓬ ", 1) # add a blank after the <br> (will be skipped by snipping)
+        if snip_at > twidth and table and warn:
+          stemp = s.replace("⓬", "<br>")
+          self.warn("Table cell too narrow ({}) for word: {}".format(twidth, stemp))
         if not perturb or (snip_at + indent) >= 55 or not t: # for normal processing:
                                                   #   Not perturbing, line long enough, or first line
           t.append(s[:snip_at])
@@ -3092,7 +3128,8 @@ class Ppt(Book):
                        # this line is short, and it's not the first line (which we can't fix)
           savet = t[:]    # save t, s in case need to restore them
           saves = s
-          while len(t) > perturb_limit: # While t has data and is long enough to try perturbing
+          while (len(t) > perturb_limit and # While t has data and is long enough to try perturbing
+                 not t[-1].endswith("⓬")):   # last line does not end with a <br>
             try:
               snip2 = t[-1].rindex(' ') # any place to remove a word on the last line of t?
               if snip2 + indent >= 55:  # if yes, and it would leave that line long enough
@@ -3131,6 +3168,7 @@ class Ppt(Book):
               s = ""
             true_len_s = self.truelen(s)
             twidth = mywidth
+            brloc = s.find("⓬", 0, twidth+1) # look for a <br> within the width we're looking at
 
     if len(t) == 0 or len(s) > 0: #ensure t has something in it, but don't add a zero length s (blank line) to t unless t is empty
       t.append(s)
@@ -3138,6 +3176,8 @@ class Ppt(Book):
     for i, line in enumerate(t):
         t[i] = t[i].replace("⑧", " ")  # leading spaces from .ti
         t[i] = " " * indent + t[i] # indent applies to all
+        if not keep_br and t[i].endswith("⓬"):
+          t[i] = t[i].replace("⓬", "")
     if hold != "":
       leadstr = " " * (indent + ti) + hold
       t[0] = leadstr + t[0][indent:]
@@ -3146,35 +3186,45 @@ class Ppt(Book):
   def wrap(self, s,  indent=0, ll=72, ti=0):
     ta = [] # list of paragraph (lists)
     ts = [] # paragraph stats
+    done = False
     while '  ' in s:   # squash any repeated spaces
       s = s.replace('  ', ' ')
     for i in range(0, -8, -2):
-    #for i in range(0, -12, -2):###
-      t = self.wrap_para(s, indent, ll+i, ti)
+      t = self.wrap_para(s, indent, ll+i, ti, keep_br=True)
       ta.append(t)
       sll = self.shortest_line_len(t[0:-1])
       if sll >= 55:
-        return t # just bail if already good enough
-      ts.append(sll)
+        done = True # Done if already good enough
+        break
+      else:
+        ts.append(sll)
 
     # All had a line shorter than 55. Tell wrap_para() to
     # try again, perturbing the word layout.
-    t = self.wrap_para(s, indent, ll, ti, perturb=True)
-    ta.append(t)
-    sll = self.shortest_line_len(t[0:-1])
-    if sll >= 55:
-      return t # just bail if already good enough
-    ts.append(sll)
+    if not done:
+      t = self.wrap_para(s, indent, ll, ti, perturb=True, keep_br=True)
+      ta.append(t)
+      sll = self.shortest_line_len(t[0:-1])
+      if sll >= 55:
+        done = True # Done if already good enough
+      else:
+        ts.append(sll)
 
-    # if we are here all test paragraphs had some short lines
+    # if not done yet then all test paragraphs had some short lines
     # choose the best one we found
-    longest_short = 0
-    besti = -1
-    for i in range(0,len(ta)):
-      if ts[i] > longest_short:
-        t = ta[i]
-        longest_short = ts[i]
-        besti = i
+    if not done:
+      longest_short = 0
+      besti = -1
+      for i in range(0,len(ta)):
+        if ts[i] > longest_short:
+          t = ta[i]
+          longest_short = ts[i]
+          besti = i
+
+    # remove any <br> from ends of lines
+    for i in range(len(t)): 
+      if t[i].endswith("⓬"):
+        t[i] = t[i].replace("⓬", "")
     return t
 
   # -------------------------------------------------------------------------------------
@@ -4647,7 +4697,7 @@ class Ppt(Book):
             w1 += widths[j]
           else:
             break
-        k2 = self.wrap_para(t[i].strip(), 0, w1, 0) # should handle combining characters properly
+        k2 = self.wrap_para(t[i].strip(), 0, w1, 0, table=True) # should handle combining characters properly
         if len(k2) > 1:
           rowspace = True
       k1 += 1
@@ -4730,9 +4780,9 @@ class Ppt(Book):
           else:
             break
         if caligns[i] != 'h': # if not hanging indent, wrap normally
-          w[i] = self.wrap_para(cell_text, 0, w1, 0) # should handle combining characters properly
+          w[i] = self.wrap_para(cell_text, 0, w1, 0, table=True) # should handle combining characters properly
         else: # use a 2-character indent, -2 ti if hanging indent
-          w[i] = self.wrap_para(cell_text, 2, w1, -2)
+          w[i] = self.wrap_para(cell_text, 2, w1, -2, table=True)
           caligns[i] = "<"
         for j,line in enumerate(w[i]):
           w[i][j] = line.rstrip()  # marginal whitespace (only remove spaces at ends of lines)
@@ -5414,6 +5464,23 @@ class Pph(Book):
           i += 1 # keep looking
       else:       # only increment if first match above failed
         i += 1    # as if it worked we deleted the matching line
+
+    # convert any <br> outside of .li blocks to <br />
+    i = 0
+    while i < len(self.wb):
+
+      # skip literal sections
+      if ".li" == self.wb[i]:
+        while (i < len(self.wb)) and not ".li-" == self.wb[i]:
+          i += 1
+        if i == len(self.wb):
+          self.crash_w_context("unclosed .li", i)
+        i += 1
+        continue
+
+      self.wb[i] = self.wb[i].replace("<br>", "<br />")
+      i += 1
+
 
     # autonumbered footnotes are assigned numbers
     # footnotes in text
@@ -8533,6 +8600,7 @@ if __name__ == '__main__':
 # \u24e5  ⓥ   CIRCLED LATIN SMALL LETTER V # thick space (\|)
 # \u24ea  ⓪   CIRCLED DIGIT 0 # (\#)
 # \u24eb  ⓫   NEGATIVE CIRCLED NUMBER ELEVEN # temporary substitute for | in inline HTML sidenotes until postprocessing
+# \U24ec  ⓬   NEGATIVE CIRCLED NUMBER TWELVE # temporary substitute for <br> in text wrapping
 # \u25ee  ◮   UP-POINTING TRIANGLE WITH RIGHT HALF BLACK # <b> or <strong> (becomes =)
 # \u25f8  ◸   UPPER LEFT TRIANGLE # precedes superscripts
 # \u25f9  ◹   UPPER RIGHT TRIANGLE # follows superscripts
