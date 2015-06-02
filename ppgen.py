@@ -22,11 +22,13 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.50c"    # 1-Jun-2015
-# (b2: added .nr border-collapse)
-# c: Don't generate both id= and name= for <a> elements; only generate id=
-# Fix problem with [#]...:...[#] being taken as a PPer-supplied link rather than two footnotes
-# Allow <br> to break lines when wrapping text
+VERSION="3.50d"    # 2-Jun-2015
+# Restructure wrapping code to make it easier to allow breaking on additional characters, like hyphens.
+# Also affects perturbation mode: when backtracking we may remove "words" delimited by blanks or the
+# specified break characters (hyphen, dash, etc.) if any, trying to keep lines as wide as possible
+# while staying within the prescribed width if possible. If we must be wide, try to stay as narrow as
+# possible.
+# Adds new .nr, break-wrap-at
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1520,6 +1522,9 @@ class Book(object):
     self.nregs["html-cell-padding-right"] = ".5em" # rightt cell padding for html tables when borders in use
     self.nregs["text-cell-padding-left"] = "" # left cell padding for text tables when borders in use
     self.nregs["text-cell-padding-right"] = "" # right cell padding for html tables when borders in use
+    self.nregs["break-wrap-at"] = "" # set of allowable characters to break wrapping, separated by spaces
+                                     # e.g., .nr break-wrap-at "- :" or .nr break-wrap-at "- —"
+                                     # note that breaking on space and <br> is always allowed
 
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string
@@ -1784,6 +1789,8 @@ class Book(object):
   # Calculate "true" length of a string, accounting for <lang> markup and combining or non-spacing characters in Hebrew
   def truelen(self,s):
     #self.dprint("entered: {}".format(s))
+    if self.bnPresent:
+      s = re.sub("(⑱.*?⑱)", "", s) # remove any bn info before trying to calculate the length
     l = len(s) # get simplistic length
     for c in s: # examine each character
       cc = ord(c)
@@ -3013,16 +3020,17 @@ class Ppt(Book):
   def shortest_line_len(self, x):
     """ return length of shotest line in x[] """
     shortest_line_len = 1000
+    BR = "⓬" # temporary replacement for <br> for ease of programming
     for line in x:
       tline = line
       if self.bnPresent: # remove .bn info if any before doing calculation
         tline = re.sub("⑱.*?⑱","",tline)
-      if not tline.endswith("⓬"): # if line does not end with a <br>
+      if not tline.endswith(BR): # if line does not end with a <br>
         shortest_line_len = min(shortest_line_len, self.truelen(tline))
     return shortest_line_len
 
   # wrap string into paragraph in t[]
-  def wrap_para(self, s,  indent, ll, ti, perturb=False, keep_br=False, table=False):
+  def wrap_para(self, s,  indent, ll, ti, perturb=False, keep_br=False, warn=False):
     # if ti < 0, strip off characters that will be in the hanging margin
     # perturb is usually False, but during paragraph rewrapping may be set to True
     # if wrap() discovered that all lines wrapped shorter than 55. In that case
@@ -3031,6 +3039,7 @@ class Ppt(Book):
     # it will backtrack, trying to remove a word from a prior line to increase the
     # length of this one, repeating as necessary.
     hold = ""
+    BR = "⓬" # temporary replacement for <br> for ease of processing
     if ti < 0:
       howmany = -1 * ti
       if not self.bnPresent:
@@ -3057,8 +3066,7 @@ class Ppt(Book):
       s = "⑧" * ti + s
 
     # Convert any <br> in the line to ⓬ for easier processing
-    s = re.sub(" ?\<br\> ?", "⓬", s)
-    #s = s.replace("<br>", "⓬")
+    s = re.sub(" ?\<br\> ?", BR, s)
 
     # at this point, s is ready to wrap
     mywidth = ll - indent
@@ -3066,8 +3074,10 @@ class Ppt(Book):
     perturb_limit = -1   # index of earliest line we can try to perturb
     twidth = mywidth
     true_len_s = self.truelen(s)
-    brloc = s.find("⓬", 0, twidth+1) # look for a <br> within the width we're looking at
-    while true_len_s > twidth or brloc != -1:
+    brloc = s.find(BR, 0, twidth+1) # look for a <br> within the width we're looking at
+    # preferrably break on a <br> or a blank, but check others
+    breakchars = [BR, " "] + self.nregs["break-wrap-at"].split()
+    while true_len_s > mywidth or brloc != -1:
       twidth2 = 0
       if self.bnPresent:
         m = re.match("(.*?)(⑱.*?⑱)(.*)",s)
@@ -3077,46 +3087,115 @@ class Ppt(Book):
             twidth += len(m.group(2)) # allow wider split to account for .bn info
             stemp = m.group(3)
             m = re.match("(.*?)(⑱.*?⑱)(.*)",stemp)
-      brloc = s.find("⓬") # look for a <br> within the string
-      warn = True
-      if true_len_s > twidth or brloc != -1: # if line is long or contains a <br>
-        if brloc != -1 and brloc <= twidth + 1: # if we found a <br> within the wrap width
-          snip_at = brloc + 1 # set to snip after the <br>
-          s = s.replace("⓬", "⓬ ", 1) # add a blank after the <br> (will be skipped by snipping)
-          true_len_s += 1 # account for the added blank
-          warn = False
+      #brloc = s.find(BR, 0, twidth + 1) # look for a <br> within the string
+      #if true_len_s > twidth or brloc != -1: # if line is long or contains a <br>
+      issue_warning = warn
+      snip_at = -1 # no snip spot found yet
+      # Plan A: snip at a breakchar within first twidth+1 characters
+      maxfound = -1
+      maxchar = ""
+      for c in breakchars:
+        if c == BR:
+          found = s.find(c, 0, twidth+1) # for <br> need to find the first one within the width
         else:
-          try:
-            snip_at = s.rindex(" ", 0, twidth+1) # Plan A: snip at a last blank within first twidth+1 characters
-            warn = False
-          except:
-            # could not find a place to wrap using blank
-            # if we're in a table, try wrapping at a hyphen
-            #try: # might fail, so catch exceptions
-            #  hyphen = s.index("-", 0, twidth+1)
-            #  true_len_s += 1 # if here we're going to be adding a blank below, so account for it
-            #  snip_at = hyphen + 1
-            #  s = s.replace("-", "- ", 1)
-            #  warn = False
-            #except:
-            try: # this one might fail, too, so catch exceptions
-              blindex = s.index(" ") # Plan B: snip at any blank, leaving wide, unless <br> comes first
-              if brloc == -1 or blindex < brloc:
-                snip_at = blindex
-              else:
-                snip_at = brloc + 1 # set to snip after the <br>
-                s = s.replace("⓬", "⓬ ", 1) # add a blank after the <br> (will be skipped by snipping)
-            except:
-              if brloc == -1:
-                snip_at = len(s) # Plan C: leave the line wide unless <br>
-              else:
-                snip_at = brloc + 1 # set to snip after the <br>
-                s = s.replace("⓬", "⓬ ", 1) # add a blank after the <br> (will be skipped by snipping)
-        if snip_at > twidth and table and warn:
-          stemp = s.replace("⓬", "<br>")
-          self.warn("Table cell too narrow ({}) for word: {}".format(twidth, stemp))
-        if not perturb or (snip_at + indent) >= 55 or not t: # for normal processing:
-                                                  #   Not perturbing, line long enough, or first line
+          found = s.rfind(c, 0, twidth+1) # but for others, the last one
+        if found != -1:
+          if c == BR: # if we have a <br> we need to honor it
+            break
+          else:  # otherwise try for a wider snip
+            if found > maxfound: # keep track of the largest snip, but prefer first one among equals
+              maxfound = found
+              maxchar = c
+      else: # no <br> found, all snips tried
+        found = maxfound # reset found/c to their max values
+        c = maxchar
+      if found != -1: # if we found a snip spot
+        issue_warning = False
+        if c == " ":
+          snip_at = found
+        else: # not snipping at a blank; need to preserve the character we're snipping around
+          snip_at = found + 1 # bump snip spot past the character
+          true_len_s += 1     # increase string length accordingly
+          s1 = s
+          s2 = s[0:snip_at]
+          s3 = s[snip_at:]
+          s = s[0:snip_at] + " " + s[snip_at:] # add a blank after the snip char (snip will remove it)
+      # if snip spot not found within specified width, go to plan B
+      else:
+        # try to snip on any break character, leaving it wider than the specified width
+        # but as narrow as possible, and possibly warn later of the width problem
+        minfound = 1000 # keep track of the minimum width and the snip character we used
+        minchar = ""
+        for c in breakchars:
+          found = s.find(c) # this time don't restrict the width
+          if found != -1: # if we found a spot to snip
+            if found < minfound: # keep track of the narrowest snip, but prefer first one among equals
+              minfound = found
+              minchar = c
+        if minfound != 1000: # if found something
+          found = minfound # grab the minimum width and character
+          c = minchar
+        if found != -1: # if we found a snip spot
+          if c == " ":
+            snip_at = found
+          else: # not snipping at a blank; need to preserve the character we're snipping around
+            snip_at = found + 1 # bump snip spot past the character
+            true_len_s += 1     # increase string length accordingly
+            s = s.replace(c, c + " ", 1) # add a blank after the snip character (blank will be deleted)
+        else: # if still didn't find a snip spot
+          snip_at = len(s) # Plan C: leave the line wide
+
+      if snip_at > twidth and issue_warning:
+        stemp = s.replace(BR, "<br>")
+        self.warn("Specified width {} too narrow for word: {}".format(twidth, stemp))
+      if not perturb or (snip_at + indent) >= 55 or not t: # for normal processing:
+                                                #   Not perturbing, line long enough, or first line
+        t.append(s[:snip_at])
+        if snip_at < len(s):
+          s = s[snip_at+1:]
+        else:
+          s = ""
+        true_len_s = self.truelen(s)
+        twidth = mywidth
+        brloc = s.find(BR, 0, twidth + 1) # look for a <br> within the string
+      else:          # here only if wrap() wanted us to try to avoid short lines,
+                     # this line is short, and it's not the first line (which we can't fix)
+        savet = t[:]    # save t, s in case need to restore them
+        saves = s
+        while (perturb and  # While perturbing and
+               t and        # t has data and
+               len(t) > perturb_limit and # is long enough to try perturbing and
+               not t[-1].endswith(BR)): # last line does not end with a <br>
+          for c in breakchars[1:]: # ignore <br> processing for this attempt as it can't match
+            snip2 = t[-1].rfind(c) # Can we snip a word from the last line of t?
+            if snip2 != -1: # If so,
+              if c == " ": # if snipping on a blank
+                ttemp = t[-1][:snip2] # make copy of snipped previous line skipping the blank
+              else:        # but if snipping on something else (-, em-dash, etc.) we need to
+                ttemp = t[-1][:snip2+len(c)] # include the snipping character in the copy
+              true_len_ttemp = self.truelen(ttemp) # get its true length
+              if true_len_ttemp + indent >= 55: # is prior line still long enough?
+                s = t[-1][snip2+len(c):] + ' ' + s # copy last word of the last line of t
+                t[-1] = ttemp
+                true_len_s = self.truelen(s)
+                twidth = mywidth
+                brloc = s.find(BR, 0, twidth+1) # look for a <br> within the width we're looking at
+                break
+          else: # if no snips worked
+            if len(t) > 1:            # can't perturb last line; try further back if possible
+              s = t.pop() + ' ' + s   # first add last line back to s
+              continue
+            else:                     # perturbing failed; leave this line short
+              perturb = False
+              break
+          break                       # here if snipping worked; break the perturb loop
+        else:                          #
+          perturb = False
+        if not perturb:                # if perturbing failed leave this line short
+          t = savet[:]                 # restore t, s
+          s = saves
+          perturb = True               # we can keep going in perturb mode, but can't backtrack beyond here
+          peturb_limit = len(t)        # so remember where we failed
           t.append(s[:snip_at])
           if snip_at < true_len_s:
             s = s[snip_at+1:]
@@ -3124,51 +3203,7 @@ class Ppt(Book):
             s = ""
           true_len_s = self.truelen(s)
           twidth = mywidth
-        else:          # here only if wrap() wanted us to try to avoid short lines,
-                       # this line is short, and it's not the first line (which we can't fix)
-          savet = t[:]    # save t, s in case need to restore them
-          saves = s
-          while (len(t) > perturb_limit and # While t has data and is long enough to try perturbing
-                 not t[-1].endswith("⓬")):   # last line does not end with a <br>
-            try:
-              snip2 = t[-1].rindex(' ') # any place to remove a word on the last line of t?
-              if snip2 + indent >= 55:  # if yes, and it would leave that line long enough
-                s = t[-1][snip2+1:] + ' ' + s # move last word of the last line of t to front of s
-                t[-1] = t[-1][:snip2]
-                true_len_s = self.truelen(s)
-                twidth = mywidth
-                break
-              elif len(t) > 1:          # can't perturb last line; try further back
-                s = t.pop() + ' ' + s   # first add last line back to s
-                continue
-              else:                     # perturbing failed; leave this line short
-                perturb = False
-                break
-            except ValueError:           # no blanks on last saved line; perturbing needs to go back
-                                         # an additional line if possible
-              if len(t) > 2:             # can we backup meaningfully? (if t[-1] has no blanks, and t[-2] is
-                                         # the first line, it doesn't make any sense to try perturbing further
-                                         # as it can't help. Otherwise,
-                s = t.pop() + ' ' + s    # add last line back to s
-                continue                 # and try perturbing the next one back
-              else:                      # else perturbing failed; leave this line short
-                perturb = False
-                break
-          else:                          #
-            perturb = False
-          if not perturb:                # if perturbing failed leave this line short
-            t = savet[:]                 # restore t, s
-            s = saves
-            perturb = True               # we can keep going in perturb mode, but can't backtrack beyond here
-            peturb_limit = len(t)        # so remember where we failed
-            t.append(s[:snip_at])
-            if snip_at < true_len_s:
-              s = s[snip_at+1:]
-            else:
-              s = ""
-            true_len_s = self.truelen(s)
-            twidth = mywidth
-            brloc = s.find("⓬", 0, twidth+1) # look for a <br> within the width we're looking at
+          brloc = s.find(BR, 0, twidth+1) # look for a <br> within the width we're looking at
 
     if len(t) == 0 or len(s) > 0: #ensure t has something in it, but don't add a zero length s (blank line) to t unless t is empty
       t.append(s)
@@ -3176,8 +3211,8 @@ class Ppt(Book):
     for i, line in enumerate(t):
         t[i] = t[i].replace("⑧", " ")  # leading spaces from .ti
         t[i] = " " * indent + t[i] # indent applies to all
-        if not keep_br and t[i].endswith("⓬"):
-          t[i] = t[i].replace("⓬", "")
+        if not keep_br and t[i].endswith(BR):
+          t[i] = t[i].replace(BR, "")
     if hold != "":
       leadstr = " " * (indent + ti) + hold
       t[0] = leadstr + t[0][indent:]
@@ -3186,6 +3221,7 @@ class Ppt(Book):
   def wrap(self, s,  indent=0, ll=72, ti=0):
     ta = [] # list of paragraph (lists)
     ts = [] # paragraph stats
+    BR = "⓬" # temporary replacement for <br> for ease of programming
     done = False
     while '  ' in s:   # squash any repeated spaces
       s = s.replace('  ', ' ')
@@ -3222,9 +3258,9 @@ class Ppt(Book):
           besti = i
 
     # remove any <br> from ends of lines
-    for i in range(len(t)): 
-      if t[i].endswith("⓬"):
-        t[i] = t[i].replace("⓬", "")
+    for i in range(len(t)):
+      if t[i].endswith(BR):
+        t[i] = t[i].replace(BR, "")
     return t
 
   # -------------------------------------------------------------------------------------
@@ -4697,7 +4733,7 @@ class Ppt(Book):
             w1 += widths[j]
           else:
             break
-        k2 = self.wrap_para(t[i].strip(), 0, w1, 0, table=True) # should handle combining characters properly
+        k2 = self.wrap_para(t[i].strip(), 0, w1, 0, warn=True) # should handle combining characters properly
         if len(k2) > 1:
           rowspace = True
       k1 += 1
@@ -4780,9 +4816,9 @@ class Ppt(Book):
           else:
             break
         if caligns[i] != 'h': # if not hanging indent, wrap normally
-          w[i] = self.wrap_para(cell_text, 0, w1, 0, table=True) # should handle combining characters properly
+          w[i] = self.wrap_para(cell_text, 0, w1, 0, warn=True) # should handle combining characters properly
         else: # use a 2-character indent, -2 ti if hanging indent
-          w[i] = self.wrap_para(cell_text, 2, w1, -2, table=True)
+          w[i] = self.wrap_para(cell_text, 2, w1, -2, warn=True)
           caligns[i] = "<"
         for j,line in enumerate(w[i]):
           w[i][j] = line.rstrip()  # marginal whitespace (only remove spaces at ends of lines)
@@ -7982,7 +8018,7 @@ class Pph(Book):
         if v[k] != "<span>":
           if not borders_present: # if no left/right borders in table
             if k < len(v) - 1: # each column not the last gets padding to the right
-              padding +='padding-right:1em;' 
+              padding += 'padding-right:1em;'
           # convert leading protected spaces (\  or \_) to padding
           t1 = v[k]
           t2 = re.sub(r"^ⓢ+","", v[k])
@@ -7993,7 +8029,7 @@ class Pph(Book):
             padding += 'padding-left:' + self.nregs["html-cell-padding-left"] + ';'
           if borders_present: # if borders in use add right-padding
             padding += 'padding-right:' + self.nregs["html-cell-padding-right"] + ';'
-            
+
           # inject saved page number if this is first column
           if k == 0:
             v[k] = savedpage + t2
@@ -8010,7 +8046,7 @@ class Pph(Book):
           colspan = " colspan='{}'".format(colspan) if (colspan > 1) else ""
 
           # force a spanning cell that is all blank to be &nbsp; so it doesn't disappear
-          if colspan and not v[k].strip(): 
+          if colspan and not v[k].strip():
             v[k] = '&nbsp;'
 
           border_classes = border_top + ' ' + border_bottom + ' ' + bbefore[k] + ' ' + border_after
