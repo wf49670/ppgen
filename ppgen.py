@@ -3116,9 +3116,6 @@ class Ppt(Book):
         else: # not snipping at a blank; need to preserve the character we're snipping around
           snip_at = found + 1 # bump snip spot past the character
           true_len_s += 1     # increase string length accordingly
-          s1 = s
-          s2 = s[0:snip_at]
-          s3 = s[snip_at:]
           s = s[0:snip_at] + " " + s[snip_at:] # add a blank after the snip char (snip will remove it)
       # if snip spot not found within specified width, go to plan B
       else:
