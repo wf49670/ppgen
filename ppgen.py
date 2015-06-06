@@ -22,13 +22,9 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.50d"    # 2-Jun-2015
-# Restructure wrapping code to make it easier to allow breaking on additional characters, like hyphens.
-# Also affects perturbation mode: when backtracking we may remove "words" delimited by blanks or the
-# specified break characters (hyphen, dash, etc.) if any, trying to keep lines as wide as possible
-# while staying within the prescribed width if possible. If we must be wide, try to stay as narrow as
-# possible.
-# Adds new .nr, break-wrap-at
+VERSION="3.50e"    # 6-Jun-2015
+# correct placement of .nf r text when .in and .ll are both specified
+# also problem in .nf b when handling .rj and .ce text
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -4263,7 +4259,7 @@ class Ppt(Book):
             continue
           xs = "{:^" + str(regBW) + "}"
           line = self.wb[i].strip()
-          t.append(" " * lmar + self.truefmt(line))
+          t.append(" " * self.regIN + " " * lmar + self.truefmt(line))
           i += 1
           count -= 1
         continue
@@ -4280,7 +4276,7 @@ class Ppt(Book):
             continue
           xs = "{:>" + str(regBW) + "}"
           line = self.wb[i].strip()
-          t.append(" " * lmar + self.truefmt(xs, line))
+          t.append(" " * self.regIN + " " * lmar + self.truefmt(xs, line))
           i += 1
           count -= 1
         continue
@@ -4325,7 +4321,8 @@ class Ppt(Book):
   def doNfr(self, mo):
     self.eb.append(".RS 1")
     regBW = min(self.calculateBW(".nf-"), self.regLL)
-    fixed_indent = self.regIN + (self.regLL - regBW)
+    #fixed_indent = self.regIN + (self.regLL - regBW)
+    fixed_indent = self.regIN if (self.regLL == regBW) else self.regLL - regBW
     i = self.cl + 1 # skip the .nf r line
     while self.wb[i] != ".nf-":
 
