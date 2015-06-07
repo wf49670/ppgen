@@ -22,10 +22,12 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.50g"    # 7-Jun-2015
-# Add support for <th>. Ignored in text output. In HTML, PPer can use <th> at the front of any table row
-#   that represents a header rather than data, and ppgen will use <th> ... </th> for cells on that row
-#   rather than <td> ... </td>
+VERSION="3.50h"    # 7-Jun-2015
+# Refactor checkId so it works in text output, too (bug introduced in id= for tables?)
+# Rework horizontal table borders in HTML so that _ is thin solid, __ is medium solid,
+#   = is medium double, and == is thick double
+# Consider .de statements before warning of unused targets, as id= may be used simply to allow
+#   styling via .de #id-value
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -173,12 +175,6 @@ class Book(object):
     '==':'═', # double equal sign = box drawings double horizontal (text) or heavier one (html)
     }
 
-  #valid_html_hrules = {
-  #  '_':['t', 'thin solid; }'], # thin
-  #  '__':['m', 'medium solid; }'], # medium
-  #  '=':['td', '4px double; }'], # medium double
-  #  '==':['md', '5px double; }'], # medium double
-  #  }
 
   valid_html_hrules = {
     '_':['t', 'btb_'], # thin
@@ -187,12 +183,6 @@ class Book(object):
     '==':['md', 'btb=='], # medium double
     }
 
-  #valid_html_vrules = {
-  #  '|':['t', 'thin solid; }'], # thin
-  #  '||':['m', 'medium solid; }'], # medium
-  #  '=':['td', '4px double; }'], # medium double
-  #  '==':['md', '5px double; }'], # medium double
-  #  }
 
   valid_html_vrules = {
     '|':['t', 'blr|'], # thin
@@ -1508,12 +1498,12 @@ class Book(object):
     self.nregs["nfl"] = "-1" # default number of spaces to indent .nf l blocks in text (-1 = disabled)
     self.nregs["btb_"] = "thin solid" # table border: top/bottom using _
     self.nregs["btb__"] = "medium solid" # table border: top/bottom using __
-    self.nregs["btb="] = "4px double" # table border: top/bottom using =
-    self.nregs["btb=="] = "5px double" # table border: top/bottom using ==
+    self.nregs["btb="] = "medium double" # table border: top/bottom using =
+    self.nregs["btb=="] = "thick double" # table border: top/bottom using ==
     self.nregs["blr|"] = "thin solid" # table border: left/right using |
     self.nregs["blr||"] = "medium solid" # table border: left/right using ||
-    self.nregs["blr="] = "4px double" # table border: left/right using =
-    self.nregs["blr=="] = "5px double" # table border: left/right using =
+    self.nregs["blr="] = "medium double" # table border: left/right using =
+    self.nregs["blr=="] = "thick double" # table border: left/right using =
     self.nregs["border-collapse"] = "collapse" # border-collapse option for table borders
     self.nregs["html-cell-padding-left"] = ".5em" # left cell padding for html tables when borders in use
     self.nregs["html-cell-padding-right"] = ".5em" # rightt cell padding for html tables when borders in use
@@ -1571,6 +1561,15 @@ class Book(object):
       else:
         t += "*" # use an asterisk if not plain text
     return t
+
+  # -------------------------------------------------------------------------------------
+  # courtesy id check
+  #
+  # ID and NAME tokens must begin with a letter ([A-Za-z]) and may be followed by any number
+  # of letters, digits ([0-9]), hyphens ("-"), underscores ("_"), colons (":"), and periods (".").
+  def checkId(self, s):
+    if not re.match(r"[A-Za-z][A-Za-z0-9\-_\:\.]*", s):
+      self.warn_w_context("illegal identifier: {}".format(s), self.id_loc)
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # get the value of the requested parameter from attr string
@@ -5163,6 +5162,15 @@ class Pph(Book):
         t.append("      " + s[6:])
       return t
 
+    def showde(self): # return only the CSS created by the PPer using .de
+      t = []
+      keys = list(self.cssline.keys())
+      keys.sort()
+      for s in keys:
+        if s >= "[3000]":
+          t.append(s[6:])
+      return t
+
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # internal class to manage link-check error/warning messages
   class linkMsgs(object):
@@ -5296,14 +5304,6 @@ class Pph(Book):
         self.wb[i:i+1] = t
         i += len(t)
       i += 1
-  # -------------------------------------------------------------------------------------
-  # courtesy id check
-  #
-  # ID and NAME tokens must begin with a letter ([A-Za-z]) and may be followed by any number
-  # of letters, digits ([0-9]), hyphens ("-"), underscores ("_"), colons (":"), and periods (".").
-  def checkId(self, s):
-    if not re.match(r"[A-Za-z][A-Za-z0-9\-_\:\.]*", s):
-      self.warn_w_context("illegal identifier: {}".format(s), self.id_loc)
 
   # -------------------------------------------------------------------------------------
   # preprocess working buffer (HTML)
@@ -8478,17 +8478,27 @@ class Pph(Book):
         if kl in nonlowert:
           self.linkinfo.add("[2]Note:  Check for case mismatch; target {} exists as {}".format(key, nonlowert[kl]))
 
+    de_css = self.css.showde()
+
     for key in targets:
       if key not in links:
         if not "Page" in key:
-          self.linkinfo.add("[5] ")
-          self.linkinfo.add("[5]Note: Unused target: {} ".format(key))
-          kl = key.lower()
-          if kl != key:
-            if kl in nonlowerl:
-              self.linkinfo.add("[6]Note: Check for case mismatch; a link to {} exists as {}".format(key, nonlowerl[kl]))
-            elif kl in links:
-              self.linkinfo.add("[6]Note: Check for case mismatch; a link to {} exists as {}".format(key, kl))
+          found = False
+          # need to examine PPer-supplied CSS, if any, as "target" could just be an id= used for CSS
+          if de_css:      # if any PPer-supplied CSS
+            key2 = "#" + key
+            for s in de_css:
+              if key2 in s:
+                found = True
+          if not found:
+            self.linkinfo.add("[5] ")
+            self.linkinfo.add("[5]Note: Unused target: {} ".format(key))
+            kl = key.lower()
+            if kl != key:
+              if kl in nonlowerl:
+                self.linkinfo.add("[6]Note: Check for case mismatch; a link to {} exists as {}".format(key, nonlowerl[kl]))
+              elif kl in links:
+                self.linkinfo.add("[6]Note: Check for case mismatch; a link to {} exists as {}".format(key, kl))
 
 
     rb = self.linkinfo.show()
