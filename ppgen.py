@@ -22,9 +22,10 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.50f"    # 7-Jun-2015
-# Have ".fn" and ".fn-" in text output adjust indent directly rather than using ".in" to avoid
-#   surprising the PPer.
+VERSION="3.50g"    # 7-Jun-2015
+# Add support for <th>. Ignored in text output. In HTML, PPer can use <th> at the front of any table row
+#   that represents a header rather than data, and ppgen will use <th> ... </th> for cells on that row
+#   rather than <td> ... </td>
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -4525,6 +4526,8 @@ class Ppt(Book):
         if len(u) != ncols:
             self.crash_w_context("table has wrong number of columns:{}".format(self.wb[j]), j)
         t = u[c].strip()
+        if len(t) > 4 and t[0:4] == "<th>": # if cell starts with <th> remove it
+          t = t[4:]
         if len(t) > 6 and t[0:4] == "<al=": # possible alignment directive?
           t = re.sub(r"^<al=[lrch]>", "", t, 1) # ignore any alignment directives
         if t != "<span>": # ignore <span> cells for purposes of figuring max width of this column
@@ -4721,6 +4724,8 @@ class Ppt(Book):
         self.crash_w_context("table has wrong number of columns:{}".format(self.wb[k1]), k1)
       for i in range(0,ncols):
         t1 = t[i].strip()
+        if len(t1) > 4 and t1[0:4] == "<th>": # if <th> at start of cell remove it
+          t1 = t1[4:]
         if len(t1) > 6 and t1[0:4] == "<al=":
           t1 = re.sub(r"^<al=[lrch]>", "", t1, 1) # ignore any alignment directives
         w1 = widths[i]
@@ -4764,6 +4769,8 @@ class Ppt(Book):
       # (Note: Honors <al=r/l> if specified.)
       if not "|" in self.wb[self.cl]:
         line = self.wb[self.cl].strip()
+        if len(line) > 4 and line[0:4] == "<th>": # remove any <th> from front of cell
+          line = line[4:]
         if len(line) > 6 and line[0:4] == "<al=":
           m = re.match(r"^<al=([lrch])>", line) # pick up possible alignment directive
           if m:
@@ -4793,6 +4800,8 @@ class Ppt(Book):
       caligns = haligns[:] # copy standard alignment into cell override list
       for i in range(0,ncols):
         cell_text = t[i].strip()
+        if len(cell_text) > 4 and cell_text[0:4] == "<th>":
+          cell_text = cell_text[4:]
         if len(cell_text) > 6 and cell_text[0:4] == "<al=":
           m = re.match(r"^<al=([lrch])>", cell_text) # pick up possible alignment directive
           if m:
@@ -7660,7 +7669,12 @@ class Pph(Book):
         if len(u) != ncols:
             self.crash_w_context("table has wrong number of columns:{}".format(self.wb[j]), j)
         t = re.sub(r"<.*?>", "", u[c].strip())  # adjust column width for inline tags
-        maxw = max(maxw, self.truelen(t))
+        if len(t) > 4 and t[0:4] == "<th>": # if cell starts with <th> remove it
+          t = t[4:]
+        if len(t) > 6 and t[0:4] == "<al=": # possible alignment directive?
+          t = re.sub(r"^<al=[lrch]>", "", t, 1) # ignore any alignment directives
+        if t != "<span>": # ignore <span> cells for purposes of figuring max width of this column
+          maxw = max(maxw, self.truelen(t))
         j += 1
       return maxw
 
@@ -7929,7 +7943,7 @@ class Pph(Book):
       # Class names generated:
       # btt (border top thin) / btm (border top medium)
       # bttd (border top medium double) / btmd (border top medium double)
-      # and correspondingling bbt/btm/bttd/btmd for border top classes
+      # and correspondingly bbt/btm/bttd/btmd for border top classes
       if len(self.wb[self.cl]) < 3 and self.wb[self.cl] in self.valid_html_hrules:
         class_name = make_tb_border_class(self.wb[self.cl], data_row_found)
         border_top = class_name
@@ -7947,6 +7961,13 @@ class Pph(Book):
       if not "|" in self.wb[self.cl]:
         line = self.wb[self.cl].strip()
         align = "text-align:center;"
+        if len(line) > 4 and line[0:4] == "<th>": # header row?
+          cell_type1 = "<th"
+          cell_type2 = "</th>"
+          line = line[4:]
+        else:
+          cell_type1 = "<td"
+          cell_type2 = "</td>"
         if len(line) > 6 and line[0:4] == "<al=":
           m = re.match(r"^<al=([lrch])>", line) # pick up possible alignment directive
           if m:
@@ -7960,7 +7981,8 @@ class Pph(Book):
               align = "text-align:center;"
               self.warn_w_context("<al=h> not supported for centered table lines", self.cl)
           line = line[6:]
-        t.append("  <tr><td style='{}' colspan='{}'>{}</td></tr>".format(align, ncols,line))
+        t.append("  <tr>{} style='{}' colspan='{}'>{}{}</tr>".format(cell_type1, align,
+                                                                      ncols, line, cell_type2))
         data_row_found = False
         border_top = ''
         border_bottom = ''
@@ -7989,13 +8011,21 @@ class Pph(Book):
         self.wb[self.cl + 1] = border_tag + self.wb[self.cl + 1] # flag the line for special handling
 
       t.append("  <tr>")
-      # iterate over the td elements
+      # iterate over the cells
       caligns = haligns[:] # copy alignment specifications
       for k,data in enumerate(v):
         # adjust alignment if override given
         v[k] = v[k].strip(' ')
         #if not v[k]:
         #  v[k] = '&nbsp;' # force blank cells to nbsp
+        if k == 0: # for first cell, check for <th> flag to indicate a header row
+          if len(v[k]) > 4 and v[k][0:4] == "<th>": # header row?
+            cell_type1 = "<th"
+            cell_type2 = "</th>"
+            v[k] = v[k][4:] # remove the tag
+          else:
+            cell_type1 = "<td"
+            cell_type2 = "</td>"
         if len(v[k]) > 6 and v[k][0:4] == "<al=":
           m = re.match(r"^<al=([lrch])>", v[k]) # pick up possible alignment directive
           if m:
@@ -8049,7 +8079,9 @@ class Pph(Book):
           border_classes = border_classes.strip()
           if border_classes:
             border_classes = "class='{}' ".format(border_classes)
-          t.append("    <td {}style='{}{}{}'{}>".format(border_classes, valigns[k], caligns[k], padding, colspan) + v[k].strip() + "</td>")
+          t.append("    {} {}style='{}{}{}'{}>".format(cell_type1, border_classes, valigns[k],
+                                                        caligns[k], padding,
+                                                        colspan) + v[k].strip() + cell_type2)
       t.append("  </tr>")
       border_top = '' # done with these two borders
       border_bottom = ''
