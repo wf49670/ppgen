@@ -22,9 +22,9 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.50e"    # 6-Jun-2015
-# correct placement of .nf r text when .in and .ll are both specified
-# also problem in .nf b when handling .rj and .ce text
+VERSION="3.50f"    # 7-Jun-2015
+# Have ".fn" and ".fn-" in text output adjust indent directly rather than using ".in" to avoid
+#   surprising the PPer.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1950,12 +1950,12 @@ class Book(object):
 
   def preProcessCommon(self):
 
-    def pushk(s, i):
-      self.nfstack.append( (s,i) )
+    #def pushk(s, i):
+    #  self.nfstack.append( (s,i) )
 
-    def popk():
-      t = self.nfstack.pop() # pops a tuple
-      return t
+    #def popk():
+    #  t = self.nfstack.pop() # pops a tuple
+    #  return t
 
     def gkrepl(gkmatch):
       gkstring = gkmatch.group(1)
@@ -4423,7 +4423,8 @@ class Ppt(Book):
     if m: # footnote ends
       if self.footnoteLzT and not self.keepFnHere: # if special footnote landing zone in effect (and not disabled for this footnote)
         self.grabFootnoteT()
-      self.wb[self.cl] = ".in -2"
+      self.regIN -= 2
+      del self.wb[self.cl]
       return
     else: # footnote begins
       fnname = ""
@@ -4446,7 +4447,8 @@ class Ppt(Book):
           self.warn(".fn specifies lz=here but no landing zones are in effect:{}".format(self.wb[self.cl]))
       if self.footnoteLzT and not self.keepFnHere: # if special footnote landing zone processing in effect
         self.footnoteStart = len(self.eb) - 1 # remember where this footnote started
-      self.wb[self.cl] = ".in +2"
+      self.regIN += 2
+      del self.wb[self.cl]
 
   # grab a complete footnote out of self.eb and save it for later
   def grabFootnoteT(self):
