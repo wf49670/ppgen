@@ -22,12 +22,9 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.50h"    # 7-Jun-2015
-# Refactor checkId so it works in text output, too (bug introduced in id= for tables?)
-# Rework horizontal table borders in HTML so that _ is thin solid, __ is medium solid,
-#   = is medium double, and == is thick double
-# Consider .de statements before warning of unused targets, as id= may be used simply to allow
-#   styling via .de #id-value
+VERSION="3.50i"    # 8-Jun-2015
+# When considering table rows and deciding whether to automatically add a blank line when
+#   cells have wrapped, recognize that a line with " | <span> | <span>" should count as a blank line
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -4869,7 +4866,10 @@ class Ppt(Book):
             else:
               s += bafter[col]
         self.eb.append(s)
-      nextline = self.wb[self.cl + 1].rstrip()
+      nextline = self.wb[self.cl + 1]
+      nextline = nextline.replace("<span>", "") # recognize the special case of a blank line
+      nextline = nextline.replace("|", "")      # which has the form  | <span> | <span>
+      nextline = nextline.strip()
       if (not nextline.startswith(".ta-") and # if not end of table and
           rowspace and # cells are multi-line and
           nextline and # next line is non-blank and
