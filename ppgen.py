@@ -22,9 +22,8 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.50i"    # 8-Jun-2015
-# When considering table rows and deciding whether to automatically add a blank line when
-#   cells have wrapped, recognize that a line with " | <span> | <span>" should count as a blank line
+VERSION="3.51"    # 8-Jun-2015
+# Incorporate changes up through 3.50i into the production version of ppgen
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
