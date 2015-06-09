@@ -22,9 +22,8 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.50i"    # 8-Jun-2015
-# When considering table rows and deciding whether to automatically add a blank line when
-#   cells have wrapped, recognize that a line with " | <span> | <span>" should count as a blank line
+VERSION="3.51a"    # 9-Jun-2015
+# Fix Python failure with .ce inside .nf b or .nf l.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -4182,7 +4181,7 @@ class Ppt(Book):
             continue
           xs = "{:^" + str(regBW) + "}"
           line = self.wb[i].strip()
-          self.eb.append(" " * indent + self.truefmt(line))
+          self.eb.append(" " * indent + self.truefmt(xs, line))
           i += 1
           count -= 1
         continue
@@ -4256,7 +4255,7 @@ class Ppt(Book):
             continue
           xs = "{:^" + str(regBW) + "}"
           line = self.wb[i].strip()
-          t.append(" " * self.regIN + " " * lmar + self.truefmt(line))
+          t.append(" " * self.regIN + " " * lmar + self.truefmt(xs, line))
           i += 1
           count -= 1
         continue
