@@ -24,6 +24,9 @@ import traceback
 
 VERSION="3.51a"    # 9-Jun-2015
 # Fix Python failure with .ce inside .nf b or .nf l.
+VERSION="3.51a"    # 8-Jun-2015
+# Implement an option (-sbin) that creates a .bin file for the -src.txt file itself, to facilitate working
+#   with it in GG or PPQTv1.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1479,6 +1482,7 @@ class Book(object):
     self.log = args.log
     self.listcvg = args.listcvg
     self.cvgfilter = args.filter
+    self.srcbin = args.srcbin
     #self.wrapper = textwrap.TextWrapper()
     #self.wrapper.break_long_words = False
     #self.wrapper.break_on_hyphens = False
@@ -1543,6 +1547,38 @@ class Book(object):
     f1.close()
     print("Terminating as requested after .cv/.gk processing.\n\tOutput file: {}".format(bailfn))
     exit(1)
+
+  # Create a -src.txt.bin file based on the input file to facilitate using GG
+  # or PPQTv1 to work on this ppgen project
+  def createsbin(self):
+    bb = []
+    bb.append("%::pagenumbers = (") # insert the .bin header into the bb array
+    i = 0
+    for i, line in enumerate(self.wb):
+      if line.startswith(".bn"):
+        m = re.search("(\w+?)\.(png|jpg|jpeg)",self.wb[i])
+        if m:
+          t = " 'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],"
+          t = t.format(m.group(1), i+1, 0)  # format a line in the .bn array (GG wants a 1-based count)
+          t = re.sub("\[","{",t,1)
+          t = re.sub("]","}",t,1)
+          bb.append(t)
+    temp = self.srcfile
+    temp = os.path.dirname(temp)
+    temp = os.path.join(temp, "pngs")
+    bb.append(");")  # finish building GG .bin file
+    bb.append("$::pngspath = '{}';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+    bb.append("1;")
+    binfn = self.srcfile + ".bin"
+    f1 = codecs.open(binfn, "w", "ISO-8859-1")
+    for index,t in enumerate(bb):
+      f1.write("{:s}\r\n".format(t))
+    f1.close()
+    print("Terminating as requested after creating -src.txt.bin file: {}".format(binfn))
+    exit(1)
+
+
+
 
   # map UTF-8 characters to characters safe for printing on non UTF-8 terminals
   def umap(self, s):
@@ -5101,6 +5137,10 @@ class Ppt(Book):
 
   def run(self): # Text
     self.loadFile(self.srcfile)
+
+    if self.srcbin: # if user just wants a -src.txt.bin file created
+      self.createsbin() # go create it (and exit)
+
     # requested encoding is UTF-8 but file is latin1only
     if self.renc == 'u' and self.latin1only == True and not self.forceutf8 and not self.cvgfilter:
       return # do not make UTF-8 text file
@@ -8576,13 +8616,21 @@ def main():
   # process command line
   parser = argparse.ArgumentParser(description='ppgen generator')
   parser.add_argument('-i', '--infile', help='UTF-8 or Latin-1 input file')
-  parser.add_argument('-l', '--log', help="display Latin-1, diacritic, and Greek conversion logs", action="store_true")
+  parser.add_argument('-l', '--log', help="display Latin-1, diacritic, and Greek conversion logs",
+                      action="store_true")
   parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r,l)')
-  parser.add_argument('-o', '--output_format', default="hu", help='output format (HTML:h, text:t, u or l)')
-  parser.add_argument('-a', '--anonymous', action='store_true', help='do not identify version/timestamp in HTML')
+  parser.add_argument('-o', '--output_format', default="hu",
+                      help='output format (HTML:h, text:t, u or l)')
+  parser.add_argument('-a', '--anonymous', action='store_true',
+                      help='do not identify version/timestamp in HTML')
   parser.add_argument("-v", "--version", help="display version and exit", action="store_true")
-  parser.add_argument("-cvg", "--listcvg", help="list Greek and diacritic table to file ppgen-cvglist.txt and exit", action="store_true")
-  parser.add_argument("-f", "--filter", help="UTF-8 filter file for .cv/.gk commands (also terminates after .cv and .gk processing)")
+  parser.add_argument("-cvg", "--listcvg",
+                      help="list Greek and diacritic table to file ppgen-cvglist.txt and exit",
+                      action="store_true")
+  parser.add_argument("-f", "--filter",
+                      help="UTF-8 filter file for .cv/.gk commands (also terminates after .cv and .gk processing)")
+  parser.add_argument("-sbin", "--srcbin", action="store_true",
+                      help="create -src.txt.bin file and terminate")
   args = parser.parse_args()
 
   # version request. print and exit
