@@ -22,11 +22,15 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.51b"    # 9-Jun-2015
+VERSION="3.51c"    # 10-Jun-2015
+#3.51a:
 # Fix Python failure with .ce inside .nf b or .nf l.
+#3.51b:
 # Implement an option (-sbin) that creates a .bin file for the -src.txt file itself, to facilitate working
 #   with it in GG or PPQTv1.
 # Support .rj within .nf c
+#3.51c:
+# Revise .pb code so the pbb div is not empty (moved the <hr> that follows into the div)
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -6294,7 +6298,9 @@ class Pph(Book):
     self.css.addcss("[1465] div.pbb { page-break-before:always; }")
     self.css.addcss("[1466] hr.pb { border:none;border-bottom:1px solid; margin-bottom:1em; }")
     self.css.addcss("[1467] @media handheld { hr.pb { display:none; }}")
-    self.wb[self.cl:self.cl+1] = ["<div class='pbb'></div>", "<hr class='pb' style='{}' />".format(hcss)]
+    self.wb[self.cl:self.cl+1] = ["<div class='pbb'>",
+                                  "  <hr class='pb' style='{}' />".format(hcss),
+                                  "</div>"]
     self.cl += 2
 
   # extract any "class=" argument from string s
