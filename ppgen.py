@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.51c"    # 10-Jun-2015
+VERSION="3.51d"    # 14-Jun-2015
 #3.51a:
 # Fix Python failure with .ce inside .nf b or .nf l.
 #3.51b:
@@ -31,6 +31,8 @@ VERSION="3.51c"    # 10-Jun-2015
 # Support .rj within .nf c
 #3.51c:
 # Revise .pb code so the pbb div is not empty (moved the <hr> that follows into the div)
+#3.51d:
+# Remove option of having .rj within a .nf c block; it doesn't work well in epub/mobi
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1516,8 +1518,6 @@ class Book(object):
     self.nregs["break-wrap-at"] = "" # set of allowable characters to break wrapping, separated by spaces
                                      # e.g., .nr break-wrap-at "- :" or .nr break-wrap-at "- —"
                                      # note that breaking on space and <br> is always allowed
-    self.nregs["ce-rj-fudge"] = ".45" # fudge factor to calculate padding-left to offset a right-aligned
-                                      # line within a .nf c block
 
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string
@@ -4115,9 +4115,6 @@ class Ppt(Book):
   # no-fill, centered (text)
   def doNfc(self, mo):
     t = []
-    regBW = min(self.calculateBW(".nf-"), self.regLL) # calculate block width in case any .rj directives
-    xt = self.regLL - self.regIN # also xt and lmar will be needed for .rj, if any
-    lmar = (xt - regBW)//2
     i = self.cl + 1 # skip the .nf c line
     while self.wb[i] != ".nf-":
       bnInBlock = False
@@ -4129,24 +4126,6 @@ class Ppt(Book):
 
       if self.wb[i].startswith(".dc") or self.wb[i].startswith(".di"):
         del self.wb[i]
-        continue
-
-      # special cases: .rj
-      m = re.search(r"\.rj (\d+)", self.wb[i])
-      if m:
-        count = int(m.group(1))
-        i += 1 # skip the .rj
-        while count > 0:
-          if self.bnPresent and self.is_bn_line(self.wb[i]):  # if this line is bn info then just put it in the output as-is
-            bnInBlock = True
-            t.append(self.wb[i])
-            i += 1
-            continue
-          xs = "{:>" + str(regBW) + "}"
-          line = self.wb[i].strip()
-          t.append(" " * self.regIN + " " * lmar + self.truefmt(xs, line))
-          i += 1
-          count -= 1
         continue
 
       xt = self.regLL - self.regIN # width of centered line
@@ -7287,20 +7266,6 @@ class Pph(Book):
       self.regTIp = 0 # force end of persistent temporary indent if .ti found without "begin"
     del self.wb[self.cl]
 
-  # calculate block width (copied from PPT)
-  def calculateBW(self, lookfor):
-    i = self.cl + 1
-    startloc = i
-    maxw = 0
-    while i < len(self.wb) and not self.wb[i] == lookfor:
-      maxw = max(maxw, self.truelen(self.wb[i]))
-      i += 1
-    if i == len(self.wb):
-      # unterminated block
-      self.crash_w_context("unterminated block. started with:", self.cl)
-    return maxw
-
-
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # no-fill, centered (HTML)
   # takes no internal justification commands
@@ -7313,10 +7278,6 @@ class Pph(Book):
     t.append("")
     nf_pdi = False
     nf_pdc = False
-
-    # get longest line in the block to allow a hokey approximation
-    # needed to support .rj within .nf c in HTML
-    regBW = min(self.calculateBW(".nf-"), self.regLL) # calculate block width in case any .rj directives
 
     if self.pindent:
       t.append("<div class='nf-center-c0'>")
@@ -7352,34 +7313,6 @@ class Pph(Book):
         self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
         del self.wb[i]
         continue
-
-      # a right-justified line inside a .nf c block (Note: support for drop-cap not implemented here)
-      m = re.match(r"\.rj (\d+)", self.wb[i])
-      if m:
-        count = int(m.group(1))
-        i += 1 # skip the .rj
-        while count > 0:
-          if self.bnPresent and self.is_bn_line(self.wb[i]):  # if this line is bn info then just leave it in the output as-is
-            i += 1
-            continue
-          # hokey calucation to try to shift the right-aligned text just far
-          # enough to the right to make it look as though it's right-aligned
-          # under the block. ASSUME that 1 em ~= 2 characters, then get the diff
-          # between the longest line and this line's length, divide by 2
-          # and pad this line on the left by that number of em units.
-          line = self.wb[i].strip()
-          padleft = round((regBW - len(line))*float(self.nregs["ce-rj-fudge"]), 1)
-          pst = "padding-left: {}em;".format(padleft)
-          if self.wb[i].startswith(".dc"):
-            self.warn(".dc not supported on right-justified line within .nf block: {}".format(self.wb[i]))
-          elif self.wb[i].startswith(".di"):
-            self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
-          else:
-            t.append("    <div style='{}'>{}</div>".format(pst, self.wb[i]))
-          i += 1
-          count -= 1
-        continue
-
 
       if "" == self.wb[i]:
         pending_mt += 1
