@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.51d"    # 14-Jun-2015
+VERSION="3.51e"    # 20-Jun-2015
 #3.51a:
 # Fix Python failure with .ce inside .nf b or .nf l.
 #3.51b:
@@ -33,6 +33,11 @@ VERSION="3.51d"    # 14-Jun-2015
 # Revise .pb code so the pbb div is not empty (moved the <hr> that follows into the div)
 #3.51d:
 # Remove option of having .rj within a .nf c block; it doesn't work well in epub/mobi
+#3.51e:
+# Fix problem if line with .fn # is immediately followed by a line that begins with a
+#   link (#...:...#). In text it generates a warning about an invalid footnote
+#   name/number and flags the footnote as invalid in the output file.
+# Fix the context marker for illegal id= values on .h"n" statements
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1609,9 +1614,11 @@ class Book(object):
   #
   # ID and NAME tokens must begin with a letter ([A-Za-z]) and may be followed by any number
   # of letters, digits ([0-9]), hyphens ("-"), underscores ("_"), colons (":"), and periods (".").
-  def checkId(self, s):
+  def checkId(self, s, id_loc=None):
+    if not id_loc:
+      id_loc = self.cl
     if not re.match(r"[A-Za-z][A-Za-z0-9\-_\:\.]*", s):
-      self.warn_w_context("illegal identifier: {}".format(s), self.id_loc)
+      self.warn_w_context("illegal identifier: {}".format(s), id_loc)
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # get the value of the requested parameter from attr string
@@ -3349,7 +3356,7 @@ class Ppt(Book):
     text = re.sub(r"#([iIvVxXlLcCdDmM]+)#", r"\1", text) # don't forget about Roman numerals as page numbers
     #text = re.sub(r"#(.*?):.*?#", r"\1", text)
     #text = re.sub(r"#([^]].*?):[A-Za-z][A-Za-z0-9\-_\:\.]*?#", r"\1", text)
-    text = re.sub(r"#([^]].*?):.*?[^[]#", r"\1", text)
+    text = re.sub(r"#([^]\n].*?):.*?[^[]#", r"\1", text)
     # if there is a named target, then somewhere there
     # is a <target id...> to remove in the text version
     text = re.sub(r"<target.*?>", "", text)
@@ -5408,7 +5415,7 @@ class Pph(Book):
       self.wb[i] = re.sub(r"#([iIvVxXlLcCdDmM]+)#", r"⑲\1⑲", self.wb[i])
       #self.wb[i] = re.sub(r"#(.*?:.*?)#", r"⑲\1⑲", self.wb[i])
       #self.wb[i] = re.sub(r"#([^]].*?:[A-Za-z][A-Za-z0-9\-_\:\.]*?)#", r"⑲\1⑲", self.wb[i])
-      self.wb[i] = re.sub(r"#([^]].*?:.*?[^[])#", r"⑲\1⑲", self.wb[i])
+      self.wb[i] = re.sub(r"#([^]\n].*?:.*?[^[])#", r"⑲\1⑲", self.wb[i])
       i += 1
 
     # HTML will always choose the UTF-8 Greek line
@@ -5700,22 +5707,21 @@ class Pph(Book):
     # target references
     i = 0
     while i < len(self.wb):
-      self.id_loc = i # save location for possible error message about id= value
       if "<target id" in self.wb[i]:
         m = re.search("<target id='(.*?)'>", self.wb[i])
         while m:
           self.wb[i] = re.sub("<target id='(.*?)'>", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], 1)
-          self.checkId(m.group(1))
+          self.checkId(m.group(1), id_loc=i)
           m = re.search("<target id='(.*?)'>", self.wb[i])
         m = re.search("<target id=\"(.*?)\">", self.wb[i])
         while m:
           self.wb[i] = re.sub("<target id=\"(.*?)\">", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], 1)
-          self.checkId(m.group(1))
+          self.checkId(m.group(1), id_loc=i)
           m = re.search("<target id=\"(.*?)\">", self.wb[i])
         m = re.search("<target id=(.*?)>", self.wb[i])
         while m:
           self.wb[i] = re.sub("<target id=(.*?)>", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], 1)
-          self.checkId(m.group(1))
+          self.checkId(m.group(1), id_loc=i)
           m = re.search("<target id=(.*?)>", self.wb[i])
       i += 1
 
@@ -6112,7 +6118,6 @@ class Pph(Book):
     # which at this point are actually using ⑲ instead of the # signs
     for i in range(len(self.wb)):
 
-      self.id_loc = i # save location for possible error message about id= value
       m = re.search(r"⑲(\d+?)⑲", self.wb[i])
       while m: # page number reference
         s = "<a href='⫉Page_{0}'>{0}</a>".format(m.group(1)) # link to it
@@ -6128,7 +6133,7 @@ class Pph(Book):
       m = re.search(r"⑲(.*?):(.*?)⑲", self.wb[i]) # named reference
       while m:
         s = "<a href='⫉{}'>{}</a>".format(m.group(2), m.group(1)) # link to that
-        self.checkId(m.group(2))
+        self.checkId(m.group(2), id_loc=i)
         self.wb[i] = re.sub(re.escape(m.group(0)), s, self.wb[i], 1)
         m = re.search(r"⑲(.*?):(.*?)⑲", self.wb[i])
 
@@ -6971,7 +6976,6 @@ class Pph(Book):
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # entry point to process illustration (HTML)
 
-    self.id_loc = self.cl # save location for possible error message about id= value
     ia = parse_illo(self.wb[self.cl]) # parse .il line
 
     caption_present = False
