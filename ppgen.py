@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.51e"    # 20-Jun-2015
+VERSION="3.51f"    # 27-Jun-2015
 #3.51a:
 # Fix Python failure with .ce inside .nf b or .nf l.
 #3.51b:
@@ -38,6 +38,8 @@ VERSION="3.51e"    # 20-Jun-2015
 #   link (#...:...#). In text it generates a warning about an invalid footnote
 #   name/number and flags the footnote as invalid in the output file.
 # Fix the context marker for illegal id= values on .h"n" statements
+#3.51f:
+# Add -ppqt option to create a .ppqt file (ppqt2 metadata) in addition to any .bin files created
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1494,6 +1496,7 @@ class Book(object):
     self.listcvg = args.listcvg
     self.cvgfilter = args.filter
     self.srcbin = args.srcbin
+    self.ppqt2 = args.ppqt2
     #self.wrapper = textwrap.TextWrapper()
     #self.wrapper.break_long_words = False
     #self.wrapper.break_on_hyphens = False
@@ -1559,12 +1562,48 @@ class Book(object):
     print("Terminating as requested after .cv/.gk processing.\n\tOutput file: {}".format(bailfn))
     exit(1)
 
+  # create a ppqt2 metadata file entry
+  def ppqtpage(self, name, count, fn=None):
+    if not fn: # if first or intermediate call, append data
+      if self.ppqtentries == 0:
+        self.ppqt.append('{')
+        self.ppqt.append('  "PAGETABLE": [')
+      else:
+        self.ppqt.append('    ],')
+      self.ppqt.append('    [')
+      self.ppqt.append('      {},'.format(count))
+      self.ppqt.append('      "{}",'.format(name))
+      self.ppqt.append('      "",')
+      self.ppqtentries += 1
+      if self.ppqtentries == 1:
+        self.ppqt.append('      1,')
+        self.ppqt.append('      0,')
+      else:
+        self.ppqt.append('      0,')
+        self.ppqt.append('      3,')
+      self.ppqt.append('      {}'.format(self.ppqtentries))
+    else: # else final call (filename provided)
+      self.ppqt.append('    ]') # finish file contents
+      self.ppqt.append('  ]')
+      self.ppqt.append('}')
+      ppqtfn = fn + ".ppqt"
+      f1 = codecs.open(ppqtfn, "w", "ISO-8859-1")
+      for index,t in enumerate(self.ppqt):
+        f1.write("{:s}\r\n".format(t))
+      f1.close()
+      print("PPQTv2 metadata file {} created".format(ppqtfn))
+
   # Create a -src.txt.bin file based on the input file to facilitate using GG
   # or PPQTv1 to work on this ppgen project
+  # Also create a .ppqt file for use with PPQTv2 if -ppqt2 option was specified
   def createsbin(self):
     bb = []
     bb.append("%::pagenumbers = (") # insert the .bin header into the bb array
+    if self.ppqt2:
+      self.ppqt = []
+      self.ppqtentries = 0
     i = 0
+    ccount = 0
     for i, line in enumerate(self.wb):
       if line.startswith(".bn"):
         m = re.search("(\w+?)\.(png|jpg|jpeg)",self.wb[i])
@@ -1574,6 +1613,11 @@ class Book(object):
           t = re.sub("\[","{",t,1)
           t = re.sub("]","}",t,1)
           bb.append(t)
+          if self.ppqt2:
+            self.ppqtpage(m.group(1), ccount)
+      ccount += len(line) + 1
+    if len(self.ppqt): # finish ppqt file if needed, and write it out
+      self.ppqtpage("", 0, fn=self.srcfile)
     if len(bb) > 1: # Create .bin file if any .bn commands present
       temp = self.srcfile
       temp = os.path.dirname(temp)
@@ -3679,17 +3723,33 @@ class Ppt(Book):
     if self.bnPresent:  # if any .bn were found
       self.bb.append("%::pagenumbers = (") # insert the .bin header into the bb array
       i = 0
+      ccount = 0
+      if self.ppqt2:
+        self.ppqt = []
+        self.ppqtentries = 0
       while i < len(self.eb):
         bnInLine = False
-        m = re.search("(.*?)⑱(.*?)⑱.*",self.eb[i])  # find any .bn information in this line
+        offset1 = 0
+        offset2 = 0
+        m = re.search("(.*?)⑱(.*?)⑱(.*)",self.eb[i])  # find any .bn information in this line
         while m:
           bnInLine = True
           t = " 'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG wants a 1-based count)
           t = re.sub("\[","{",t,1)
           t = re.sub("]","}",t,1)
           self.bb.append(t)
+          if self.ppqt2:
+            ccount += len(m.group(1)) - offset1 # count characters we haven't counted so far
+            offset1 = len(m.group(1))
+            offset2 = len(m.group(3))
+            self.ppqtpage(m.group(2), ccount)
           self.eb[i] = re.sub("⑱.*?⑱", "", self.eb[i], 1)  # remove the .bn information
-          m = re.search("(.*?)⑱(.*?)⑱.*",self.eb[i])  # look for another one on the same line
+          m = re.search("(.*?)⑱(.*?)⑱(.*)",self.eb[i])  # look for another one on the same line
+        if self.ppqt2:
+          if not bnInLine: # if no bn info in this line
+            ccount += len(self.eb[i]) + 1
+          elif self.eb[i] != "":
+            ccount += offset2 + 1
         if bnInLine and self.eb[i] == "": # delete line if it was only .bn info
           del self.eb[i]
         else:
@@ -3723,6 +3783,9 @@ class Ppt(Book):
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
+      print("GG .bin file {} created.".format(fnb))
+      if self.ppqt2: # and PPQTv2 metadata, if requested
+        self.ppqtpage("", 0, fn=fn)
 
   # -------------------------------------------------------------------------------------
   # convert utf-8 to Latin-1 in self.wb
@@ -3788,6 +3851,9 @@ class Ppt(Book):
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
+      print("GG .bin file {} created.".format(fnb))
+      if self.ppqt2: # and PPQTv2 metadata, if requested
+        self.ppqtpage("", 0, fn=fn)
 
   # ----- process method group ----------------------------------------------------------
 
@@ -6169,6 +6235,9 @@ class Pph(Book):
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
+      print("GG .bin file {} created.".format(fnb))
+      if self.ppqt2: # and PPQTv2 metadata, if requested
+        self.ppqtpage("", 0, fn=fn)
 
   # ----- makeHTML method group -----
 
@@ -8301,24 +8370,49 @@ class Pph(Book):
     if self.bnPresent:
       self.bb.append("%::pagenumbers = (")
       i = 0
+      if self.ppqt2:
+        self.ppqt = []
+        self.ppqtentries = 0
+        ccount = 0
       while i < len(self.wb):
         bnInLine = False
         if self.wb[i] == "":              # skip blank lines, but remember we had one
+          if self.ppqt2:
+            ccount += 1
           i += 1
           continue
-        m = re.search("(.*?)⑱(.*?)⑱.*",self.wb[i])  # find any .bn information in this line
+        offset1 = 0
+        offset2 = 0
+        ppqtfound = False
+        temp = self.wb[i]
+        m = re.search("(.*?)⑱(.*?)⑱(.*)",self.wb[i])  # find any .bn information in this line
         while m:
           bnInLine = True
           t = " 'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG expects 1-based line number)
           t = re.sub("\[","{",t,1)
           t = re.sub("]","}",t,1)
           self.bb.append(t)
+          if self.ppqt2:
+            ccount += len(m.group(1)) - offset1 # count characters we haven't counted so far
+            offset1 = len(m.group(1))
+            offset2 = len(m.group(3))
+            self.ppqtpage(m.group(2), ccount)
           self.wb[i] = re.sub("⑱.*?⑱","",self.wb[i],1)  # remove the .bn information
-          m = re.search("(.*?)⑱(.*?)⑱.*",self.wb[i])  # look for another one on the same line
+          temp = self.wb[i]
+          m = re.search("(.*?)⑱(.*?)⑱(.*)",self.wb[i])  # look for another one on the same line
+        if self.ppqt2:
+          if not bnInLine:
+            ccount += len(self.wb[i]) + 1
+          else:
+            ccount += offset2 + 1
         if bnInLine and self.wb[i] == "":  # delete line if it ended up blank
           del self.wb[i]
+          if self.ppqt2:
+            ccount -= 1
           if i > 0 and self.wb[i-1] == "" and self.wb[i] == "":      # If line before .bn info and line after both blank
-              del self.wb[i]                          # delete the next one, too.
+            del self.wb[i]                          # delete the next one, too.
+            if self.ppqt2:
+              ccount -= 1
         else:
           i += 1
       self.bb.append(");")
@@ -8647,6 +8741,8 @@ def main():
                       help="UTF-8 filter file for .cv/.gk commands (also terminates after .cv and .gk processing)")
   parser.add_argument("-sbin", "--srcbin", action="store_true",
                       help="create -src.txt.bin file and terminate")
+  parser.add_argument("-ppqt2", "--ppqt2", action="store_true",
+                      help="create .ppqt file in addition to any .bin file")
   args = parser.parse_args()
 
   # version request. print and exit
