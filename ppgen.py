@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.51f"    # 27-Jun-2015
+VERSION="3.51g"    # 04-Jul-2015
 #3.51a:
 # Fix Python failure with .ce inside .nf b or .nf l.
 #3.51b:
@@ -40,6 +40,8 @@ VERSION="3.51f"    # 27-Jun-2015
 # Fix the context marker for illegal id= values on .h"n" statements
 #3.51f:
 # Add -ppqt option to create a .ppqt file (ppqt2 metadata) in addition to any .bin files created
+#3.51g:
+# Fix loop in text output processing when PPer uses .il-
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -4087,6 +4089,8 @@ class Ppt(Book):
           t = ["[{}]".format(self.nregs["Illustration"])]
         self.eb += t
       self.eb.append(".RS 1") # request at least one space in text after illustration
+    else:
+      self.crash_w_context("Malformed .il directive: {}".format(self.wb[self.cl]))
 
   # .in left margin indent
   def doIn(self):
