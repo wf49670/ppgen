@@ -22,8 +22,9 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.51a"    # 9-Jun-2015
-# Fix Python failure with .ce inside .nf b or .nf l.
+VERSION="3.52"    # 04-Jul-2015
+#3.52:
+# Reversion to roll 3.51g into production
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1479,6 +1480,8 @@ class Book(object):
     self.log = args.log
     self.listcvg = args.listcvg
     self.cvgfilter = args.filter
+    self.srcbin = args.srcbin
+    self.ppqt2 = args.ppqt2
     #self.wrapper = textwrap.TextWrapper()
     #self.wrapper.break_long_words = False
     #self.wrapper.break_on_hyphens = False
@@ -1544,6 +1547,83 @@ class Book(object):
     print("Terminating as requested after .cv/.gk processing.\n\tOutput file: {}".format(bailfn))
     exit(1)
 
+  # create a ppqt2 metadata file entry
+  def ppqtpage(self, name, count, fn=None):
+    if not fn: # if first or intermediate call, append data
+      if self.ppqtentries == 0:
+        self.ppqt.append('{')
+        self.ppqt.append('  "PAGETABLE": [')
+      else:
+        self.ppqt.append('    ],')
+      self.ppqt.append('    [')
+      self.ppqt.append('      {},'.format(count))
+      self.ppqt.append('      "{}",'.format(name))
+      self.ppqt.append('      "",')
+      self.ppqtentries += 1
+      if self.ppqtentries == 1:
+        self.ppqt.append('      1,')
+        self.ppqt.append('      0,')
+      else:
+        self.ppqt.append('      0,')
+        self.ppqt.append('      3,')
+      self.ppqt.append('      {}'.format(self.ppqtentries))
+    else: # else final call (filename provided)
+      self.ppqt.append('    ]') # finish file contents
+      self.ppqt.append('  ]')
+      self.ppqt.append('}')
+      ppqtfn = fn + ".ppqt"
+      f1 = codecs.open(ppqtfn, "w", "ISO-8859-1")
+      for index,t in enumerate(self.ppqt):
+        f1.write("{:s}\r\n".format(t))
+      f1.close()
+      print("PPQTv2 metadata file {} created".format(ppqtfn))
+
+  # Create a -src.txt.bin file based on the input file to facilitate using GG
+  # or PPQTv1 to work on this ppgen project
+  # Also create a .ppqt file for use with PPQTv2 if -ppqt2 option was specified
+  def createsbin(self):
+    bb = []
+    bb.append("%::pagenumbers = (") # insert the .bin header into the bb array
+    if self.ppqt2:
+      self.ppqt = []
+      self.ppqtentries = 0
+    i = 0
+    ccount = 0
+    for i, line in enumerate(self.wb):
+      if line.startswith(".bn"):
+        m = re.search("(\w+?)\.(png|jpg|jpeg)",self.wb[i])
+        if m:
+          t = " 'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],"
+          t = t.format(m.group(1), i+1, 0)  # format a line in the .bn array (GG wants a 1-based count)
+          t = re.sub("\[","{",t,1)
+          t = re.sub("]","}",t,1)
+          bb.append(t)
+          if self.ppqt2:
+            self.ppqtpage(m.group(1), ccount)
+      ccount += len(line) + 1
+    if len(self.ppqt): # finish ppqt file if needed, and write it out
+      self.ppqtpage("", 0, fn=self.srcfile)
+    if len(bb) > 1: # Create .bin file if any .bn commands present
+      temp = self.srcfile
+      temp = os.path.dirname(temp)
+      temp = os.path.join(temp, "pngs")
+      bb.append(");")  # finish building GG .bin file
+      bb.append("$::pngspath = '{}';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      bb.append("1;")
+      binfn = self.srcfile + ".bin"
+      f1 = codecs.open(binfn, "w", "ISO-8859-1")
+      for index,t in enumerate(bb):
+        f1.write("{:s}\r\n".format(t))
+      f1.close()
+      print("Terminating as requested after creating -src.txt.bin file: {}".format(binfn))
+    else:
+      print("Terminating after -sbin processing, but no .bn commands found;\n" +
+            "-src.txt.bin file not generated.")
+    exit(1)
+
+
+
+
   # map UTF-8 characters to characters safe for printing on non UTF-8 terminals
   def umap(self, s):
     t = ""
@@ -1563,9 +1643,11 @@ class Book(object):
   #
   # ID and NAME tokens must begin with a letter ([A-Za-z]) and may be followed by any number
   # of letters, digits ([0-9]), hyphens ("-"), underscores ("_"), colons (":"), and periods (".").
-  def checkId(self, s):
+  def checkId(self, s, id_loc=None):
+    if not id_loc:
+      id_loc = self.cl
     if not re.match(r"[A-Za-z][A-Za-z0-9\-_\:\.]*", s):
-      self.warn_w_context("illegal identifier: {}".format(s), self.id_loc)
+      self.warn_w_context("illegal identifier: {}".format(s), id_loc)
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # get the value of the requested parameter from attr string
@@ -3303,7 +3385,7 @@ class Ppt(Book):
     text = re.sub(r"#([iIvVxXlLcCdDmM]+)#", r"\1", text) # don't forget about Roman numerals as page numbers
     #text = re.sub(r"#(.*?):.*?#", r"\1", text)
     #text = re.sub(r"#([^]].*?):[A-Za-z][A-Za-z0-9\-_\:\.]*?#", r"\1", text)
-    text = re.sub(r"#([^]].*?):.*?[^[]#", r"\1", text)
+    text = re.sub(r"#([^]\n].*?):.*?[^[]#", r"\1", text)
     # if there is a named target, then somewhere there
     # is a <target id...> to remove in the text version
     text = re.sub(r"<target.*?>", "", text)
@@ -3626,17 +3708,33 @@ class Ppt(Book):
     if self.bnPresent:  # if any .bn were found
       self.bb.append("%::pagenumbers = (") # insert the .bin header into the bb array
       i = 0
+      ccount = 0
+      if self.ppqt2:
+        self.ppqt = []
+        self.ppqtentries = 0
       while i < len(self.eb):
         bnInLine = False
-        m = re.search("(.*?)⑱(.*?)⑱.*",self.eb[i])  # find any .bn information in this line
+        offset1 = 0
+        offset2 = 0
+        m = re.search("(.*?)⑱(.*?)⑱(.*)",self.eb[i])  # find any .bn information in this line
         while m:
           bnInLine = True
           t = " 'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG wants a 1-based count)
           t = re.sub("\[","{",t,1)
           t = re.sub("]","}",t,1)
           self.bb.append(t)
+          if self.ppqt2:
+            ccount += len(m.group(1)) - offset1 # count characters we haven't counted so far
+            offset1 = len(m.group(1))
+            offset2 = len(m.group(3))
+            self.ppqtpage(m.group(2), ccount)
           self.eb[i] = re.sub("⑱.*?⑱", "", self.eb[i], 1)  # remove the .bn information
-          m = re.search("(.*?)⑱(.*?)⑱.*",self.eb[i])  # look for another one on the same line
+          m = re.search("(.*?)⑱(.*?)⑱(.*)",self.eb[i])  # look for another one on the same line
+        if self.ppqt2:
+          if not bnInLine: # if no bn info in this line
+            ccount += len(self.eb[i]) + 1
+          elif self.eb[i] != "":
+            ccount += offset2 + 1
         if bnInLine and self.eb[i] == "": # delete line if it was only .bn info
           del self.eb[i]
         else:
@@ -3670,6 +3768,9 @@ class Ppt(Book):
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
+      print("GG .bin file {} created.".format(fnb))
+      if self.ppqt2: # and PPQTv2 metadata, if requested
+        self.ppqtpage("", 0, fn=fn)
 
   # -------------------------------------------------------------------------------------
   # convert utf-8 to Latin-1 in self.wb
@@ -3735,6 +3836,9 @@ class Ppt(Book):
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
+      print("GG .bin file {} created.".format(fnb))
+      if self.ppqt2: # and PPQTv2 metadata, if requested
+        self.ppqtpage("", 0, fn=fn)
 
   # ----- process method group ----------------------------------------------------------
 
@@ -3968,6 +4072,8 @@ class Ppt(Book):
           t = ["[{}]".format(self.nregs["Illustration"])]
         self.eb += t
       self.eb.append(".RS 1") # request at least one space in text after illustration
+    else:
+      self.crash_w_context("Malformed .il directive: {}".format(self.wb[self.cl]))
 
   # .in left margin indent
   def doIn(self):
@@ -4093,7 +4199,7 @@ class Ppt(Book):
       ###  indent += self.regTI
       ###  self.regTI = 0
       if len2 <= xt:
-        t.append(" " * indent + self.truefmt(xs, line)) # just format it if it fits within the wideh
+        t.append(" " * indent + self.truefmt(xs, line)) # just format it if it fits within the width
       else:                                                 # else wrap it with a hanging indent
         s = line
         wi = 0
@@ -5101,6 +5207,10 @@ class Ppt(Book):
 
   def run(self): # Text
     self.loadFile(self.srcfile)
+
+    if self.srcbin: # if user just wants a -src.txt.bin file created
+      self.createsbin() # go create it (and exit)
+
     # requested encoding is UTF-8 but file is latin1only
     if self.renc == 'u' and self.latin1only == True and not self.forceutf8 and not self.cvgfilter:
       return # do not make UTF-8 text file
@@ -5358,7 +5468,7 @@ class Pph(Book):
       self.wb[i] = re.sub(r"#([iIvVxXlLcCdDmM]+)#", r"⑲\1⑲", self.wb[i])
       #self.wb[i] = re.sub(r"#(.*?:.*?)#", r"⑲\1⑲", self.wb[i])
       #self.wb[i] = re.sub(r"#([^]].*?:[A-Za-z][A-Za-z0-9\-_\:\.]*?)#", r"⑲\1⑲", self.wb[i])
-      self.wb[i] = re.sub(r"#([^]].*?:.*?[^[])#", r"⑲\1⑲", self.wb[i])
+      self.wb[i] = re.sub(r"#([^]\n].*?:.*?[^[])#", r"⑲\1⑲", self.wb[i])
       i += 1
 
     # HTML will always choose the UTF-8 Greek line
@@ -5650,22 +5760,21 @@ class Pph(Book):
     # target references
     i = 0
     while i < len(self.wb):
-      self.id_loc = i # save location for possible error message about id= value
       if "<target id" in self.wb[i]:
         m = re.search("<target id='(.*?)'>", self.wb[i])
         while m:
           self.wb[i] = re.sub("<target id='(.*?)'>", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], 1)
-          self.checkId(m.group(1))
+          self.checkId(m.group(1), id_loc=i)
           m = re.search("<target id='(.*?)'>", self.wb[i])
         m = re.search("<target id=\"(.*?)\">", self.wb[i])
         while m:
           self.wb[i] = re.sub("<target id=\"(.*?)\">", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], 1)
-          self.checkId(m.group(1))
+          self.checkId(m.group(1), id_loc=i)
           m = re.search("<target id=\"(.*?)\">", self.wb[i])
         m = re.search("<target id=(.*?)>", self.wb[i])
         while m:
           self.wb[i] = re.sub("<target id=(.*?)>", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], 1)
-          self.checkId(m.group(1))
+          self.checkId(m.group(1), id_loc=i)
           m = re.search("<target id=(.*?)>", self.wb[i])
       i += 1
 
@@ -6062,7 +6171,6 @@ class Pph(Book):
     # which at this point are actually using ⑲ instead of the # signs
     for i in range(len(self.wb)):
 
-      self.id_loc = i # save location for possible error message about id= value
       m = re.search(r"⑲(\d+?)⑲", self.wb[i])
       while m: # page number reference
         s = "<a href='⫉Page_{0}'>{0}</a>".format(m.group(1)) # link to it
@@ -6078,7 +6186,7 @@ class Pph(Book):
       m = re.search(r"⑲(.*?):(.*?)⑲", self.wb[i]) # named reference
       while m:
         s = "<a href='⫉{}'>{}</a>".format(m.group(2), m.group(1)) # link to that
-        self.checkId(m.group(2))
+        self.checkId(m.group(2), id_loc=i)
         self.wb[i] = re.sub(re.escape(m.group(0)), s, self.wb[i], 1)
         m = re.search(r"⑲(.*?):(.*?)⑲", self.wb[i])
 
@@ -6114,6 +6222,9 @@ class Pph(Book):
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
+      print("GG .bin file {} created.".format(fnb))
+      if self.ppqt2: # and PPQTv2 metadata, if requested
+        self.ppqtpage("", 0, fn=fn)
 
   # ----- makeHTML method group -----
 
@@ -6227,7 +6338,9 @@ class Pph(Book):
     self.css.addcss("[1465] div.pbb { page-break-before:always; }")
     self.css.addcss("[1466] hr.pb { border:none;border-bottom:1px solid; margin-bottom:1em; }")
     self.css.addcss("[1467] @media handheld { hr.pb { display:none; }}")
-    self.wb[self.cl:self.cl+1] = ["<div class='pbb'></div>", "<hr class='pb' style='{}' />".format(hcss)]
+    self.wb[self.cl:self.cl+1] = ["<div class='pbb'>",
+                                  "  <hr class='pb' style='{}' />".format(hcss),
+                                  "</div>"]
     self.cl += 2
 
   # extract any "class=" argument from string s
@@ -6919,7 +7032,6 @@ class Pph(Book):
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # entry point to process illustration (HTML)
 
-    self.id_loc = self.cl # save location for possible error message about id= value
     ia = parse_illo(self.wb[self.cl]) # parse .il line
 
     caption_present = False
@@ -7377,7 +7489,7 @@ class Pph(Book):
           elif self.wb[i].startswith(".di"):
             self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
           else:
-            t.append("    <div style='{}{}'>{}</div>".format(pst, spvs, self.wb[i]))
+            t.append("      <div style='{}{}'>{}</div>".format(pst, spvs, self.wb[i]))
           i += 1
           count -= 1
         continue
@@ -7402,7 +7514,7 @@ class Pph(Book):
           elif self.wb[i].startswith(".di"):
             self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
           else:
-            t.append("    <div style='{}{}'>{}</div>".format(pst, spvs, self.wb[i]))
+            t.append("      <div style='{}{}'>{}</div>".format(pst, spvs, self.wb[i]))
           i += 1
           count -= 1
         continue
@@ -8245,24 +8357,49 @@ class Pph(Book):
     if self.bnPresent:
       self.bb.append("%::pagenumbers = (")
       i = 0
+      if self.ppqt2:
+        self.ppqt = []
+        self.ppqtentries = 0
+        ccount = 0
       while i < len(self.wb):
         bnInLine = False
         if self.wb[i] == "":              # skip blank lines, but remember we had one
+          if self.ppqt2:
+            ccount += 1
           i += 1
           continue
-        m = re.search("(.*?)⑱(.*?)⑱.*",self.wb[i])  # find any .bn information in this line
+        offset1 = 0
+        offset2 = 0
+        ppqtfound = False
+        temp = self.wb[i]
+        m = re.search("(.*?)⑱(.*?)⑱(.*)",self.wb[i])  # find any .bn information in this line
         while m:
           bnInLine = True
           t = " 'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG expects 1-based line number)
           t = re.sub("\[","{",t,1)
           t = re.sub("]","}",t,1)
           self.bb.append(t)
+          if self.ppqt2:
+            ccount += len(m.group(1)) - offset1 # count characters we haven't counted so far
+            offset1 = len(m.group(1))
+            offset2 = len(m.group(3))
+            self.ppqtpage(m.group(2), ccount)
           self.wb[i] = re.sub("⑱.*?⑱","",self.wb[i],1)  # remove the .bn information
-          m = re.search("(.*?)⑱(.*?)⑱.*",self.wb[i])  # look for another one on the same line
+          temp = self.wb[i]
+          m = re.search("(.*?)⑱(.*?)⑱(.*)",self.wb[i])  # look for another one on the same line
+        if self.ppqt2:
+          if not bnInLine:
+            ccount += len(self.wb[i]) + 1
+          else:
+            ccount += offset2 + 1
         if bnInLine and self.wb[i] == "":  # delete line if it ended up blank
           del self.wb[i]
+          if self.ppqt2:
+            ccount -= 1
           if i > 0 and self.wb[i-1] == "" and self.wb[i] == "":      # If line before .bn info and line after both blank
-              del self.wb[i]                          # delete the next one, too.
+            del self.wb[i]                          # delete the next one, too.
+            if self.ppqt2:
+              ccount -= 1
         else:
           i += 1
       self.bb.append(");")
@@ -8576,13 +8713,23 @@ def main():
   # process command line
   parser = argparse.ArgumentParser(description='ppgen generator')
   parser.add_argument('-i', '--infile', help='UTF-8 or Latin-1 input file')
-  parser.add_argument('-l', '--log', help="display Latin-1, diacritic, and Greek conversion logs", action="store_true")
+  parser.add_argument('-l', '--log', help="display Latin-1, diacritic, and Greek conversion logs",
+                      action="store_true")
   parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r,l)')
-  parser.add_argument('-o', '--output_format', default="hu", help='output format (HTML:h, text:t, u or l)')
-  parser.add_argument('-a', '--anonymous', action='store_true', help='do not identify version/timestamp in HTML')
+  parser.add_argument('-o', '--output_format', default="hu",
+                      help='output format (HTML:h, text:t, u or l)')
+  parser.add_argument('-a', '--anonymous', action='store_true',
+                      help='do not identify version/timestamp in HTML')
   parser.add_argument("-v", "--version", help="display version and exit", action="store_true")
-  parser.add_argument("-cvg", "--listcvg", help="list Greek and diacritic table to file ppgen-cvglist.txt and exit", action="store_true")
-  parser.add_argument("-f", "--filter", help="UTF-8 filter file for .cv/.gk commands (also terminates after .cv and .gk processing)")
+  parser.add_argument("-cvg", "--listcvg",
+                      help="list Greek and diacritic table to file ppgen-cvglist.txt and exit",
+                      action="store_true")
+  parser.add_argument("-f", "--filter",
+                      help="UTF-8 filter file for .cv/.gk commands (also terminates after .cv and .gk processing)")
+  parser.add_argument("-sbin", "--srcbin", action="store_true",
+                      help="create -src.txt.bin file and terminate")
+  parser.add_argument("-ppqt2", "--ppqt2", action="store_true",
+                      help="create .ppqt file in addition to any .bin file")
   args = parser.parse_args()
 
   # version request. print and exit
@@ -8594,6 +8741,11 @@ def main():
 
   if 'p' in args.debug:
     print("running on {}".format(platform.system()))
+
+  # -f and -sbin are mutually exclusive
+  if args.filter and args.srcbin:
+    print("Error: Both -f (--filter) and -sbin (--srcbin) specified; terminating")
+    exit(1)
 
   # infile of mystery-src.txt will generate mystery.txt and mystery.html
 
