@@ -22,26 +22,9 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.51g"    # 04-Jul-2015
-#3.51a:
-# Fix Python failure with .ce inside .nf b or .nf l.
-#3.51b:
-# Implement an option (-sbin) that creates a .bin file for the -src.txt file itself, to facilitate working
-#   with it in GG or PPQTv1.
-# Support .rj within .nf c
-#3.51c:
-# Revise .pb code so the pbb div is not empty (moved the <hr> that follows into the div)
-#3.51d:
-# Remove option of having .rj within a .nf c block; it doesn't work well in epub/mobi
-#3.51e:
-# Fix problem if line with .fn # is immediately followed by a line that begins with a
-#   link (#...:...#). In text it generates a warning about an invalid footnote
-#   name/number and flags the footnote as invalid in the output file.
-# Fix the context marker for illegal id= values on .h"n" statements
-#3.51f:
-# Add -ppqt option to create a .ppqt file (ppqt2 metadata) in addition to any .bin files created
-#3.51g:
-# Fix loop in text output processing when PPer uses .il-
+VERSION="3.52"    # 04-Jul-2015
+#3.52:
+# Reversion to roll 3.51g into production
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
