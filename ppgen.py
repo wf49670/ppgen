@@ -22,9 +22,13 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.52"    # 04-Jul-2015
+VERSION="3.52a"    # 04-Jul-2015
 #3.52:
 # Reversion to roll 3.51g into production
+#3.52a:
+#  When fixing any open tags across lines in .nf blocks, if following line starts
+#    with blanks place new tags after the blanks, to avoid messing with indentation
+#    processing.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -5794,6 +5798,9 @@ class Pph(Book):
             if self.bnPresent and self.is_bn_line(self.wb[i]):
               i += 1
               continue
+            if self.wb[i] == "": # ignore empty lines
+              i += 1
+              continue
             # find all tags on this line; ignore <a and </a tags completely for this purpose
             tmpline = re.sub("<a [^>]*>", "", self.wb[i])
             tmpline = re.sub("</a>", "", tmpline)
@@ -5801,7 +5808,15 @@ class Pph(Book):
             sstart = "" # what to prepend to the line
             for s in tagstack: # build the start string
               sstart += s
-            self.wb[i] = sstart + self.wb[i] # rewrite the line with new start
+            m = re.match(r"( *)(.*)", self.wb[i])
+            if m:
+              aadbg0 = self.wb[i]
+              aadbg1 = m.group(1)
+              aadbg2 = m.group(2)
+              self.wb[i] = m.group(1) + sstart + m.group(2) # put start tags after blanks (if any)
+            else: # should not happen?
+              self.dprint("tagstack code problem?\ni = {}\nline = >>{}<<".format(i, self.wb[i]))
+              self.wb[i] = sstart + self.wb[i] # rewrite the line with new start
             for s in t: # we may have more tags on this line
               if s.endswith("/>"): # it is a self-closing tag
                 continue           # ignore it
@@ -7539,13 +7554,18 @@ class Pph(Book):
       else:
         # need to calculate leading space for this line.
         # there may be some tags *before* the leading space
+        # (Not as of 3.52a, which places them after the leading space.)
+        # But there may still be .bn info before leading space, so account for it
         tmp = self.wb[i][:]
         ss = ""
-        m = re.match(r"^(<[^>]+>|⑯\w+⑰)", tmp)
+        #m = re.match(r"^(<[^>]+>|⑯\w+⑰)", tmp)
+        m = re.match(r"^(⑯\w+⑰)", tmp)
         while m:
           ss += m.group(0)
-          tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp, 1)
-          m = re.match(r"^<[^>]+>|⑯\w+⑰", tmp)
+          #tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp, 1)
+          tmp = re.sub(r"^⑯\w+⑰", "", tmp, 1)
+          #m = re.match(r"^<[^>]+>|⑯\w+⑰", tmp)
+          m = re.match(r"⑯\w+⑰", tmp)
         leadsp = len(tmp) - len(tmp.lstrip())
         if cpvs > 1:
           spvs = " style='margin-top:{}em' ".format(cpvs)
