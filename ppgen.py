@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.52b"    # 04-Jul-2015
+VERSION="3.52c"    # 06-Jul-2015
 #3.52:
 # Reversion to roll 3.51g into production
 #3.52a:
@@ -31,6 +31,9 @@ VERSION="3.52b"    # 04-Jul-2015
 #    processing.
 #3.52b:
 #  CSS readability (consistency for semi-colons, spaces)
+#3.52c:
+#  Fix problem with .nf l/b in HTML where the rewrapping of long lines that are already indented
+#    ends up with the overflow not indented far enough.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -108,6 +111,7 @@ class Book(object):
   cimage = "cover.jpg" # default cover image
 
   nregs = {} # named registers
+  nregsusage = {} # usage counters for selected named registers
   macro = {} # user macro storage
   caption_model = {} # storage for named caption models for multi-line captions in text output
 
@@ -1517,6 +1521,8 @@ class Book(object):
     self.nregs["break-wrap-at"] = "" # set of allowable characters to break wrapping, separated by spaces
                                      # e.g., .nr break-wrap-at "- :" or .nr break-wrap-at "- —"
                                      # note that breaking on space and <br> is always allowed
+    self.nregs["nf-spaces-per-em"] = "2" # Used in HTML indentation calculation
+    self.nregsusage["nf-spaces-per-em"] = 1 # number of times we've specified this value
 
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string
@@ -2028,6 +2034,8 @@ class Book(object):
       registerValue = m.group(2)
       if registerName in self.nregs:
         self.nregs[registerName] = self.deQuote(m.group(2), self.cl)
+        if registerName in self.nregsusage:
+          self.nregsusage[registerName] += 1 # bump count of times we've specified this reg
       else:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
       del(self.wb[self.cl])
@@ -7582,9 +7590,14 @@ class Pph(Book):
             t.append("      <div class='linedc {0} {1}' {2}>{3}</div>".format(iclass, self.pdc, spvs, ss+tmp.lstrip()))
           else:
             iclass = "in{}".format(leadsp)  # create an indent class
-            iamt = str(-3 + leadsp/2) # calculate based on -3 base
+            if self.nregsusage["nf-spaces-per-em"] > 1:
+              iclass += "_{}".format(self.nregsusage["nf-spaces-per-em"])
+            #iamt = str(-3 + leadsp/2) # calculate based on -3 base
+            divisor = float(self.nregs["nf-spaces-per-em"])
+            iamt = str(3 + round(leadsp/divisor, 1)) # calculate based on 2 spaces per em, and
+                                               #  add in the 3em base padding-left.
             t.append("      <div class='line {0}' {1}>{2}</div>".format(iclass, spvs, ss+tmp.lstrip()))
-          self.css.addcss("[1227] .linegroup .{} {{ text-indent: {}em; }}".format(iclass, iamt))
+          self.css.addcss("[1227] .linegroup .{} {{ padding-left: {}em; }}".format(iclass, iamt))
           printable_lines_in_block += 1
         else:
           if nf_pdc:
@@ -8339,7 +8352,9 @@ class Pph(Book):
         if '<body>' in self.wb[i]:
           foundbody = True
       else:
-        self.wb[i] = re.sub("\s+>", ">", self.wb[i])  # spaces before close ">"
+        #self.wb[i] = re.sub("\s+>", ">", self.wb[i])  # spaces before close ">"
+        self.wb[i] = re.sub(r"(<.*?')\s+>", r"\1>", self.wb[i])  # remove spaces before
+                                                                 # closing HTML ">"
         self.wb[i] = re.sub("<p  ", "<p ", self.wb[i])
         # next line broke German, where a space is significant before ">"
         # self.wb[i] = re.sub(" >", ">", self.wb[i])
