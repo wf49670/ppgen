@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.52c"    # 06-Jul-2015
+VERSION="3.52d"    # 09-Jul-2015
 #3.52:
 # Reversion to roll 3.51g into production
 #3.52a:
@@ -34,6 +34,14 @@ VERSION="3.52c"    # 06-Jul-2015
 #3.52c:
 #  Fix problem with .nf l/b in HTML where the rewrapping of long lines that are already indented
 #    ends up with the overflow not indented far enough.
+#3.52d:
+#  Replace dodot() with a routine that does a dictionary lookup rather than a long if/elif
+#    to find the right processing routine
+#  Add .ix/.ix- for handling indexes. In HTML they will use <ul><li>
+#  Fix loop while wrapping text when PPer has an indent (.in + leading spaces) that exceeds
+#    the line length (.ll)
+#  Allow w=none on .ta directives to suppress specification of table width, table margins, and
+#    cell widths in HTML/epub/mobi output
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -305,6 +313,10 @@ class Book(object):
      '\u2042':'***'
     }
 
+  # Format of Greek Transliterations:
+  # 1. character(s) the user enters
+  # 2. character(s) ppgen outputs
+  # 3. printable form for .cvglist output listing
   gk = [                              # builtin Greek transliterations
      ('ï/', 'i/\+', 'ï/'),            # i/u/y alternatives using dieresis
      ('ü/', 'y/\+', 'ü/'),            # standardize to doubly marked form and fall into normal processing
@@ -669,6 +681,12 @@ class Book(object):
      ('c',        '\u03E1', 'c (sampi)'),
     ]
 
+  # Format of diacritic table:
+  # 1. character(s) the user enters
+  # 2. character(s) ppgen outputs
+  # 3. printable form for .cvglist output listing
+  # 4. If 1, this is a nonstandard form of markup that will generate a warning message
+  #      if used.
   diacritics = [
     ('[=A]',    '\u0100', '\\u0100', 0), # LATIN CAPITAL LETTER A WITH MACRON    (Latin Extended-A)
     ('[=a]',    '\u0101', '\\u0101', 0), # LATIN SMALL LETTER A WITH MACRON
@@ -1528,6 +1546,47 @@ class Book(object):
     self.pageno = "" # page number stored as string
     self.bnmatch = re.compile("^⑱.*?⑱$")
 
+    # format of dotcmds dictionary:
+    # 1. key: the dot directive
+    # 2. the processing routine for the directive
+    # 3. None: no parameters passed to routine
+    #    "cl": self.cl passed to routine
+    self.dotcmds = {          # switches dot directives to processing routines
+      ".ad" :  (self.doAd, None),
+      ".dc" :  (self.doDropcap, "cl"),
+      ".de" :  (self.doDef, None),
+      ".di" :  (self.doDropimage, None),
+      ".dv" :  (self.doDiv, None),
+      ".fm" :  (self.doFmark, None),
+      ".fn" :  (self.doFnote, None),
+      ".fs" :  (self.doFontSize, None),
+      ".h1" : (self.doH1, None),
+      ".h2" : (self.doH2, None),
+      ".h3" : (self.doH3, None),
+      ".h4" : (self.doH4, None),
+      ".h5" :  (self.doH5, None),
+      ".h6" :  (self.doH6, None),
+      ".hr" :  (self.doHr, None),
+      ".il" :  (self.doIllo, None),
+      ".in" :  (self.doIn, None),
+      ".ix" :  (self.doIx, None),
+      ".li" :  (self.doLit, None),
+      ".ll" :  (self.doLl, None),
+      ".na" :  (self.doNa, None),
+      ".nf" :  (self.doNf, None),
+      ".ni" :  (self.doNi, None),
+      ".nr" :  (self.doNr, None),
+      ".pb" :  (self.doPb, None),
+      ".pi" :  (self.doPi, None),
+      ".rj" :  (self.doRj, None),
+      ".sn" :  (self.doSidenote, None),
+      ".sp" :  (self.doSpace, None),
+      ".ta" :  (self.doTable, None),
+      ".tb" :  (self.doTbreak, None),
+      ".ti" :  (self.doTi, None),
+      }
+
+
   def cvglist(self):
     if self.listcvg:
       f1 = codecs.open("ppgen-cvglist.txt", "w", encoding="UTF-8")
@@ -1780,71 +1839,16 @@ class Book(object):
   # all dot commands are switched here
   def doDot(self):
     dotcmd = self.wb[self.cl][0:3]
-    if ".h1" == dotcmd:
-      self.doH1()
-    elif ".h2" == dotcmd:
-      self.doH2()
-    elif ".h3" == dotcmd:
-      self.doH3()
-    elif ".h4" == dotcmd:
-      self.doH4()
-    elif ".h5" == dotcmd:
-      self.doH5()
-    elif ".h6" == dotcmd:
-      self.doH6()
-    elif ".sp" == dotcmd:
-      self.doSpace()
-    elif ".fs" == dotcmd:
-      self.doFontSize()
-    elif ".il" == dotcmd:
-      self.doIllo()
-    elif ".in" == dotcmd:
-      self.doIn()
-    elif ".ll" == dotcmd:
-      self.doLl()
-    elif ".ti" == dotcmd:
-      self.doTi()
-    elif ".li" == dotcmd:
-      self.doLit()
-    elif ".de" == dotcmd:
-      self.doDef()
-    elif ".pb" == dotcmd:
-      self.doPb()
-    elif ".hr" == dotcmd:
-      self.doHr()
-    elif ".tb" == dotcmd:
-      self.doTbreak()
-    elif ".fn" == dotcmd:
-      self.doFnote()
-    elif ".fm" == dotcmd:
-      self.doFmark()
-    elif ".pi" == dotcmd: # paragraph indenting
-      self.doPi()
-    elif ".ni" == dotcmd: # no (paragraph) indenting
-      self.doNi()
-    elif ".ta" == dotcmd: # tables
-      self.doTable()
-    elif ".di" == dotcmd: # dropcap images
-      self.doDropimage()
-    elif ".dc" == dotcmd: # dropcap alpha
-      self.doDropcap(self.cl)
-    elif ".na" == dotcmd: # no adjust (ragged right)
-      self.doNa()
-    elif ".ad" == dotcmd: # adjust (justify l/r margins)
-      self.doAd()
-    elif ".rj" == dotcmd: # 03-Apr-2014 right justify lines
-      self.doRj()
-    elif ".nf" == dotcmd:
-      self.doNf()
-    elif ".nr" == dotcmd: # named register
-      self.doNr()
-    elif ".dv" == dotcmd: # user-specifice <div> for HTML
-      self.doDiv()
-    elif ".sn" == dotcmd: # sidenote
-      self.doSidenote()
-    else:
-      self.crash_w_context("unhandled dot command: {}".format(self.wb[self.cl]), self.cl)
+    try:
+      switch = self.dotcmds[dotcmd]
+      if not switch[1]:
+        switch[0]()
+      elif switch[1] == "cl": # this is the only value for now
+        switch[0](self.cl)
+    except KeyError:
+      self.crash_w_context("unknown dot command: {}".format(self.wb[self.cl]), self.cl)
 
+  # Issue error message, show context, and terminate
   def crash_w_context(self, msg, i, r=5):
     sys.stderr.write("\nERROR: {}\ncontext:\n".format(self.umap(msg)))
     startline = max(0,i-r)
@@ -2672,6 +2676,7 @@ class Book(object):
           i -= 1
       i += 1
 
+
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # courtesy remaps
     #
@@ -3307,6 +3312,12 @@ class Ppt(Book):
     ta = [] # list of paragraph (lists)
     ts = [] # paragraph stats
     BR = "⓬" # temporary replacement for <br> for ease of programming
+    if indent >= ll: # catch problematic ll vs indent issues
+      self.crash_w_context("Cannot wrap text.\n" +
+                           "Indent (.in + leading spaces) bigger than line length (.ll):\n" +
+                           "line length = {}; indent = {}\n".format(ll, indent) +
+                           ".ll = {}; .in = {}\n".format(self.regLL, self.regIN) +
+                           "while wrapping: {}".format(s), self.cl)
     done = False
     while '  ' in s:   # squash any repeated spaces
       s = s.replace('  ', ' ')
@@ -3948,6 +3959,7 @@ class Ppt(Book):
 
   # h3
   def doH3(self):
+    tmp = self.wb[self.cl + 1]####
     m = re.match(r"\.h3 (.*)", self.wb[self.cl])
     self.doHnText(m)
 
@@ -4354,7 +4366,7 @@ class Ppt(Book):
     regBW = min(self.calculateBW(".nf-"), self.regLL)
     i = self.cl + 1 # skip the .nf b line
     xt = self.regLL - self.regIN
-    lmar = (xt - regBW)//2
+    lmar = max((xt - regBW)//2, 0)
     bnInBlock = False                # no .bn info encountered in this block yet
     while self.wb[i] != ".nf-":
 
@@ -5138,6 +5150,39 @@ class Ppt(Book):
       self.cl += 1
     else:
       self.crash_w_context("malformed .sn directive", self.cl) # should never hit this as preprocesscommon() checked it
+
+  # Index processing (Text)
+  def doIx(self):
+    indent = self.regIN if (self.regIN) else 1 # ensure indented at least 1 space
+    self.eb.append(".RS 1")
+    regBW = min(self.calculateBW(".ix-"), self.regLL)
+    i = self.cl + 1 # skip the .ix
+    while self.wb[i] != ".ix-": # calculateBW will have complained if .ix- is missing
+
+      if self.bnPresent and self.is_bn_line(self.wb[i]):   # just copy .bn info lines, don't change them at all
+        self.eb.append(self.wb[i])
+        i += 1
+        continue
+
+      s = (" " * indent + self.wb[i])
+      # if the line is shorter than the line length just send it to emit buffer
+      # if longer, calculate the leading spaces on line and use as shift amount during
+      # wrapping
+      if self.truelen(s) > self.regLL:
+        wi = 0
+        m = re.match("^(\s+)(.*)", s)
+        if m:
+          wi = len(m.group(1))
+          s = m.group(2)
+        u = self.wrap(s, wi+3, self.regLL, -3)
+        for line in u:
+          self.eb.append(line)
+      else:
+        self.eb.append(s)
+      i += 1
+    self.eb.append(".RS 1")
+    self.cl = i + 1 # skip the closing .ix-
+
 
   def doPara(self):
     t = []
@@ -7881,7 +7926,7 @@ class Pph(Book):
     tw_html = ""
     if "w=" in self.wb[self.cl]:
       self.wb[self.cl], tw_html = self.get_id("w", self.wb[self.cl])
-      if "%" not in tw_html:
+      if tw_html != "none" and "%" not in tw_html:
         self.fatal("please specify table HTML width as percent, i.e. \"{0}%\" \n on line: {1}".format(tw_html, il_line))
 
     # pull out optional id=
@@ -8036,30 +8081,33 @@ class Pph(Book):
     # if user specified table width (in %), put in a class and attach to table
     # if user also specified table width for epub, put that in a media handheld class
     # fudge factor if ppgen calculates it: 20% to allow for an ALL CAPS (wide) column
-    if tw_html != "":
-      s += "width: {}; ".format(tw_html)  # use what we are told
-    else:
-      our_width = min( 100, int(120*(totalwidth/72)) )  # limit to 100%
-      left_indent_pct = (100 - our_width) // 2
-      right_indent_pct = 100 - our_width - left_indent_pct
-      s += "margin-left: {}%; margin-right: {}%; width: {}%; ".format( left_indent_pct, right_indent_pct, our_width )
+    if tw_html != "none":
+      if tw_html != "":
+        s += "width: {}; ".format(tw_html)  # use what we are told
+      else:
+        our_width = min( 100, int(120*(totalwidth/72)) )  # limit to 100%
+        left_indent_pct = (100 - our_width) // 2
+        right_indent_pct = 100 - our_width - left_indent_pct
+        s += "margin-left: {}%; margin-right: {}%; width: {}%; ".format( left_indent_pct, right_indent_pct, our_width )
+
     if borders_present:
       s += "border-collapse: {}; ".format(self.nregs["border-collapse"])
     self.css.addcss("[1670] .table{0} {{ {1} }}".format(self.tcnt, s))
 
-    if tw_epub != "":
-      epw = int(re.sub("%", "", tw_epub)) # as integer
-      left_indent_pct = (100 - epw) // 2
-      right_indent_pct = 100 - epw - left_indent_pct
-      self.css.addcss("[1671] @media handheld {{ .table{} {{ margin-left: {}%; margin-right: {}%; width: {}%; }} }}".format(self.tcnt, left_indent_pct, right_indent_pct, epw))
+    if tw_html != "none" and tw_epub != "":
+        epw = int(re.sub("%", "", tw_epub)) # as integer
+        left_indent_pct = (100 - epw) // 2
+        right_indent_pct = 100 - epw - left_indent_pct
+        self.css.addcss("[1671] @media handheld {{ .table{} {{ margin-left: {}%; margin-right: {}%; width: {}%; }} }}".format(self.tcnt, left_indent_pct, right_indent_pct, epw))
 
     t.append("<table class='table{}' summary='{}'{}>".format(self.tcnt, tsum, tid))
 
     # set relative widths of columns
-    t.append("<colgroup>")
-    for (i,w) in enumerate(widths):
-     t.append("<col width='{}%' />".format(pwidths[i]))
-    t.append("</colgroup>")
+    if tw_html != "none":
+      t.append("<colgroup>")
+      for (i,w) in enumerate(widths):
+       t.append("<col width='{}%' />".format(pwidths[i]))
+      t.append("</colgroup>")
 
     startloc = self.cl
     self.cl += 1 # move into the table rows
@@ -8517,6 +8565,119 @@ class Pph(Book):
     else:
       self.crash_w_context("malformed .sn directive", self.cl)
 
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  # Index Processing (HTML)
+  def doIx(self):
+
+    self.css.addcss("[1240] .index li {list-style-type: none; " +
+                    "text-indent: -1em; padding-left: 1em; }")
+    ssty = ""
+    s = self.fetchStyle() # supplemental style
+    if s:
+      ssty = " style='{}'".format(s)
+    startloc = self.cl
+    i = self.cl
+    t = []
+    t.append("<ul class='index'{}>".format(ssty))
+
+    i += 1
+    cpvs = 0
+    rindent = 0 # relative indent of current line(s) based on leading spaces in input
+    ulindent = 0 # leading spaces in output (first ul at 0, 2nd ul at 4, ...)
+
+    while i < len(self.wb) and self.wb[i] != ".ix-":
+
+      # if this line is just bn info then just leave it in the output as-is
+      if self.bnPresent and self.is_bn_line(self.wb[i]):
+        i += 1
+        continue
+
+      if self.wb[i] == "":
+        cpvs += 1
+      else:
+        # need to calculate leading space for this line.
+        # there may be some tags *before* the leading space
+        # (Not as of 3.52a, which places them after the leading space.)
+        # But there may still be .bn info before leading space, so account for it
+        tmp = self.wb[i][:]
+        ss = ""
+        if tmp.startswith("⑯"):
+          m = re.match(r"^(⑯\w+⑰)(\s+)(.*)", tmp)
+          if m:
+            tmp = m.group(1) + m.group(3)
+            leadsp = len(m.group(2))
+          else:
+            leadsp = 0
+        else:
+          tmp2 = tmp.lstrip()
+          leadsp = len(tmp) - len(tmp2)
+          tmp = tmp2
+
+        if cpvs > 1:
+          spvs = " style='margin-top: {}em; ' ".format(cpvs)
+          cpvs = 0
+        else:
+          spvs = ""
+        if leadsp == rindent: # Indentation did not change; just need <li>
+          if spvs == "" and rindent == 0:
+            spvs = " style='margin-top: .5em; ' "
+            cpvs = 0
+          t.append((" " * (ulindent + 2)) +
+                   "<li{}>".format(spvs) + tmp2 + "</li>")
+        elif leadsp > rindent: # Indentation increased; need <ul> <li>
+          diff = leadsp - rindent
+          if diff%2: # if not an even number of spaces
+            self.crash_w_context("Indentation in index not a multiple of 2", i)
+          while (diff > 0):
+            ulindent += 4
+            rindent += 2
+            diff -= 2
+            t.append((" " * ulindent) +
+                     "<ul{}>".format(spvs))
+            spvs = ""
+          t.append((" " * (ulindent + 2)) +
+                   "<li>" + tmp2 + "</li>")
+        else: # Indentation decreased; need </ul>, then need to figure out what level we're at
+          diff = rindent - leadsp
+          if diff%2: # if not an even number of spaces
+            self.crash_w_context("Indentation in index not a multiple of 2", i)
+          while (diff > 0):
+            t.append((" " * ulindent) +
+                     "</ul>")
+            ulindent -= 4
+            rindent -= 2
+            diff -= 2
+          if spvs == "" and rindent == 0:
+            spvs = " style='margin-top: .5em; ' "
+            cpvs = 0
+          t.append((" " * (ulindent + 2)) +
+                   "<li{}>".format(spvs) + tmp2 + "</li>")
+        cpvs = 0  # reset pending vertical space
+      i += 1
+
+    # at block end.
+    if self.wb[i] != ".ix-":
+        self.fatal("File ends with unclosed .ix block")
+
+    while (rindent > 0): # close out any inner lists
+      t.append((" " * ulindent) +
+               "</ul>")
+      ulindent -= 4
+      rindent -= 2
+
+    if cpvs > 0: # pending empty space?
+      spvs = " style='margin-bottom: {}em; ' ".format(cpvs)
+      cpvs = 0
+    else:
+      spvs = ""
+
+    t.append("</ul{}>".format(spvs)) # finish out the block
+
+    endloc = i
+    self.wb[startloc:endloc+1] = t # replace source lines with generated list
+    self.cl = startloc + len(t)
+
+
   def doPara(self):
     if self.regTIp != 0: # If persistent temporary indent in effect, pretend we got a .ti command
       self.regTI = self.regTIp
@@ -8913,6 +9074,7 @@ if __name__ == '__main__':
 # 1224                .linegroup .line
 # 1225                div.linegroup > :first-child
 # 1227                .linegroup .<indent-class-name>
+# 1240      .ix: ul, li
 # 1378      <g>     gesperrt
 # 1379      Handheld version of <g>
 # 1430      div.footnote
