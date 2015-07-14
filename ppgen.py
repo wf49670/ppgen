@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.52d"    # 09-Jul-2015
+VERSION="3.52e"    # 13-Jul-2015
 #3.52:
 # Reversion to roll 3.51g into production
 #3.52a:
@@ -42,6 +42,10 @@ VERSION="3.52d"    # 09-Jul-2015
 #    the line length (.ll)
 #  Allow w=none on .ta directives to suppress specification of table width, table margins, and
 #    cell widths in HTML/epub/mobi output
+#3.52e:
+#  Revert old change (3.47r?) that put the "page-break-before: auto" into the CSS for h2, 
+#    rather than in a separate class. That doesn't work because without the separate class the
+#    definition that epubmaker provides (later in the CSS) overrides it.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -6581,7 +6585,7 @@ class Pph(Book):
     align = "c" # default to centered heading
     title = ""
 
-    self.css.addcss("[1100] h2 { text-align: center; font-weight: normal; font-size: 1.2em; page-break-before: auto; }")
+    self.css.addcss("[1100] h2 { text-align: center; font-weight: normal; font-size: 1.2em; }") # 3.52e
 
     m = re.match(r"\.h2 (.*)", self.wb[self.cl])
     if m: # modifier
@@ -6608,7 +6612,11 @@ class Pph(Book):
     elif align != "c":
       self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
 
-    # hcss += "page-break-before:auto;" # not needed, as we now have it in the CSS for h2. page-break is controlled by .chapter div
+    hcss += "page-break-before:auto; " # always have this on an <h2> element; if a break
+                                       # is needed we'll have the <h2> inside a
+                                       # <div class='chapter'> to force one. If it's not on
+                                       # the <h2> then epubmaker's CSS for <h2> will override
+                                       # and may force a second page break
 
     if self.pvs > 0:
       hcss += "margin-top: {}em; ".format(self.pvs)
