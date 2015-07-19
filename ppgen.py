@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.52f"    # 19-Jul-2015
+VERSION="3.52g"    # 19-Jul-2015
 #3.52:
 # Reversion to roll 3.51g into production
 #3.52a:
@@ -43,11 +43,13 @@ VERSION="3.52f"    # 19-Jul-2015
 #  Allow w=none on .ta directives to suppress specification of table width, table margins, and
 #    cell widths in HTML/epub/mobi output
 #3.52e:
-#  Revert old change (3.47r?) that put the "page-break-before: auto" into the CSS for h2, 
+#  Revert old change (3.47r?) that put the "page-break-before: auto" into the CSS for h2,
 #    rather than in a separate class. That doesn't work because without the separate class the
 #    definition that epubmaker provides (later in the CSS) overrides it.
 #3.52f:
 #  Fix HTML validation problem with index (.ix) subentries.
+#3.52g:
+#  Fix improper handling of "\ " after transliterated Greek and some improper handling of "\" within tables
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -2213,10 +2215,10 @@ class Book(object):
         # characters we need to protect
         count = 1
         while count:
-          text, count = re.subn(r"(\[Greek:.*?)\\\|(.*?\])", r"\1⑩\2", text, flags=re.DOTALL)
+          text, count = re.subn(r"(\[Greek:[^]]*?)\\\|([^]]*?\])", r"\1⑩\2", text, flags=re.DOTALL)
         count = 1
         while count:
-          text, count = re.subn(r"(\[Greek:.*?)\\ (.*?\])", r"\1⑮\2", text, flags=re.DOTALL)
+          text, count = re.subn(r"(\[Greek:[^]]*?)\\ ([^]]*?\])", r"\1⑮\2", text, flags=re.DOTALL)
 
         self.wb = text.splitlines()
         text = ""
@@ -2708,6 +2710,7 @@ class Book(object):
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # remaps of protected characters and escapes
+
     for i, line in enumerate(self.wb):
       # dots not part of dot directive
       self.wb[i] = self.wb[i].replace("....", "ⓓⓓⓓⓓ") # four dot ellipsis
@@ -4680,8 +4683,8 @@ class Ppt(Book):
     k1 = self.cl
     s = self.wb[k1]
     while k1 < len(self.wb) and self.wb[k1] != ".ta-":
-      while "\\" in self.wb[k1]:
-        self.wb[k1] = re.sub(r"\\", "", self.wb[k1])
+      while self.wb[k1].endswith("\\"):
+        self.wb[k1] = re.sub(r"\\$", "", self.wb[k1])
         self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
         del self.wb[k1+1]
       k1 += 1
@@ -7912,8 +7915,9 @@ class Pph(Book):
     # look for continuation characters; restore to one line
     k1 = self.cl
     while k1 < len(self.wb) and self.wb[k1] != ".ta-":
-      while "\\" in self.wb[k1]:
-        self.wb[k1] = re.sub(r"\\", "", self.wb[k1])
+      aaadbg = self.wb[k1]####
+      while self.wb[k1].endswith("\\"):
+        self.wb[k1] = re.sub(r"\\$", "", self.wb[k1])
         self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
         del self.wb[k1+1]
       k1 += 1
@@ -8070,15 +8074,6 @@ class Pph(Book):
     # tablewidth = 58  percentage of page width used by table
     # lmarpct = 21  left margin percent. (2 * lmarpct + tablewidth = 100)
     # totalwidth = width of table in characters
-
-    # unwrap any user-wrapped text in table
-    k1 = self.cl + 1
-    while self.wb[k1] != ".ta-":
-      while "\\" in self.wb[k1]:
-        self.wb[k1] = re.sub(r"\\", "", self.wb[k1])
-        self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
-        del self.wb[k1+1]
-      k1 += 1
 
     t = []
 
@@ -8656,7 +8651,7 @@ class Pph(Book):
           diff = leadsp - rindent
           if diff%2: # if not an even number of spaces
             self.crash_w_context("Indentation in index not a multiple of 2", i)
-          while (diff > 0): 
+          while (diff > 0):
             ulindent += 4
             t.append((" " * ulindent) + "<ul{}>".format(spvs))
             spvs = ''
