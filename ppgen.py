@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.52e"    # 13-Jul-2015
+VERSION="3.52f"    # 19-Jul-2015
 #3.52:
 # Reversion to roll 3.51g into production
 #3.52a:
@@ -46,6 +46,8 @@ VERSION="3.52e"    # 13-Jul-2015
 #  Revert old change (3.47r?) that put the "page-break-before: auto" into the CSS for h2, 
 #    rather than in a separate class. That doesn't work because without the separate class the
 #    definition that epubmaker provides (later in the CSS) overrides it.
+#3.52f:
+#  Fix HTML validation problem with index (.ix) subentries.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -8577,6 +8579,33 @@ class Pph(Book):
   # Index Processing (HTML)
   def doIx(self):
 
+    def trimsp(linenum):
+      tmp = self.wb[linenum][:]
+      if tmp.startswith("⑯"):
+        m = re.match(r"^(⑯\w+⑰)(\s+)(.*)", tmp)
+        if m:
+          tmp = m.group(1) + m.group(3)
+          leadsp = len(m.group(2))
+        else:
+          leadsp = 0
+      else:
+        tmp2 = tmp.lstrip()
+        leadsp = len(tmp) - len(tmp2)
+        tmp = tmp2
+      return tmp, leadsp
+
+    # Figure out if this line needs a </li> or not. If the next line has the same, or smaller
+    # indentation, it does. If next line has greater indentation, then leave the <li> open so
+    # we can nest the inner <ul> properly.
+    def checknext(linenum):
+      linenum = linenum + 1
+      s = "</li>" # assume next line is same indentation
+      if linenum < len(self.wb) and self.wb[linenum] != ".ix-":
+        tmp, leadsp = trimsp(linenum)
+        if (leadsp > rindent): # don't add </li> if next line has larger indentation
+          s = ""
+      return s
+
     self.css.addcss("[1240] .index li {list-style-type: none; " +
                     "text-indent: -1em; padding-left: 1em; }")
     ssty = ""
@@ -8607,59 +8636,53 @@ class Pph(Book):
         # there may be some tags *before* the leading space
         # (Not as of 3.52a, which places them after the leading space.)
         # But there may still be .bn info before leading space, so account for it
-        tmp = self.wb[i][:]
-        ss = ""
-        if tmp.startswith("⑯"):
-          m = re.match(r"^(⑯\w+⑰)(\s+)(.*)", tmp)
-          if m:
-            tmp = m.group(1) + m.group(3)
-            leadsp = len(m.group(2))
-          else:
-            leadsp = 0
-        else:
-          tmp2 = tmp.lstrip()
-          leadsp = len(tmp) - len(tmp2)
-          tmp = tmp2
+        tmp, leadsp = trimsp(i)
 
         if cpvs > 1:
           spvs = " style='margin-top: {}em; ' ".format(cpvs)
           cpvs = 0
         else:
           spvs = ""
+
         if leadsp == rindent: # Indentation did not change; just need <li>
           if spvs == "" and rindent == 0:
             spvs = " style='margin-top: .5em; ' "
             cpvs = 0
-          t.append((" " * (ulindent + 2)) +
-                   "<li{}>".format(spvs) + tmp2 + "</li>")
-        elif leadsp > rindent: # Indentation increased; need <ul> <li>
+          s = (" " * (ulindent + 2)) + "<li{}>".format(spvs) + tmp
+          s += checknext(i) # add </li> if next line at same or smaller indent
+          t.append(s)
+
+        elif leadsp > rindent: # Indentation increased; need possible additional <li>, then <ul> <li>
           diff = leadsp - rindent
           if diff%2: # if not an even number of spaces
             self.crash_w_context("Indentation in index not a multiple of 2", i)
-          while (diff > 0):
+          while (diff > 0): 
             ulindent += 4
+            t.append((" " * ulindent) + "<ul{}>".format(spvs))
+            spvs = ''
+            if diff > 2:
+              t.append((" " * (ulindent + 2)) + "<li>")
             rindent += 2
             diff -= 2
-            t.append((" " * ulindent) +
-                     "<ul{}>".format(spvs))
-            spvs = ""
-          t.append((" " * (ulindent + 2)) +
-                   "<li>" + tmp2 + "</li>")
-        else: # Indentation decreased; need </ul>, then need to figure out what level we're at
+          s = (" " * (ulindent + 2)) + "<li>" + tmp
+          s += checknext(i) # add </li> if next line at same or smaller indent
+          t.append(s)
+        else: # Indentation decreased; need </ul>, then </li>, then need to figure out what level we're at
           diff = rindent - leadsp
           if diff%2: # if not an even number of spaces
             self.crash_w_context("Indentation in index not a multiple of 2", i)
           while (diff > 0):
-            t.append((" " * ulindent) +
-                     "</ul>")
+            t.append((" " * ulindent) + "</ul>")
             ulindent -= 4
+            t.append((" " * (ulindent + 2)) + "</li>")
             rindent -= 2
             diff -= 2
           if spvs == "" and rindent == 0:
             spvs = " style='margin-top: .5em; ' "
             cpvs = 0
-          t.append((" " * (ulindent + 2)) +
-                   "<li{}>".format(spvs) + tmp2 + "</li>")
+          s = (" " * (ulindent + 2)) + "<li{}>".format(spvs) + tmp
+          s += checknext(i) # add </li> if next line at same or smaller indent
+          t.append(s)
         cpvs = 0  # reset pending vertical space
       i += 1
 
@@ -8671,6 +8694,7 @@ class Pph(Book):
       t.append((" " * ulindent) +
                "</ul>")
       ulindent -= 4
+      t.append((" " * (ulindent + 2)) + "</li>")
       rindent -= 2
 
     if cpvs > 0: # pending empty space?
