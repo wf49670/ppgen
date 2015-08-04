@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.52g"    # 19-Jul-2015
+VERSION="3.52h"    # 04-Aug-2015
 #3.52:
 # Reversion to roll 3.51g into production
 #3.52a:
@@ -50,6 +50,9 @@ VERSION="3.52g"    # 19-Jul-2015
 #  Fix HTML validation problem with index (.ix) subentries.
 #3.52g:
 #  Fix improper handling of "\ " after transliterated Greek and some improper handling of "\" within tables
+#3.52h:
+#  Safe-print some messages related to s/r processing to they don't cause Python failures if the text has UTF-8 
+#    characters.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1960,7 +1963,7 @@ class Book(object):
           self.fatal("Error occurred searching for {} in complete text blob".format(self.srs[srnum]))
       if m:                                             # if found
         if 'r' in self.debug:
-          print("{} found in complete text blob".format(self.srs[srnum]))
+          print(self.umap("{} found in complete text blob".format(self.srs[srnum])))
         try:
           text, l = re.subn(self.srs[srnum], self.srr[srnum], text) # replace all occurrences in the blob
           ll += l
@@ -1971,8 +1974,9 @@ class Book(object):
           else:
             self.fatal("Error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[srnum], self.srr[srnum]))
         if 'r' in self.debug:
-          print("Replaced with {}".format(self.srr[srnum]))
-      print("Search string {}:{} matched in complete text and replaced {} times.".format(srnum+1, self.srs[srnum], ll))
+          print(self.umap("Replaced with {}".format(self.srr[srnum])))
+      print(self.umap("Search string {}:{} matched in complete text and replaced {} times.".format(srnum+1,
+            self.srs[srnum], ll)))
       buffer = text.splitlines() # break blob back into individual lines
       text = ""
 
@@ -1991,12 +1995,13 @@ class Book(object):
         if m:                                   # if found
           k += 1
           if 'r' in self.debug or 'p' in self.srw[srnum]: # if debugging, or if prompt requested
-            print("Search string {}:{} found in:\n    {}".format(srnum+1, self.srs[srnum], buffer[j]))
+            print(self.umap("Search string {}:{} found in:\n    {}".format(srnum+1,
+                  self.srs[srnum], buffer[j])))
           try:
             if 'p' in self.srw[srnum]:                                           # prompting requested?
               l = 0
               temp = re.sub(self.srs[srnum], self.srr[srnum], buffer[j])
-              print("replacement will be:\n    {}".format(temp))
+              print(self.umap("replacement will be:\n    {}".format(temp)))
               try:
                 reply = input("replace? (y/n/q/r)")
               except EOFError:
@@ -2028,11 +2033,12 @@ class Book(object):
             else:
               self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[srnum], self.srr[srnum], buffer[j]))
           if 'r' in self.debug:
-            print("Replaced: {}".format(buffer[j]))
+            print(self.umap("Replaced: {}".format(buffer[j])))
         j += 1
       if quit:
         exit(1)
-      print("Search string {}:{} matched in {} lines, replaced {} times.".format(srnum+1, self.srs[srnum], k, ll))
+      print(self.umap("Search string {}:{} matched in {} lines, replaced {} times.".format(srnum+1,
+            self.srs[srnum], k, ll)))
 
 
   # .nr named register
