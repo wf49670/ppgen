@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.52h"    # 04-Aug-2015
+VERSION="3.52i"    # 18-Aug-2015
 #3.52:
 # Reversion to roll 3.51g into production
 #3.52a:
@@ -53,6 +53,8 @@ VERSION="3.52h"    # 04-Aug-2015
 #3.52h:
 #  Safe-print some messages related to s/r processing to they don't cause Python failures if the text has UTF-8 
 #    characters.
+#3.52i:
+#  Remove bogus warning about duplicate named footnotes (numbered and # are OK)
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -5817,6 +5819,7 @@ class Pph(Book):
         if name in fnlist2:  # if it's there, we have a reference to a footnote
           fnlist2[name] += 1 # remember we saw a reference to it
           fnDupCheck(name)
+        name = '[' + name + ']'
         line = re.sub(re.escape(name), "", line, 1) # remove the hit so we can look for another
         m2 = re.search(r"\[([A-Za-z0-9\-_\:\.]+)\]", line)
 
