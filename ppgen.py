@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.52i"    # 18-Aug-2015
+VERSION="3.52j"    # 20-Aug-2015
 #3.52:
 # Reversion to roll 3.51g into production
 #3.52a:
@@ -55,6 +55,9 @@ VERSION="3.52i"    # 18-Aug-2015
 #    characters.
 #3.52i:
 #  Remove bogus warning about duplicate named footnotes (numbered and # are OK)
+#3.52j:
+#  Fix failure in doIllo trying to issue error message about malformed .il
+#  Allow . in column 1 if followed by non-alpha
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -4116,7 +4119,7 @@ class Ppt(Book):
         self.eb += t
       self.eb.append(".RS 1") # request at least one space in text after illustration
     else:
-      self.crash_w_context("Malformed .il directive: {}".format(self.wb[self.cl]))
+      self.crash_w_context("Malformed .il directive: {}".format(self.wb[self.cl]), self.cl)
 
   # .in left margin indent
   def doIn(self):
@@ -5215,8 +5218,11 @@ class Ppt(Book):
     # paragraphs does not wrap the text, leaving that to the browser or other rendering engine.
     j = pstart
     while (j < len(self.wb) and
-           self.wb[j] and
-           not self.wb[j].startswith(".")): # any blank line or dot directive ends paragraph
+           self.wb[j]): # any blank line or dot directive ends paragraph
+      if self.wb[j].startswith("."):
+        m = re.match(r"\.[a-z]", self.wb[j])
+        if m: 
+          break
       t.append(self.wb[j])
       j += 1
     pend = j
@@ -5273,7 +5279,7 @@ class Ppt(Book):
         continue
 
       # will hit either a dot directive or wrappable text
-      if re.match(r"\.", self.wb[self.cl]):
+      if re.match(r"\.[a-z]", self.wb[self.cl]):
         self.doDot()
         continue
       self.doPara()
@@ -7118,7 +7124,7 @@ class Pph(Book):
       # no "=" should remain in .il string
       if "=" in s:
         s = re.sub("\.il", "", s).strip()
-        self.warn("unprocessed value in illustration: {}".format(s))
+        self.warn_w_context("unprocessed value in illustration: {}".format(s), self.cl)
       return(ia)
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -8773,8 +8779,11 @@ class Pph(Book):
       self.wb[self.cl] = "<p {}{}>".format(c_str,s_str) + self.wb[self.cl]
 
     while ( self.cl < len(self.wb) and
-            self.wb[self.cl] and
-            not self.wb[self.cl].startswith(".")): # any blank line or dot command ends paragraph
+            self.wb[self.cl]): # any blank line or dot command ends paragraph
+      if self.wb[self.cl].startswith("."):
+        m = re.match(r"\.[a-z]", self.wb[self.cl])
+        if m:
+          break
       self.cl += 1
     i = self.cl - 1
     # if para ended with .bn info, place the </p> before it, not after it to avoid extra
@@ -8897,7 +8906,7 @@ class Pph(Book):
         self.cl += 1
         continue
       # will hit either a dot directive, a user-defined <div>, or wrappable text
-      if re.match(r"\.", self.wb[self.cl]):
+      if re.match(r"\.[a-z]", self.wb[self.cl]):
         self.doDot()
         continue
       if self.wb[self.cl].startswith("<div class="):
