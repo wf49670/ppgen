@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.52j"    # 20-Aug-2015
+VERSION="3.52k"    # 22-Aug-2015
 #3.52:
 # Reversion to roll 3.51g into production
 #3.52a:
@@ -51,14 +51,16 @@ VERSION="3.52j"    # 20-Aug-2015
 #3.52g:
 #  Fix improper handling of "\ " after transliterated Greek and some improper handling of "\" within tables
 #3.52h:
-#  Safe-print some messages related to s/r processing to they don't cause Python failures if the text has UTF-8 
+#  Safe-print some messages related to s/r processing to they don't cause Python failures if the text has UTF-8
 #    characters.
 #3.52i:
 #  Remove bogus warning about duplicate named footnotes (numbered and # are OK)
 #3.52j:
 #  Fix failure in doIllo trying to issue error message about malformed .il
 #  Allow . in column 1 if followed by non-alpha
-
+#3.52k:
+#  Ignore <al=?> when determining whether table cells wrap in the text output file.
+#    (It was correct in one spot, but incorrect in another.)
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -4881,7 +4883,7 @@ class Ppt(Book):
             w1 += widths[j]
           else:
             break
-        k2 = self.wrap_para(t[i].strip(), 0, w1, 0, warn=True) # should handle combining characters properly
+        k2 = self.wrap_para(t1, 0, w1, 0, warn=True) # should handle combining characters properly
         if len(k2) > 1:
           rowspace = True
       k1 += 1
@@ -5221,7 +5223,7 @@ class Ppt(Book):
            self.wb[j]): # any blank line or dot directive ends paragraph
       if self.wb[j].startswith("."):
         m = re.match(r"\.[a-z]", self.wb[j])
-        if m: 
+        if m:
           break
       t.append(self.wb[j])
       j += 1
