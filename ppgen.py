@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.52k"    # 22-Aug-2015
+VERSION="3.52l2"    # 25-Aug-2015
 #3.52:
 # Reversion to roll 3.51g into production
 #3.52a:
@@ -61,6 +61,15 @@ VERSION="3.52k"    # 22-Aug-2015
 #3.52k:
 #  Ignore <al=?> when determining whether table cells wrap in the text output file.
 #    (It was correct in one spot, but incorrect in another.)
+#3.52l:
+#  For wrapping paragraphs when .nr break-wrap-at is in effect, need to wrap at width+1 for a blank break char
+#    but at width for a non-blank break char, as it will be kept and wrapping at width+1 could leave the line
+#    one character over the limit.
+#3.52l2:
+#  More fixes in wrap_para for text output. Need to handle case where the break character is a string, not a
+#    single character, and the case (when perturbing) where the break character is the last character of the
+#    previous line so we ensure we actually snip a word from the prior line, rather than snipping a null
+#    string and accidentally adding a blank.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3185,7 +3194,8 @@ class Ppt(Book):
 
     # at this point, s is ready to wrap
     mywidth = ll - indent
-    t = []
+    t = []    # list of lines
+    tbr = []  # list of the break characters that ended the lines
     perturb_limit = -1   # index of earliest line we can try to perturb
     twidth = mywidth
     true_len_s = self.truelen(s)
@@ -3202,18 +3212,26 @@ class Ppt(Book):
             twidth += len(m.group(2)) # allow wider split to account for .bn info
             stemp = m.group(3)
             m = re.match("(.*?)(⑱.*?⑱)(.*)",stemp)
-      #brloc = s.find(BR, 0, twidth + 1) # look for a <br> within the string
-      #if true_len_s > twidth or brloc != -1: # if line is long or contains a <br>
+
       issue_warning = warn
       snip_at = -1 # no snip spot found yet
-      # Plan A: snip at a breakchar within first twidth+1 characters
+      # Plan A: snip at a breakchar within first twidth or twidth+1 characters (see below)
       maxfound = -1
       maxchar = ""
       for c in breakchars:
         if c == BR:
-          found = s.find(c, 0, twidth+1) # for <br> need to find the first one within the width
+          found = s.find(c, 0, twidth+1) # for <br> need to find the first one within the width + 1 to
+                                         # to allow the <br> to be just after the allowed width
         else:
-          found = s.rfind(c, 0, twidth+1) # but for others, the last one
+          # for others need to find the last one within the width
+          # Note that the break "character" could actually be a string, so we need to
+          # know its length in some cases.
+          # If the break character is a blank allow width+1 as we'll be deleting it anyway, but
+          # for non-blank break characters we need to find them within the width as they'll be kept
+          if c == ' ':
+            found = s.rfind(c, 0, twidth+1) # but for others, the last one
+          else:
+            found = s.rfind(c, 0, twidth) # but for others, the last one
         if found != -1:
           if c == BR: # if we have a <br> we need to honor it
             break
@@ -3229,9 +3247,9 @@ class Ppt(Book):
         if c == " ":
           snip_at = found
         else: # not snipping at a blank; need to preserve the character we're snipping around
-          snip_at = found + 1 # bump snip spot past the character
-          true_len_s += 1     # increase string length accordingly
-          s = s[0:snip_at] + " " + s[snip_at:] # add a blank after the snip char (snip will remove it)
+          snip_at = found + len(c) # bump snip spot past the character
+          true_len_s += len(c)     # increase string length accordingly
+          s = s[0:snip_at] + " " + s[snip_at:] # add a blank after the snip char (snip will remove this blank)
       # if snip spot not found within specified width, go to plan B
       else:
         # try to snip on any break character, leaving it wider than the specified width
@@ -3251,8 +3269,8 @@ class Ppt(Book):
           if c == " ":
             snip_at = found
           else: # not snipping at a blank; need to preserve the character we're snipping around
-            snip_at = found + 1 # bump snip spot past the character
-            true_len_s += 1     # increase string length accordingly
+            snip_at = found + len(c) # bump snip spot past the character
+            true_len_s += len(c)     # increase string length accordingly
             s = s.replace(c, c + " ", 1) # add a blank after the snip character (blank will be deleted)
         else: # if still didn't find a snip spot
           snip_at = len(s) # Plan C: leave the line wide
@@ -3262,7 +3280,8 @@ class Ppt(Book):
         self.warn("Specified width {} too narrow for word: {}".format(twidth, stemp))
       if not perturb or (snip_at + indent) >= 55 or not t: # for normal processing:
                                                 #   Not perturbing, line long enough, or first line
-        t.append(s[:snip_at])
+        t.append(s[:snip_at]) # append next line
+        tbr.append(c)         # remember the break character that caused the line break
         if snip_at < len(s):
           s = s[snip_at+1:]
         else:
@@ -3273,13 +3292,18 @@ class Ppt(Book):
       else:          # here only if wrap() wanted us to try to avoid short lines,
                      # this line is short, and it's not the first line (which we can't fix)
         savet = t[:]    # save t, s in case need to restore them
+        savetbr = tbr[:] # and also save the break characters used
         saves = s
         while (perturb and  # While perturbing and
                t and        # t has data and
                len(t) > perturb_limit and # is long enough to try perturbing and
                not t[-1].endswith(BR)): # last line does not end with a <br>
           for c in breakchars[1:]: # ignore <br> processing for this attempt as it can't match
-            snip2 = t[-1].rfind(c) # Can we snip a word from the last line of t?
+            # Remember that c can be a string, not just a single character
+            # Also, it might be the last "character" of the previous line, and we need to
+            # find the one before that, so we actually have something to snip off
+            tlen = len(t[-1]) - len(c)
+            snip2 = t[-1].rfind(c, 0, tlen) # Can we snip a word from the last line of t?
             if snip2 != -1: # If so,
               if c == " ": # if snipping on a blank
                 ttemp = t[-1][:snip2] # make copy of snipped previous line skipping the blank
@@ -3287,15 +3311,19 @@ class Ppt(Book):
                 ttemp = t[-1][:snip2+len(c)] # include the snipping character in the copy
               true_len_ttemp = self.truelen(ttemp) # get its true length
               if true_len_ttemp + indent >= 55: # is prior line still long enough?
-                s = t[-1][snip2+len(c):] + ' ' + s # copy last word of the last line of t
+                sep = ' ' if (tbr[-1] == ' ') else ''
+                s = t[-1][snip2+len(c):] + sep + s # copy last word of the last line of t
                 t[-1] = ttemp
+                tbr[-1] = c
                 true_len_s = self.truelen(s)
                 twidth = mywidth
                 brloc = s.find(BR, 0, twidth+1) # look for a <br> within the width we're looking at
                 break
           else: # if no snips worked
             if len(t) > 1:            # can't perturb last line; try further back if possible
-              s = t.pop() + ' ' + s   # first add last line back to s
+              s2 = t.pop() # get previous line
+              sep = ' ' if (tbr.pop() == ' ') else '' # figure out whether we need to add a blank
+              s = s2 + sep + s   # first add last line back to s
               continue
             else:                     # perturbing failed; leave this line short
               perturb = False
@@ -3304,11 +3332,13 @@ class Ppt(Book):
         else:                          #
           perturb = False
         if not perturb:                # if perturbing failed leave this line short
-          t = savet[:]                 # restore t, s
+          t = savet[:]                 # restore t, tbr, s
+          tbr = savetbr[:]
           s = saves
           perturb = True               # we can keep going in perturb mode, but can't backtrack beyond here
           peturb_limit = len(t)        # so remember where we failed
           t.append(s[:snip_at])
+          tbr.append(c)         # remember the break character that caused the line break
           if snip_at < true_len_s:
             s = s[snip_at+1:]
           else:
