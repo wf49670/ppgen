@@ -22,15 +22,9 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.52.1"    # 13-Jul-2015
-#3.52:
-# Re-version to roll 3.51g into production
-#3.52.1:
-#  Revert part of an old change (3.47r?) that moved the "page-break-before: auto;" for .h2 into
-#    the CSS for the h2 element, rather than having it on each relevant <h2> where it would be
-#    put into a class. That seemed cleaner, but interacts badly with epubmaker's override of
-#    <h2> which occurs later in the CSS.
-
+VERSION="3.53"    # 25-Jul-2015
+#3.53:
+# Re-version to roll 3.52l2 into production
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -107,6 +101,7 @@ class Book(object):
   cimage = "cover.jpg" # default cover image
 
   nregs = {} # named registers
+  nregsusage = {} # usage counters for selected named registers
   macro = {} # user macro storage
   caption_model = {} # storage for named caption models for multi-line captions in text output
 
@@ -300,6 +295,10 @@ class Book(object):
      '\u2042':'***'
     }
 
+  # Format of Greek Transliterations:
+  # 1. character(s) the user enters
+  # 2. character(s) ppgen outputs
+  # 3. printable form for .cvglist output listing
   gk = [                              # builtin Greek transliterations
      ('ï/', 'i/\+', 'ï/'),            # i/u/y alternatives using dieresis
      ('ü/', 'y/\+', 'ü/'),            # standardize to doubly marked form and fall into normal processing
@@ -664,6 +663,12 @@ class Book(object):
      ('c',        '\u03E1', 'c (sampi)'),
     ]
 
+  # Format of diacritic table:
+  # 1. character(s) the user enters
+  # 2. character(s) ppgen outputs
+  # 3. printable form for .cvglist output listing
+  # 4. If 1, this is a nonstandard form of markup that will generate a warning message
+  #      if used.
   diacritics = [
     ('[=A]',    '\u0100', '\\u0100', 0), # LATIN CAPITAL LETTER A WITH MACRON    (Latin Extended-A)
     ('[=a]',    '\u0101', '\\u0101', 0), # LATIN SMALL LETTER A WITH MACRON
@@ -1516,10 +1521,53 @@ class Book(object):
     self.nregs["break-wrap-at"] = "" # set of allowable characters to break wrapping, separated by spaces
                                      # e.g., .nr break-wrap-at "- :" or .nr break-wrap-at "- —"
                                      # note that breaking on space and <br> is always allowed
+    self.nregs["nf-spaces-per-em"] = "2" # Used in HTML indentation calculation
+    self.nregsusage["nf-spaces-per-em"] = 1 # number of times we've specified this value
 
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string
     self.bnmatch = re.compile("^⑱.*?⑱$")
+
+    # format of dotcmds dictionary:
+    # 1. key: the dot directive
+    # 2. the processing routine for the directive
+    # 3. None: no parameters passed to routine
+    #    "cl": self.cl passed to routine
+    self.dotcmds = {          # switches dot directives to processing routines
+      ".ad" :  (self.doAd, None),
+      ".dc" :  (self.doDropcap, "cl"),
+      ".de" :  (self.doDef, None),
+      ".di" :  (self.doDropimage, None),
+      ".dv" :  (self.doDiv, None),
+      ".fm" :  (self.doFmark, None),
+      ".fn" :  (self.doFnote, None),
+      ".fs" :  (self.doFontSize, None),
+      ".h1" : (self.doH1, None),
+      ".h2" : (self.doH2, None),
+      ".h3" : (self.doH3, None),
+      ".h4" : (self.doH4, None),
+      ".h5" :  (self.doH5, None),
+      ".h6" :  (self.doH6, None),
+      ".hr" :  (self.doHr, None),
+      ".il" :  (self.doIllo, None),
+      ".in" :  (self.doIn, None),
+      ".ix" :  (self.doIx, None),
+      ".li" :  (self.doLit, None),
+      ".ll" :  (self.doLl, None),
+      ".na" :  (self.doNa, None),
+      ".nf" :  (self.doNf, None),
+      ".ni" :  (self.doNi, None),
+      ".nr" :  (self.doNr, None),
+      ".pb" :  (self.doPb, None),
+      ".pi" :  (self.doPi, None),
+      ".rj" :  (self.doRj, None),
+      ".sn" :  (self.doSidenote, None),
+      ".sp" :  (self.doSpace, None),
+      ".ta" :  (self.doTable, None),
+      ".tb" :  (self.doTbreak, None),
+      ".ti" :  (self.doTi, None),
+      }
+
 
   def cvglist(self):
     if self.listcvg:
@@ -1773,71 +1821,16 @@ class Book(object):
   # all dot commands are switched here
   def doDot(self):
     dotcmd = self.wb[self.cl][0:3]
-    if ".h1" == dotcmd:
-      self.doH1()
-    elif ".h2" == dotcmd:
-      self.doH2()
-    elif ".h3" == dotcmd:
-      self.doH3()
-    elif ".h4" == dotcmd:
-      self.doH4()
-    elif ".h5" == dotcmd:
-      self.doH5()
-    elif ".h6" == dotcmd:
-      self.doH6()
-    elif ".sp" == dotcmd:
-      self.doSpace()
-    elif ".fs" == dotcmd:
-      self.doFontSize()
-    elif ".il" == dotcmd:
-      self.doIllo()
-    elif ".in" == dotcmd:
-      self.doIn()
-    elif ".ll" == dotcmd:
-      self.doLl()
-    elif ".ti" == dotcmd:
-      self.doTi()
-    elif ".li" == dotcmd:
-      self.doLit()
-    elif ".de" == dotcmd:
-      self.doDef()
-    elif ".pb" == dotcmd:
-      self.doPb()
-    elif ".hr" == dotcmd:
-      self.doHr()
-    elif ".tb" == dotcmd:
-      self.doTbreak()
-    elif ".fn" == dotcmd:
-      self.doFnote()
-    elif ".fm" == dotcmd:
-      self.doFmark()
-    elif ".pi" == dotcmd: # paragraph indenting
-      self.doPi()
-    elif ".ni" == dotcmd: # no (paragraph) indenting
-      self.doNi()
-    elif ".ta" == dotcmd: # tables
-      self.doTable()
-    elif ".di" == dotcmd: # dropcap images
-      self.doDropimage()
-    elif ".dc" == dotcmd: # dropcap alpha
-      self.doDropcap(self.cl)
-    elif ".na" == dotcmd: # no adjust (ragged right)
-      self.doNa()
-    elif ".ad" == dotcmd: # adjust (justify l/r margins)
-      self.doAd()
-    elif ".rj" == dotcmd: # 03-Apr-2014 right justify lines
-      self.doRj()
-    elif ".nf" == dotcmd:
-      self.doNf()
-    elif ".nr" == dotcmd: # named register
-      self.doNr()
-    elif ".dv" == dotcmd: # user-specifice <div> for HTML
-      self.doDiv()
-    elif ".sn" == dotcmd: # sidenote
-      self.doSidenote()
-    else:
-      self.crash_w_context("unhandled dot command: {}".format(self.wb[self.cl]), self.cl)
+    try:
+      switch = self.dotcmds[dotcmd]
+      if not switch[1]:
+        switch[0]()
+      elif switch[1] == "cl": # this is the only value for now
+        switch[0](self.cl)
+    except KeyError:
+      self.crash_w_context("unknown dot command: {}".format(self.wb[self.cl]), self.cl)
 
+  # Issue error message, show context, and terminate
   def crash_w_context(self, msg, i, r=5):
     sys.stderr.write("\nERROR: {}\ncontext:\n".format(self.umap(msg)))
     startline = max(0,i-r)
@@ -1941,7 +1934,7 @@ class Book(object):
           self.fatal("Error occurred searching for {} in complete text blob".format(self.srs[srnum]))
       if m:                                             # if found
         if 'r' in self.debug:
-          print("{} found in complete text blob".format(self.srs[srnum]))
+          print(self.umap("{} found in complete text blob".format(self.srs[srnum])))
         try:
           text, l = re.subn(self.srs[srnum], self.srr[srnum], text) # replace all occurrences in the blob
           ll += l
@@ -1952,8 +1945,9 @@ class Book(object):
           else:
             self.fatal("Error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[srnum], self.srr[srnum]))
         if 'r' in self.debug:
-          print("Replaced with {}".format(self.srr[srnum]))
-      print("Search string {}:{} matched in complete text and replaced {} times.".format(srnum+1, self.srs[srnum], ll))
+          print(self.umap("Replaced with {}".format(self.srr[srnum])))
+      print(self.umap("Search string {}:{} matched in complete text and replaced {} times.".format(srnum+1,
+            self.srs[srnum], ll)))
       buffer = text.splitlines() # break blob back into individual lines
       text = ""
 
@@ -1972,12 +1966,13 @@ class Book(object):
         if m:                                   # if found
           k += 1
           if 'r' in self.debug or 'p' in self.srw[srnum]: # if debugging, or if prompt requested
-            print("Search string {}:{} found in:\n    {}".format(srnum+1, self.srs[srnum], buffer[j]))
+            print(self.umap("Search string {}:{} found in:\n    {}".format(srnum+1,
+                  self.srs[srnum], buffer[j])))
           try:
             if 'p' in self.srw[srnum]:                                           # prompting requested?
               l = 0
               temp = re.sub(self.srs[srnum], self.srr[srnum], buffer[j])
-              print("replacement will be:\n    {}".format(temp))
+              print(self.umap("replacement will be:\n    {}".format(temp)))
               try:
                 reply = input("replace? (y/n/q/r)")
               except EOFError:
@@ -2009,11 +2004,12 @@ class Book(object):
             else:
               self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[srnum], self.srr[srnum], buffer[j]))
           if 'r' in self.debug:
-            print("Replaced: {}".format(buffer[j]))
+            print(self.umap("Replaced: {}".format(buffer[j])))
         j += 1
       if quit:
         exit(1)
-      print("Search string {}:{} matched in {} lines, replaced {} times.".format(srnum+1, self.srs[srnum], k, ll))
+      print(self.umap("Search string {}:{} matched in {} lines, replaced {} times.".format(srnum+1,
+            self.srs[srnum], k, ll)))
 
 
   # .nr named register
@@ -2027,6 +2023,8 @@ class Book(object):
       registerValue = m.group(2)
       if registerName in self.nregs:
         self.nregs[registerName] = self.deQuote(m.group(2), self.cl)
+        if registerName in self.nregsusage:
+          self.nregsusage[registerName] += 1 # bump count of times we've specified this reg
       else:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
       del(self.wb[self.cl])
@@ -2194,10 +2192,10 @@ class Book(object):
         # characters we need to protect
         count = 1
         while count:
-          text, count = re.subn(r"(\[Greek:.*?)\\\|(.*?\])", r"\1⑩\2", text, flags=re.DOTALL)
+          text, count = re.subn(r"(\[Greek:[^]]*?)\\\|([^]]*?\])", r"\1⑩\2", text, flags=re.DOTALL)
         count = 1
         while count:
-          text, count = re.subn(r"(\[Greek:.*?)\\ (.*?\])", r"\1⑮\2", text, flags=re.DOTALL)
+          text, count = re.subn(r"(\[Greek:[^]]*?)\\ ([^]]*?\])", r"\1⑮\2", text, flags=re.DOTALL)
 
         self.wb = text.splitlines()
         text = ""
@@ -2663,6 +2661,7 @@ class Book(object):
           i -= 1
       i += 1
 
+
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # courtesy remaps
     #
@@ -2688,6 +2687,7 @@ class Book(object):
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # remaps of protected characters and escapes
+
     for i, line in enumerate(self.wb):
       # dots not part of dot directive
       self.wb[i] = self.wb[i].replace("....", "ⓓⓓⓓⓓ") # four dot ellipsis
@@ -3149,7 +3149,8 @@ class Ppt(Book):
 
     # at this point, s is ready to wrap
     mywidth = ll - indent
-    t = []
+    t = []    # list of lines
+    tbr = []  # list of the break characters that ended the lines
     perturb_limit = -1   # index of earliest line we can try to perturb
     twidth = mywidth
     true_len_s = self.truelen(s)
@@ -3166,18 +3167,26 @@ class Ppt(Book):
             twidth += len(m.group(2)) # allow wider split to account for .bn info
             stemp = m.group(3)
             m = re.match("(.*?)(⑱.*?⑱)(.*)",stemp)
-      #brloc = s.find(BR, 0, twidth + 1) # look for a <br> within the string
-      #if true_len_s > twidth or brloc != -1: # if line is long or contains a <br>
+
       issue_warning = warn
       snip_at = -1 # no snip spot found yet
-      # Plan A: snip at a breakchar within first twidth+1 characters
+      # Plan A: snip at a breakchar within first twidth or twidth+1 characters (see below)
       maxfound = -1
       maxchar = ""
       for c in breakchars:
         if c == BR:
-          found = s.find(c, 0, twidth+1) # for <br> need to find the first one within the width
+          found = s.find(c, 0, twidth+1) # for <br> need to find the first one within the width + 1 to
+                                         # to allow the <br> to be just after the allowed width
         else:
-          found = s.rfind(c, 0, twidth+1) # but for others, the last one
+          # for others need to find the last one within the width
+          # Note that the break "character" could actually be a string, so we need to
+          # know its length in some cases.
+          # If the break character is a blank allow width+1 as we'll be deleting it anyway, but
+          # for non-blank break characters we need to find them within the width as they'll be kept
+          if c == ' ':
+            found = s.rfind(c, 0, twidth+1) # but for others, the last one
+          else:
+            found = s.rfind(c, 0, twidth) # but for others, the last one
         if found != -1:
           if c == BR: # if we have a <br> we need to honor it
             break
@@ -3193,9 +3202,9 @@ class Ppt(Book):
         if c == " ":
           snip_at = found
         else: # not snipping at a blank; need to preserve the character we're snipping around
-          snip_at = found + 1 # bump snip spot past the character
-          true_len_s += 1     # increase string length accordingly
-          s = s[0:snip_at] + " " + s[snip_at:] # add a blank after the snip char (snip will remove it)
+          snip_at = found + len(c) # bump snip spot past the character
+          true_len_s += len(c)     # increase string length accordingly
+          s = s[0:snip_at] + " " + s[snip_at:] # add a blank after the snip char (snip will remove this blank)
       # if snip spot not found within specified width, go to plan B
       else:
         # try to snip on any break character, leaving it wider than the specified width
@@ -3215,8 +3224,8 @@ class Ppt(Book):
           if c == " ":
             snip_at = found
           else: # not snipping at a blank; need to preserve the character we're snipping around
-            snip_at = found + 1 # bump snip spot past the character
-            true_len_s += 1     # increase string length accordingly
+            snip_at = found + len(c) # bump snip spot past the character
+            true_len_s += len(c)     # increase string length accordingly
             s = s.replace(c, c + " ", 1) # add a blank after the snip character (blank will be deleted)
         else: # if still didn't find a snip spot
           snip_at = len(s) # Plan C: leave the line wide
@@ -3226,7 +3235,8 @@ class Ppt(Book):
         self.warn("Specified width {} too narrow for word: {}".format(twidth, stemp))
       if not perturb or (snip_at + indent) >= 55 or not t: # for normal processing:
                                                 #   Not perturbing, line long enough, or first line
-        t.append(s[:snip_at])
+        t.append(s[:snip_at]) # append next line
+        tbr.append(c)         # remember the break character that caused the line break
         if snip_at < len(s):
           s = s[snip_at+1:]
         else:
@@ -3237,13 +3247,18 @@ class Ppt(Book):
       else:          # here only if wrap() wanted us to try to avoid short lines,
                      # this line is short, and it's not the first line (which we can't fix)
         savet = t[:]    # save t, s in case need to restore them
+        savetbr = tbr[:] # and also save the break characters used
         saves = s
         while (perturb and  # While perturbing and
                t and        # t has data and
                len(t) > perturb_limit and # is long enough to try perturbing and
                not t[-1].endswith(BR)): # last line does not end with a <br>
           for c in breakchars[1:]: # ignore <br> processing for this attempt as it can't match
-            snip2 = t[-1].rfind(c) # Can we snip a word from the last line of t?
+            # Remember that c can be a string, not just a single character
+            # Also, it might be the last "character" of the previous line, and we need to
+            # find the one before that, so we actually have something to snip off
+            tlen = len(t[-1]) - len(c)
+            snip2 = t[-1].rfind(c, 0, tlen) # Can we snip a word from the last line of t?
             if snip2 != -1: # If so,
               if c == " ": # if snipping on a blank
                 ttemp = t[-1][:snip2] # make copy of snipped previous line skipping the blank
@@ -3251,15 +3266,19 @@ class Ppt(Book):
                 ttemp = t[-1][:snip2+len(c)] # include the snipping character in the copy
               true_len_ttemp = self.truelen(ttemp) # get its true length
               if true_len_ttemp + indent >= 55: # is prior line still long enough?
-                s = t[-1][snip2+len(c):] + ' ' + s # copy last word of the last line of t
+                sep = ' ' if (tbr[-1] == ' ') else ''
+                s = t[-1][snip2+len(c):] + sep + s # copy last word of the last line of t
                 t[-1] = ttemp
+                tbr[-1] = c
                 true_len_s = self.truelen(s)
                 twidth = mywidth
                 brloc = s.find(BR, 0, twidth+1) # look for a <br> within the width we're looking at
                 break
           else: # if no snips worked
             if len(t) > 1:            # can't perturb last line; try further back if possible
-              s = t.pop() + ' ' + s   # first add last line back to s
+              s2 = t.pop() # get previous line
+              sep = ' ' if (tbr.pop() == ' ') else '' # figure out whether we need to add a blank
+              s = s2 + sep + s   # first add last line back to s
               continue
             else:                     # perturbing failed; leave this line short
               perturb = False
@@ -3268,11 +3287,13 @@ class Ppt(Book):
         else:                          #
           perturb = False
         if not perturb:                # if perturbing failed leave this line short
-          t = savet[:]                 # restore t, s
+          t = savet[:]                 # restore t, tbr, s
+          tbr = savetbr[:]
           s = saves
           perturb = True               # we can keep going in perturb mode, but can't backtrack beyond here
           peturb_limit = len(t)        # so remember where we failed
           t.append(s[:snip_at])
+          tbr.append(c)         # remember the break character that caused the line break
           if snip_at < true_len_s:
             s = s[snip_at+1:]
           else:
@@ -3298,6 +3319,12 @@ class Ppt(Book):
     ta = [] # list of paragraph (lists)
     ts = [] # paragraph stats
     BR = "⓬" # temporary replacement for <br> for ease of programming
+    if indent >= ll: # catch problematic ll vs indent issues
+      self.crash_w_context("Cannot wrap text.\n" +
+                           "Indent (.in + leading spaces) bigger than line length (.ll):\n" +
+                           "line length = {}; indent = {}\n".format(ll, indent) +
+                           ".ll = {}; .in = {}\n".format(self.regLL, self.regIN) +
+                           "while wrapping: {}".format(s), self.cl)
     done = False
     while '  ' in s:   # squash any repeated spaces
       s = s.replace('  ', ' ')
@@ -3939,6 +3966,7 @@ class Ppt(Book):
 
   # h3
   def doH3(self):
+    tmp = self.wb[self.cl + 1]####
     m = re.match(r"\.h3 (.*)", self.wb[self.cl])
     self.doHnText(m)
 
@@ -4078,7 +4106,7 @@ class Ppt(Book):
         self.eb += t
       self.eb.append(".RS 1") # request at least one space in text after illustration
     else:
-      self.crash_w_context("Malformed .il directive: {}".format(self.wb[self.cl]))
+      self.crash_w_context("Malformed .il directive: {}".format(self.wb[self.cl]), self.cl)
 
   # .in left margin indent
   def doIn(self):
@@ -4345,7 +4373,7 @@ class Ppt(Book):
     regBW = min(self.calculateBW(".nf-"), self.regLL)
     i = self.cl + 1 # skip the .nf b line
     xt = self.regLL - self.regIN
-    lmar = (xt - regBW)//2
+    lmar = max((xt - regBW)//2, 0)
     bnInBlock = False                # no .bn info encountered in this block yet
     while self.wb[i] != ".nf-":
 
@@ -4653,8 +4681,8 @@ class Ppt(Book):
     k1 = self.cl
     s = self.wb[k1]
     while k1 < len(self.wb) and self.wb[k1] != ".ta-":
-      while "\\" in self.wb[k1]:
-        self.wb[k1] = re.sub(r"\\", "", self.wb[k1])
+      while self.wb[k1].endswith("\\"):
+        self.wb[k1] = re.sub(r"\\$", "", self.wb[k1])
         self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
         del self.wb[k1+1]
       k1 += 1
@@ -4840,7 +4868,7 @@ class Ppt(Book):
             w1 += widths[j]
           else:
             break
-        k2 = self.wrap_para(t[i].strip(), 0, w1, 0, warn=True) # should handle combining characters properly
+        k2 = self.wrap_para(t1, 0, w1, 0, warn=True) # should handle combining characters properly
         if len(k2) > 1:
           rowspace = True
       k1 += 1
@@ -5130,6 +5158,39 @@ class Ppt(Book):
     else:
       self.crash_w_context("malformed .sn directive", self.cl) # should never hit this as preprocesscommon() checked it
 
+  # Index processing (Text)
+  def doIx(self):
+    indent = self.regIN if (self.regIN) else 1 # ensure indented at least 1 space
+    self.eb.append(".RS 1")
+    regBW = min(self.calculateBW(".ix-"), self.regLL)
+    i = self.cl + 1 # skip the .ix
+    while self.wb[i] != ".ix-": # calculateBW will have complained if .ix- is missing
+
+      if self.bnPresent and self.is_bn_line(self.wb[i]):   # just copy .bn info lines, don't change them at all
+        self.eb.append(self.wb[i])
+        i += 1
+        continue
+
+      s = (" " * indent + self.wb[i])
+      # if the line is shorter than the line length just send it to emit buffer
+      # if longer, calculate the leading spaces on line and use as shift amount during
+      # wrapping
+      if self.truelen(s) > self.regLL:
+        wi = 0
+        m = re.match("^(\s+)(.*)", s)
+        if m:
+          wi = len(m.group(1))
+          s = m.group(2)
+        u = self.wrap(s, wi+3, self.regLL, -3)
+        for line in u:
+          self.eb.append(line)
+      else:
+        self.eb.append(s)
+      i += 1
+    self.eb.append(".RS 1")
+    self.cl = i + 1 # skip the closing .ix-
+
+
   def doPara(self):
     t = []
     bnt = []
@@ -5144,8 +5205,11 @@ class Ppt(Book):
     # paragraphs does not wrap the text, leaving that to the browser or other rendering engine.
     j = pstart
     while (j < len(self.wb) and
-           self.wb[j] and
-           not self.wb[j].startswith(".")): # any blank line or dot directive ends paragraph
+           self.wb[j]): # any blank line or dot directive ends paragraph
+      if self.wb[j].startswith("."):
+        m = re.match(r"\.[a-z]", self.wb[j])
+        if m:
+          break
       t.append(self.wb[j])
       j += 1
     pend = j
@@ -5202,7 +5266,7 @@ class Ppt(Book):
         continue
 
       # will hit either a dot directive or wrappable text
-      if re.match(r"\.", self.wb[self.cl]):
+      if re.match(r"\.[a-z]", self.wb[self.cl]):
         self.doDot()
         continue
       self.doPara()
@@ -5429,13 +5493,13 @@ class Pph(Book):
         # it's a duplicate forward reference
         self.warn("duplicate footnote reference: [{}]".format(name))
         self.wb[i] = re.sub(string, \
-        "⑪a href='⑦f{0}' style='text-decoration:none'⑫⑪sup⑫⑬{0}⑭⑪/sup⑫⑪/a⑫".format(name), \
+        "⑪a href='⑦f{0}' style='text-decoration: none; '⑫⑪sup⑫⑬{0}⑭⑪/sup⑫⑪/a⑫".format(name), \
         self.wb[i], 1)
       else:
         # it's the first reference
         fnlist.append(name)
         self.wb[i] = re.sub(string, \
-        "⑪a id='r{0}' /⑫⑪a href='⑦f{0}' style='text-decoration:none'⑫⑪sup⑫⑬{0}⑭⑪/sup⑫⑪/a⑫".format(name), \
+        "⑪a id='r{0}' /⑫⑪a href='⑦f{0}' style='text-decoration: none; '⑫⑪sup⑫⑬{0}⑭⑪/sup⑫⑪/a⑫".format(name), \
         self.wb[i], 1)
 
     self.preProcessCommon()
@@ -5748,6 +5812,7 @@ class Pph(Book):
         if name in fnlist2:  # if it's there, we have a reference to a footnote
           fnlist2[name] += 1 # remember we saw a reference to it
           fnDupCheck(name)
+        name = '[' + name + ']'
         line = re.sub(re.escape(name), "", line, 1) # remove the hit so we can look for another
         m2 = re.search(r"\[([A-Za-z0-9\-_\:\.]+)\]", line)
 
@@ -5799,6 +5864,9 @@ class Pph(Book):
             if self.bnPresent and self.is_bn_line(self.wb[i]):
               i += 1
               continue
+            if self.wb[i] == "": # ignore empty lines
+              i += 1
+              continue
             # find all tags on this line; ignore <a and </a tags completely for this purpose
             tmpline = re.sub("<a [^>]*>", "", self.wb[i])
             tmpline = re.sub("</a>", "", tmpline)
@@ -5806,7 +5874,15 @@ class Pph(Book):
             sstart = "" # what to prepend to the line
             for s in tagstack: # build the start string
               sstart += s
-            self.wb[i] = sstart + self.wb[i] # rewrite the line with new start
+            m = re.match(r"( *)(.*)", self.wb[i])
+            if m:
+              aadbg0 = self.wb[i]
+              aadbg1 = m.group(1)
+              aadbg2 = m.group(2)
+              self.wb[i] = m.group(1) + sstart + m.group(2) # put start tags after blanks (if any)
+            else: # should not happen?
+              self.dprint("tagstack code problem?\ni = {}\nline = >>{}<<".format(i, self.wb[i]))
+              self.wb[i] = sstart + self.wb[i] # rewrite the line with new start
             for s in t: # we may have more tags on this line
               if s.endswith("/>"): # it is a self-closing tag
                 continue           # ignore it
@@ -5987,10 +6063,10 @@ class Pph(Book):
           self.warn("Unexpected problem interpreting <sc> string, assuming mixed-case.\nLine number:{}\nCurrent line: {}\nCurrent string:{}".format(i, self.wb[i],stmp))
         if use_class == "sc":
           self.wb[i] = re.sub("<sc>", "<span class='sc'>", self.wb[i], 1)
-          self.css.addcss("[1200] .sc { font-variant:small-caps; }")
+          self.css.addcss("[1200] .sc { font-variant: small-caps; }")
         if use_class == "fss":
           self.wb[i] = re.sub("<sc>", "<span class='fss'>", self.wb[i], 1)
-          self.css.addcss("[1200] .fss { font-size:75%; }")
+          self.css.addcss("[1200] .fss { font-size: 75%; }")
         self.wb[i] = re.sub("<\/sc>", "</span>", self.wb[i], 1) # since we had a <sc> replace 1 </sc> if present on this line
         m = re.search("<sc>", self.wb[i]) # look for another opening small cap tag
 
@@ -5999,43 +6075,43 @@ class Pph(Book):
 
       m = re.search("<l>", self.wb[i])
       if m:
-        self.css.addcss("[1201] .large { font-size:large; }")
+        self.css.addcss("[1201] .large { font-size: large; }")
       self.wb[i] = re.sub("<l>", "<span class='large'>", self.wb[i])
       self.wb[i] = re.sub("<\/l>", "</span>", self.wb[i])
 
       m = re.search("<xl>", self.wb[i])
       if m:
-        self.css.addcss("[1202] .xlarge { font-size:x-large; }")
+        self.css.addcss("[1202] .xlarge { font-size: x-large; }")
       self.wb[i] = re.sub("<xl>", "<span class='xlarge'>", self.wb[i])
       self.wb[i] = re.sub("<\/xl>", "</span>", self.wb[i])
 
       m = re.search("<xxl>", self.wb[i])
       if m:
-        self.css.addcss("[1202] .xxlarge { font-size:xx-large; }")
+        self.css.addcss("[1202] .xxlarge { font-size: xx-large; }")
       self.wb[i] = re.sub("<xxl>", "<span class='xxlarge'>", self.wb[i])
       self.wb[i] = re.sub("<\/xxl>", "</span>", self.wb[i])
 
       m = re.search("<s>", self.wb[i])
       if m:
-        self.css.addcss("[1203] .small { font-size:small; }")
+        self.css.addcss("[1203] .small { font-size: small; }")
       self.wb[i] = re.sub("<s>", "<span class='small'>", self.wb[i])
       self.wb[i] = re.sub("<\/s>", "</span>", self.wb[i])
 
       m = re.search("<xs>", self.wb[i])
       if m:
-        self.css.addcss("[1204] .xsmall { font-size:x-small; }")
+        self.css.addcss("[1204] .xsmall { font-size: x-small; }")
       self.wb[i] = re.sub("<xs>", "<span class='xsmall'>", self.wb[i])
       self.wb[i] = re.sub("<\/xs>", "</span>", self.wb[i])
 
       m = re.search("<xxs>", self.wb[i])
       if m:
-        self.css.addcss("[1205] .xxsmall { font-size:xx-small; }")
+        self.css.addcss("[1205] .xxsmall { font-size: xx-small; }")
       self.wb[i] = re.sub("<xxs>", "<span class='xxsmall'>", self.wb[i])
       self.wb[i] = re.sub("<\/xxs>", "</span>", self.wb[i])
 
       m = re.search("<u>", self.wb[i])
       if m:
-        self.css.addcss("[1205] .under { text-decoration:underline; }")
+        self.css.addcss("[1205] .under { text-decoration: underline; }")
       self.wb[i] = re.sub("<u>", "<span class='under'>", self.wb[i])
       self.wb[i] = re.sub("<\/u>", "</span>", self.wb[i])
 
@@ -6043,7 +6119,7 @@ class Pph(Book):
       while m:
         thecolor = m.group(1)
         safename = re.sub("#","", thecolor)
-        self.css.addcss("[1209] .color_{0} {{ color:{1}; }}".format(safename,thecolor))
+        self.css.addcss("[1209] .color_{0} {{ color: {1}; }}".format(safename,thecolor))
         self.wb[i] = re.sub(re.escape(m.group(0)), "<span class='color_{0}'>".format(safename), self.wb[i])
         m = re.search(r"<c=[\"']?(.*?)[\"']?>", self.wb[i])
       self.wb[i] = re.sub("<\/c>", "</span>", self.wb[i])
@@ -6059,7 +6135,7 @@ class Pph(Book):
 
       m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
       while m:
-        self.wb[i] = re.sub(m.group(0), "<span style='font-size:{}'>".format(m.group(1)), self.wb[i], 1)
+        self.wb[i] = re.sub(m.group(0), "<span style='font-size: {}; '>".format(m.group(1)), self.wb[i], 1)
         m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
       self.wb[i] = re.sub("<\/fs>", "</span>", self.wb[i])
 
@@ -6238,16 +6314,16 @@ class Pph(Book):
     # common CSS
 
     if self.pnshow:
-      self.css.addcss("[1100] body { margin-left:8%;margin-right:10%; }")
-      self.css.addcss("[1105] .pageno { right:1%;font-size:x-small;background-color:inherit;color:" + self.nregs["pnc"] + ";")
-      self.css.addcss("[1106]         text-indent:0em;text-align:right;position:absolute;")
-      self.css.addcss("[1107]         border:1px solid " + self.nregs["pnc"] + ";padding:1px 3px;font-style:normal;")
-      self.css.addcss("[1108]         font-variant:normal;font-weight:normal;text-decoration:none; }")
+      self.css.addcss("[1100] body { margin-left: 8%; margin-right: 10%; }")
+      self.css.addcss("[1105] .pageno { right: 1%; font-size: x-small; background-color: inherit; color: " + self.nregs["pnc"] + "; ")
+      self.css.addcss("[1106]         text-indent: 0em; text-align: right; position: absolute; ")
+      self.css.addcss("[1107]         border: 1px solid " + self.nregs["pnc"] + "; padding: 1px 3px; font-style: normal; ")
+      self.css.addcss("[1108]         font-variant: normal; font-weight: normal; text-decoration: none; }")
       self.css.addcss("[1109] .pageno:after { color: " + self.nregs["pnc"] + "; content: attr(title); }")  # new 3.24M
     else:
-      self.css.addcss("[1100] body { margin-left:8%;margin-right:8%; }")
+      self.css.addcss("[1100] body { margin-left: 8%; margin-right: 8%; }")
 
-    self.css.addcss("[1170] p { text-indent:0;margin-top:0.5em;margin-bottom:0.5em;text-align:justify; }") # para style
+    self.css.addcss("[1170] p { text-indent: 0; margin-top: 0.5em; margin-bottom: 0.5em; text-align: justify; }") # para style
 
     # generate CSS for sidenotes if any are present in the text
     if self.snPresent:
@@ -6317,7 +6393,7 @@ class Pph(Book):
   # .li literal (pass-through)
   def doLit(self):
     if self.pvs > 0: # handle any pending vertical space before the .li
-      self.wb[self.cl] = "<div style='margin-top: {}em;'></div>".format(self.pvs)
+      self.wb[self.cl] = "<div style='margin-top: {}em; '></div>".format(self.pvs)
       self.pvs = 0
     else:
       del self.wb[self.cl]  # .li
@@ -6335,14 +6411,14 @@ class Pph(Book):
   # @media handheld to make the horizontal rule invisible
   def doPb(self):
     # if there is a pending vertical space, include it in style
-    hcss = "margin-top:1em; "  # default
+    hcss = "margin-top: 1em; "  # default
     if self.pvs > 0:
-      hcss = " margin-top:{}em; ".format(self.pvs)
+      hcss = "margin-top: {}em; ".format(self.pvs)
       self.pvs = 0
 
-    self.css.addcss("[1465] div.pbb { page-break-before:always; }")
-    self.css.addcss("[1466] hr.pb { border:none;border-bottom:1px solid; margin-bottom:1em; }")
-    self.css.addcss("[1467] @media handheld { hr.pb { display:none; }}")
+    self.css.addcss("[1465] div.pbb { page-break-before: always; }")
+    self.css.addcss("[1466] hr.pb { border: none; border-bottom: 1px solid; margin-bottom:1em; }")
+    self.css.addcss("[1467] @media handheld { hr.pb { display: none; }}")
     self.wb[self.cl:self.cl+1] = ["<div class='pbb'>",
                                   "  <hr class='pb' style='{}' />".format(hcss),
                                   "</div>"]
@@ -6378,18 +6454,18 @@ class Pph(Book):
     # if there is a pending vertical space, include it in style
     hcss = ""
     if self.pvs > 0:
-      hcss = " margin-top:{}em; ".format(self.pvs)
+      hcss = "margin-top: {}em; ".format(self.pvs)
       self.pvs = 0
     hrpct = 100
     m = re.match(r"\.hr (\d+)%", self.wb[self.cl])
     if m:
       hrpct = int(m.group(1))
     if hrpct == 100:
-      self.wb[self.cl] = "<hr style='border:none;border-bottom:1px solid;margin:1em auto; {}' />".format(hcss)
+      self.wb[self.cl] = "<hr style='border: none; border-bottom: 1px solid; margin: 1em auto; {}' />".format(hcss)
     else:
       lmarp = (100 - hrpct)//2
       rmarp = 100 - hrpct - lmarp
-      self.wb[self.cl] = "<hr style='border:none;border-bottom:1px solid;margin-top:1em;margin-bottom:1em; margin-left:{}%; width:{}%; margin-right:{}%; {}' />".format(lmarp,hrpct,rmarp, hcss)
+      self.wb[self.cl] = "<hr style='border: none; border-bottom: 1px solid; margin-top: 1em; margin-bottom: 1em; margin-left: {}%; width: {}%; margin-right: {}%; {}' />".format(lmarp,hrpct,rmarp, hcss)
     self.cl += 1
 
   # .tb thought break
@@ -6398,11 +6474,11 @@ class Pph(Book):
     # if there is a pending vertical space, include it in style
     hcss = ""
     if self.pvs > 0:
-      hcss = " margin-top:{}em; ".format(self.pvs)
+      hcss = "margin-top: {}em; ".format(self.pvs)
       self.pvs = 0
-      self.wb[self.cl] = "<hr style='border:none;border-bottom:1px solid; margin-bottom:0.8em; margin-left:35%; margin-right:35%; width:30%; {}' />".format(hcss) # for IE
+      self.wb[self.cl] = "<hr style='border: none; border-bottom: 1px solid; margin-bottom: 0.8em; margin-left: 35%; margin-right: 35%; width: 30%; {}' />".format(hcss) # for IE
     else:
-      self.wb[self.cl] = "<hr style='border:none;border-bottom:1px solid; margin-top:0.8em;margin-bottom:0.8em;margin-left:35%; margin-right:35%; width:30%;' />" # for IE
+      self.wb[self.cl] = "<hr style='border: none; border-bottom: 1px solid; margin-top: 0.8em; margin-bottom: 0.8em; margin-left: 35%; margin-right: 35%; width: 30%; ' />" # for IE
     self.cl += 1
 
   # .de CSS definition
@@ -6440,7 +6516,7 @@ class Pph(Book):
     align = "c" # default to centered heading
     title = ""
 
-    self.css.addcss("[1100] h1 { text-align:center;font-weight:normal;font-size:1.4em; }")
+    self.css.addcss("[1100] h1 { text-align: center; font-weight: normal; font-size: 1.4em; }")
 
     m = re.match(r"\.h1 (.*)", self.wb[self.cl])
     if m: # modifier
@@ -6461,22 +6537,22 @@ class Pph(Book):
         title = "title='{}'".format(title)
 
     if align == "l":
-      hcss += "text-align:left;"
+      hcss += "text-align: left; "
     elif align == "r":
-      hcss += "text-align:right;"
+      hcss += "text-align: right; "
     elif align != "c":
       self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
 
     if "nobreak" in rend:
-      hcss += "page-break-before:auto;"
+      hcss += "page-break-before: auto; "
     else:
-      hcss += "page-break-before:always;"
+      hcss += "page-break-before: always; "
 
     if self.pvs > 0:
-      hcss += "margin-top:{}em;".format(self.pvs)
+      hcss += "margin-top: {}em; ".format(self.pvs)
       self.pvs = 0
     else: # default 1 before, 1 after
-      hcss += "margin-top:1em;"
+      hcss += "margin-top: 1em; "
     self.pvs = 1
 
     del self.wb[self.cl] # the .h line
@@ -6516,7 +6592,7 @@ class Pph(Book):
     align = "c" # default to centered heading
     title = ""
 
-    self.css.addcss("[1100] h2 { text-align:center;font-weight:normal;font-size:1.2em; }")
+    self.css.addcss("[1100] h2 { text-align: center; font-weight: normal; font-size: 1.2em; }") # 3.52e
 
     m = re.match(r"\.h2 (.*)", self.wb[self.cl])
     if m: # modifier
@@ -6537,19 +6613,23 @@ class Pph(Book):
         title = "title='{}'".format(title)
 
     if align == "l":
-      hcss += "text-align:left;"
+      hcss += "text-align: left; "
     elif align == "r":
-      hcss += "text-align:right;"
+      hcss += "text-align: right; "
     elif align != "c":
       self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
 
-    hcss += "page-break-before:auto; "
+    hcss += "page-break-before:auto; " # always have this on an <h2> element; if a break
+                                       # is needed we'll have the <h2> inside a
+                                       # <div class='chapter'> to force one. If it's not on
+                                       # the <h2> then epubmaker's CSS for <h2> will override
+                                       # and may force a second page break
 
     if self.pvs > 0:
-      hcss += "margin-top:{}em;".format(self.pvs)
+      hcss += "margin-top: {}em; ".format(self.pvs)
       self.pvs = 0
     else: # default 4 before, 2 after
-      hcss += "margin-top:4em;"
+      hcss += "margin-top: 4em; "
     self.pvs = 2
 
     del self.wb[self.cl] # the .h line
@@ -6568,7 +6648,7 @@ class Pph(Book):
     # I always want a div. If it's not a no-break, give it class='chapter'
     if not "nobreak" in rend:
       t.append("<div class='chapter'>") # will force file break
-      self.css.addcss("[1576] .chapter { clear:both; page-break-before: always;}")
+      self.css.addcss("[1576] .chapter { clear: both; page-break-before: always;}")
     else:
       t.append("<div>") # always want a div around the h2
     if pnum != "":
@@ -6594,7 +6674,7 @@ class Pph(Book):
     rend = "" # default no rend
     align = "c" # default to centered heading
 
-    self.css.addcss("[1100] h3 { text-align:center;font-weight:normal;font-size:1.2em; }")
+    self.css.addcss("[1100] h3 { text-align: center; font-weight: normal; font-size: 1.2em; }")
 
     m = re.match(r"\.h3 (.*)", self.wb[self.cl])
     if m: # modifier
@@ -6610,22 +6690,22 @@ class Pph(Book):
         rend, align = self.get_id("align", rend)
 
     if align == "l":
-      hcss += "text-align:left;"
+      hcss += "text-align: left; "
     elif align == "r":
-      hcss += "text-align:right;"
+      hcss += "text-align: right; "
     elif align != "c":
       self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
 
     if "nobreak" in rend: # default to "break" in .h3 (seems odd to me, change this?)
-      hcss += "page-break-before:auto;"
+      hcss += "page-break-before: auto; "
     else:
-      hcss += "page-break-before:always;"
+      hcss += "page-break-before: always; "
 
     if self.pvs > 0:
-      hcss += "margin-top:{}em;".format(self.pvs)
+      hcss += "margin-top: {}em; ".format(self.pvs)
       self.pvs = 0
     else: # default 2 before, 1 after
-      hcss += "margin-top:2em;"
+      hcss += "margin-top: 2em; "
     self.pvs = 1
 
     del self.wb[self.cl] # the .h line
@@ -6666,7 +6746,7 @@ class Pph(Book):
     rend = "nobreak"
     align = "c" # default to centered heading
 
-    self.css.addcss("[1100] h4 { text-align:center;font-weight:normal;font-size:1.0em; }")
+    self.css.addcss("[1100] h4 { text-align: center; font-weight: normal; font-size: 1.0em; }")
 
     m = re.match(r"\.h4( .*)", self.wb[self.cl])
     if m: # modifier
@@ -6682,22 +6762,22 @@ class Pph(Book):
         rend, align = self.get_id("align", rend)
 
     if align == "l":
-      hcss += "text-align:left;"
+      hcss += "text-align: left; "
     elif align == "r":
-      hcss += "text-align:right;"
+      hcss += "text-align: right; "
     elif align != "c":
       self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
 
     if " break" in rend: # .h4/5/6 default to nobreak, so look for break (preceded by space) that user may have supplied
-      hcss += "page-break-before:always;"
+      hcss += "page-break-before: always; "
     else:
-      hcss += "page-break-before:auto;"
+      hcss += "page-break-before: auto; "
 
     if self.pvs > 0:
-      hcss += "margin-top:{}em;".format(self.pvs)
+      hcss += "margin-top: {}em; ".format(self.pvs)
       self.pvs = 0
     else: # default 1 before, 1 after
-      hcss += "margin-top:1em;"
+      hcss += "margin-top: 1em; "
     self.pvs = 1
 
     del self.wb[self.cl] # the .h line
@@ -6735,7 +6815,7 @@ class Pph(Book):
     rend = "nobreak"
     align = "c" # default to centered heading
 
-    self.css.addcss("[1100] h5 { text-align:center;font-weight:normal;font-size:1.0em; }")
+    self.css.addcss("[1100] h5 { text-align: center; font-weight: normal; font-size: 1.0em; }")
 
     m = re.match(r"\.h5( .*)", self.wb[self.cl])
     if m: # modifier
@@ -6751,22 +6831,22 @@ class Pph(Book):
         rend, align = self.get_id("align", rend)
 
     if align == "l":
-      hcss += "text-align:left;"
+      hcss += "text-align: left; "
     elif align == "r":
-      hcss += "text-align:right;"
+      hcss += "text-align: right; "
     elif align != "c":
       self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
 
     if " break" in rend: # .h4/5/6 default to nobreak, so look for break (preceded by space) that user may have supplied
-      hcss += "page-break-before:always;"
+      hcss += "page-break-before: always; "
     else:
-      hcss += "page-break-before:auto;"
+      hcss += "page-break-before: auto; "
 
     if self.pvs > 0:
-      hcss += "margin-top:{}em;".format(self.pvs)
+      hcss += "margin-top: {}em; ".format(self.pvs)
       self.pvs = 0
     else: # default 1 before, 1 after
-      hcss += "margin-top:1em;"
+      hcss += "margin-top: 1em; "
     self.pvs = 1
 
     del self.wb[self.cl] # the .h line
@@ -6804,7 +6884,7 @@ class Pph(Book):
     rend = "nobreak"
     align = "c" # default to centered heading
 
-    self.css.addcss("[1100] h6 { text-align:center;font-weight:normal;font-size:1.0em; }")
+    self.css.addcss("[1100] h6 { text-align: center; font-weight: normal; font-size: 1.0em; }")
 
     m = re.match(r"\.h6( .*)", self.wb[self.cl])
     if m: # modifier
@@ -6820,22 +6900,22 @@ class Pph(Book):
         rend, align = self.get_id("align", rend)
 
     if align == "l":
-      hcss += "text-align:left;"
+      hcss += "text-align: left; "
     elif align == "r":
-      hcss += "text-align:right;"
+      hcss += "text-align: right; "
     elif align != "c":
       self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
 
     if " break" in rend: # .h4/5/6 default to nobreak, so look for break (preceded by space) that user may have supplied
-      hcss += "page-break-before:always;"
+      hcss += "page-break-before: always; "
     else:
-      hcss += "page-break-before:auto;"
+      hcss += "page-break-before: auto; "
 
     if self.pvs > 0:
-      hcss += "margin-top:{}em;".format(self.pvs)
+      hcss += "margin-top: {}em; ".format(self.pvs)
       self.pvs = 0
     else: # default 1 before, 1 after
-      hcss += "margin-top:1em;"
+      hcss += "margin-top: 1em; "
     self.pvs = 1
 
     del self.wb[self.cl] # the .h line
@@ -7031,7 +7111,7 @@ class Pph(Book):
       # no "=" should remain in .il string
       if "=" in s:
         s = re.sub("\.il", "", s).strip()
-        self.warn("unprocessed value in illustration: {}".format(s))
+        self.warn_w_context("unprocessed value in illustration: {}".format(s), self.cl)
       return(ia)
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -7053,24 +7133,24 @@ class Pph(Book):
     # oversight, it doesn't remove float:left inside the @media handheld.
 
     if ia["align"] == "c":
-      self.css.addcss("[1600] .figcenter { clear:both; max-width:100%; margin:2em auto; text-align:center; }")
+      self.css.addcss("[1600] .figcenter { clear: both; max-width: 100%; margin: 2em auto; text-align: center; }")
       if caption_present:
-          self.css.addcss("[1601] div.figcenter p { text-align:center; text-indent:0; }")
-      self.css.addcss("[1608] .figcenter img { max-width:100%; height:auto; }")
+          self.css.addcss("[1601] div.figcenter p { text-align: center; text-indent: 0; }")
+      self.css.addcss("[1608] .figcenter img { max-width: 100%; height: auto; }")
 
     if ia["align"] == "l":
-      self.css.addcss("[1600] .figleft { clear:left; float:left; max-width:100%; margin:0.5em 1em 1em 0; text-align: left;}")
+      self.css.addcss("[1600] .figleft { clear: left; float: left; max-width: 100%; margin: 0.5em 1em 1em 0; text-align: left; }")
       if caption_present:
-          self.css.addcss("[1601] div.figleft p { text-align:center; text-indent:0; }")
-      self.css.addcss("[1602] @media handheld { .figleft { float:left; }}")
-      self.css.addcss("[1608] .figleft img { max-width:100%; height:auto; }")
+          self.css.addcss("[1601] div.figleft p { text-align: center; text-indent: 0; }")
+      self.css.addcss("[1602] @media handheld { .figleft { float: left; }}")
+      self.css.addcss("[1608] .figleft img { max-width: 100%; height: auto; }")
 
     if ia["align"] == "r":
-      self.css.addcss("[1600] .figright { clear:right; float:right; max-width:100%; margin:0.5em 0 1em 1em; text-align: right;}")
+      self.css.addcss("[1600] .figright { clear: right; float: right; max-width: 100%; margin: 0.5em 0 1em 1em; text-align: right; }")
       if caption_present:
-          self.css.addcss("[1601] div.figright p { text-align:center; text-indent:0; }")
-      self.css.addcss("[1602] @media handheld { .figright { float:right; }}")
-      self.css.addcss("[1608] .figright img { max-width:100%; height:auto; }")
+          self.css.addcss("[1601] div.figright p { text-align: center; text-indent: 0; }")
+      self.css.addcss("[1602] @media handheld { .figright { float: right; }}")
+      self.css.addcss("[1608] .figright img { max-width: 100%; height: auto; }")
 
     # make CSS names from igc counter
     idn = "id{:03d}".format(self.igc)
@@ -7355,11 +7435,11 @@ class Pph(Book):
       t.append("<div class='nf-center' style='{}'>".format(s))
 
     if self.pindent:
-      self.css.addcss("[1876] .nf-center-c0 { text-align:left;margin:0.5em 0; }")  # 17-Jul-2014
+      self.css.addcss("[1876] .nf-center-c0 { text-align: left; margin: 0.5em 0; }")  # 17-Jul-2014
     else:
-      self.css.addcss("[1876] .nf-center-c1 { text-align:left;margin:1em 0; }")
+      self.css.addcss("[1876] .nf-center-c1 { text-align: left; margin: 1em 0; }")
 
-    self.css.addcss("[1873] .nf-center { text-align:center; }")
+    self.css.addcss("[1873] .nf-center { text-align: center; }")
     i += 1
     printable_lines_in_block = 0
     pending_mt = 0
@@ -7386,9 +7466,9 @@ class Pph(Book):
       if pending_mt > 0:
         if nf_pdc:
           nf_pdc = False
-          t.append("    <div  class='{}' style='margin-top:{}em'>".format(self.pdc, pending_mt) + self.wb[i].strip() + "</div>")
+          t.append("    <div  class='{}' style='margin-top: {}em; '>".format(self.pdc, pending_mt) + self.wb[i].strip() + "</div>")
         else:
-          t.append("    <div style='margin-top:{}em'>".format(pending_mt) + self.wb[i].strip() + "</div>")
+          t.append("    <div style='margin-top: {}em; '>".format(pending_mt) + self.wb[i].strip() + "</div>")
         printable_lines_in_block += 1
         pending_mt = 0
       else:
@@ -7405,9 +7485,9 @@ class Pph(Book):
     # there may be a pending mt at the block end.
     if pending_mt > 0:
       if "<div style='" not in t[-1]:
-        t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(pending_mt), t[-1])
+        t[-1] = re.sub(r"<div", "<div style='margin-bottom: {}em; '".format(pending_mt), t[-1])
       else:
-        t[-1] = re.sub(r"<div style='", "<div style='margin-bottom:{}em; ".format(pending_mt), t[-1])
+        t[-1] = re.sub(r"<div style='", "<div style='margin-bottom: {}em; ".format(pending_mt), t[-1])
       pending_mt = 0
     t.append("  </div>")
     t.append("</div>")
@@ -7483,9 +7563,9 @@ class Pph(Book):
           if self.bnPresent and self.is_bn_line(self.wb[i]):  # if this line is bn info then just leave it in the output as-is
             i += 1
             continue
-          pst = "text-align: center;"
+          pst = "text-align: center; "
           if cpvs > 1:
-            spvs = " margin-top:{}em; ".format(cpvs)
+            spvs = "margin-top: {}em; ".format(cpvs)
           else:
             spvs = ""
           cpvs = 0;
@@ -7508,9 +7588,9 @@ class Pph(Book):
           if self.bnPresent and self.is_bn_line(self.wb[i]):  # if this line is bn info then just leave it in the output as-is
             i += 1
             continue
-          pst = "text-align: right;"
+          pst = "text-align: right; "
           if cpvs > 1:
-            spvs = " margin-top:{}em; ".format(cpvs)
+            spvs = "margin-top: {}em; ".format(cpvs)
           else:
             spvs = ""
           cpvs = 0;
@@ -7544,16 +7624,21 @@ class Pph(Book):
       else:
         # need to calculate leading space for this line.
         # there may be some tags *before* the leading space
+        # (Not as of 3.52a, which places them after the leading space.)
+        # But there may still be .bn info before leading space, so account for it
         tmp = self.wb[i][:]
         ss = ""
-        m = re.match(r"^(<[^>]+>|⑯\w+⑰)", tmp)
+        #m = re.match(r"^(<[^>]+>|⑯\w+⑰)", tmp)
+        m = re.match(r"^(⑯\w+⑰)", tmp)
         while m:
           ss += m.group(0)
-          tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp, 1)
-          m = re.match(r"^<[^>]+>|⑯\w+⑰", tmp)
+          #tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp, 1)
+          tmp = re.sub(r"^⑯\w+⑰", "", tmp, 1)
+          #m = re.match(r"^<[^>]+>|⑯\w+⑰", tmp)
+          m = re.match(r"⑯\w+⑰", tmp)
         leadsp = len(tmp) - len(tmp.lstrip())
         if cpvs > 1:
-          spvs = " style='margin-top:{}em' ".format(cpvs)
+          spvs = "style='margin-top: {}em; ' ".format(cpvs)
         else:
           spvs = ""
         if leadsp > 0: # (Note: support for drop-cap not fully implemented for indented lines)
@@ -7565,9 +7650,14 @@ class Pph(Book):
             t.append("      <div class='linedc {0} {1}' {2}>{3}</div>".format(iclass, self.pdc, spvs, ss+tmp.lstrip()))
           else:
             iclass = "in{}".format(leadsp)  # create an indent class
-            iamt = str(-3 + leadsp/2) # calculate based on -3 base
+            if self.nregsusage["nf-spaces-per-em"] > 1:
+              iclass += "_{}".format(self.nregsusage["nf-spaces-per-em"])
+            #iamt = str(-3 + leadsp/2) # calculate based on -3 base
+            divisor = float(self.nregs["nf-spaces-per-em"])
+            iamt = str(3 + round(leadsp/divisor, 1)) # calculate based on 2 spaces per em, and
+                                               #  add in the 3em base padding-left.
             t.append("      <div class='line {0}' {1}>{2}</div>".format(iclass, spvs, ss+tmp.lstrip()))
-          self.css.addcss("[1227] .linegroup .{} {{ text-indent: {}em; }}".format(iclass, iamt))
+          self.css.addcss("[1227] .linegroup .{} {{ padding-left: {}em; }}".format(iclass, iamt))
           printable_lines_in_block += 1
         else:
           if nf_pdc:
@@ -7586,9 +7676,9 @@ class Pph(Book):
     # there may be a pending mt at the block end.
     if cpvs > 1:
       if "style='" in t[-1]:
-        t[-1] = re.sub(r"style='", "style='margin-bottom:{}em; ".format(cpvs), t[-1])
+        t[-1] = re.sub(r"style='", "style='margin-bottom: {}em; ".format(cpvs), t[-1])
       else:
-        t[-1] = re.sub(r"<div", "<div style='margin-bottom:{}em'".format(cpvs), t[-1])
+        t[-1] = re.sub(r"<div", "<div style='margin-bottom: {}em; '".format(cpvs), t[-1])
       cpvs = 0
 
     t.append("    </div>")
@@ -7649,7 +7739,7 @@ class Pph(Book):
       if "=" in options:
         self.warn("Unrecognized option in .fm command: {}".format(self.wb[self.cl]))
     if rend and ((not lz) or (lz and len(self.fnlist))):
-      self.wb[self.cl] = "<hr style='border:none; border-bottom:1px solid; width:10%; margin-left:0; margin-top:1em; text-align:left;' />"
+      self.wb[self.cl] = "<hr style='border: none; border-bottom: 1px solid; width: 10%; margin-left: 0; margin-top: 1em; text-align: left; ' />"
       self.cl += 1
     else:
       rend = False
@@ -7667,7 +7757,7 @@ class Pph(Book):
         del self.fnlist[:]  # remove everything we handled
         self.fnlist = []
         if rend and rendafter:
-          self.wb.append("<hr style='border:none; border-bottom:1px solid; width:10%; margin-left:0; margin-top:1em; text-align:left;' />")
+          self.wb.append("<hr style='border: none; border-bottom: 1px solid; width: 10%; margin-left: 0; margin-top: 1em; text-align: left; ' />")
           self.cl += 1
       else:
         self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
@@ -7715,8 +7805,8 @@ class Pph(Book):
       s2 = (s1//2)/100 # forces one decimal place
 
       self.css.addcss("[1430] div.footnote {}")
-      self.css.addcss("[1431] div.footnote>:first-child { margin-top:1em; }")
-      self.css.addcss("[1432] div.footnote p {{ text-indent:1em;margin-top:{0}em;margin-bottom:{1}em; }}".format(s2,s2))
+      self.css.addcss("[1431] div.footnote > :first-child { margin-top: 1em; }")
+      self.css.addcss("[1432] div.footnote p {{ text-indent: 1em; margin-top: {0}em; margin-bottom: {1}em; }}".format(s2,s2))
       self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
       if self.footnoteLzH: # if special footnote landing zone processing in effect
         self.footnoteStart = self.cl # remember where this footnote started
@@ -7730,13 +7820,13 @@ class Pph(Book):
       half_length = max((int(self.fn_name_length/2) + 1), 2.5) # 2.5 was the old value; use that as our minimum
       margin = "{}".format(half_length)
       self.css.addcss("[1430] div.footnote {{margin-left: {0}em; }}".format(margin))
-      self.css.addcss("[1431] div.footnote>:first-child { margin-top:1em; }")
-      self.css.addcss("[1432] div.footnote .label {{ display: inline-block; width: 0em; text-indent: -{0}em; text-align: right;}}".format(margin))
+      self.css.addcss("[1431] div.footnote > :first-child { margin-top: 1em; }")
+      self.css.addcss("[1432] div.footnote .label {{ display: inline-block; width: 0em; text-indent: -{0}em; text-align: right; }}".format(margin))
 
       # if there is a pending vertical space, include it in style
       hcss = ""
       if self.pvs > 0:
-        hcss = " margin-top:{}em; ".format(self.pvs)
+        hcss = "margin-top: {}em; ".format(self.pvs)
         self.pvs = 0
 
       if hcss != "":
@@ -7827,8 +7917,9 @@ class Pph(Book):
     # look for continuation characters; restore to one line
     k1 = self.cl
     while k1 < len(self.wb) and self.wb[k1] != ".ta-":
-      while "\\" in self.wb[k1]:
-        self.wb[k1] = re.sub(r"\\", "", self.wb[k1])
+      aaadbg = self.wb[k1]####
+      while self.wb[k1].endswith("\\"):
+        self.wb[k1] = re.sub(r"\\$", "", self.wb[k1])
         self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
         del self.wb[k1+1]
       k1 += 1
@@ -7851,7 +7942,7 @@ class Pph(Book):
     tw_html = ""
     if "w=" in self.wb[self.cl]:
       self.wb[self.cl], tw_html = self.get_id("w", self.wb[self.cl])
-      if "%" not in tw_html:
+      if tw_html != "none" and "%" not in tw_html:
         self.fatal("please specify table HTML width as percent, i.e. \"{0}%\" \n on line: {1}".format(tw_html, il_line))
 
     # pull out optional id=
@@ -7938,22 +8029,22 @@ class Pph(Book):
       if not u[0][0] in ['l','c','r','h']:
         self.fatal("table horizontal alignment must be 'l', 'c', 'h', or 'r' in {}".format(self.wb[self.cl]))
       if u[0][0] == 'l':
-        haligns.append("text-align:left;")
+        haligns.append("text-align: left; ")
       if u[0][0] == 'c':
-        haligns.append("text-align:center;")
+        haligns.append("text-align: center; ")
       if u[0][0] == 'r':
-        haligns.append("text-align:right;")
+        haligns.append("text-align: right; ")
       if u[0][0] == 'h': # hanging indent
-        haligns.append("text-align:left; text-indent:-1em; padding-left:1em;")
+        haligns.append("text-align: left; text-indent: -1em; padding-left: 1em; ")
 
       if not u[0][1] in ['t','m','b']:
         self.fatal("table vertial alignment must be 't', 'm', or 'b'")
       if u[0][1] == 't':
-        valigns.append("vertical-align:top;")
+        valigns.append("vertical-align: top; ")
       if u[0][1] == 'm':
-        valigns.append("vertical-align:middle;")
+        valigns.append("vertical-align: middle; ")
       if u[0][1] == 'b':
-        valigns.append("vertical-align:bottom;")
+        valigns.append("vertical-align: bottom; ")
 
       try:
         widths.append(int(u[1]))
@@ -7986,50 +8077,44 @@ class Pph(Book):
     # lmarpct = 21  left margin percent. (2 * lmarpct + tablewidth = 100)
     # totalwidth = width of table in characters
 
-    # unwrap any user-wrapped text in table
-    k1 = self.cl + 1
-    while self.wb[k1] != ".ta-":
-      while "\\" in self.wb[k1]:
-        self.wb[k1] = re.sub(r"\\", "", self.wb[k1])
-        self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
-        del self.wb[k1+1]
-      k1 += 1
-
     t = []
 
-    s = "margin: auto;"  # start building class for table
+    s = "margin: auto; "  # start building class for table
 
     if self.pvs > 0:  # pending vertical space
-      s += " margin-top: {}em; ".format(self.pvs)
+      s += "margin-top: {}em; ".format(self.pvs)
       self.pvs=0
 
     # if user specified table width (in %), put in a class and attach to table
     # if user also specified table width for epub, put that in a media handheld class
     # fudge factor if ppgen calculates it: 20% to allow for an ALL CAPS (wide) column
-    if tw_html != "":
-      s += " width:{}; ".format(tw_html)  # use what we are told
-    else:
-      our_width = min( 100, int(120*(totalwidth/72)) )  # limit to 100%
-      left_indent_pct = (100 - our_width) // 2
-      right_indent_pct = 100 - our_width - left_indent_pct
-      s += " margin-left: {}%; margin-right:{}%; width:{}%; ".format( left_indent_pct, right_indent_pct, our_width )
+    if tw_html != "none":
+      if tw_html != "":
+        s += "width: {}; ".format(tw_html)  # use what we are told
+      else:
+        our_width = min( 100, int(120*(totalwidth/72)) )  # limit to 100%
+        left_indent_pct = (100 - our_width) // 2
+        right_indent_pct = 100 - our_width - left_indent_pct
+        s += "margin-left: {}%; margin-right: {}%; width: {}%; ".format( left_indent_pct, right_indent_pct, our_width )
+
     if borders_present:
-      s += " border-collapse:{}; ".format(self.nregs["border-collapse"])
+      s += "border-collapse: {}; ".format(self.nregs["border-collapse"])
     self.css.addcss("[1670] .table{0} {{ {1} }}".format(self.tcnt, s))
 
-    if tw_epub != "":
-      epw = int(re.sub("%", "", tw_epub)) # as integer
-      left_indent_pct = (100 - epw) // 2
-      right_indent_pct = 100 - epw - left_indent_pct
-      self.css.addcss("[1671] @media handheld {{ .table{} {{ margin-left: {}%; margin-right:{}%; width:{}%; }} }}".format(self.tcnt, left_indent_pct, right_indent_pct, epw))
+    if tw_html != "none" and tw_epub != "":
+        epw = int(re.sub("%", "", tw_epub)) # as integer
+        left_indent_pct = (100 - epw) // 2
+        right_indent_pct = 100 - epw - left_indent_pct
+        self.css.addcss("[1671] @media handheld {{ .table{} {{ margin-left: {}%; margin-right: {}%; width: {}%; }} }}".format(self.tcnt, left_indent_pct, right_indent_pct, epw))
 
     t.append("<table class='table{}' summary='{}'{}>".format(self.tcnt, tsum, tid))
 
     # set relative widths of columns
-    t.append("<colgroup>")
-    for (i,w) in enumerate(widths):
-     t.append("<col width='{}%' />".format(pwidths[i]))
-    t.append("</colgroup>")
+    if tw_html != "none":
+      t.append("<colgroup>")
+      for (i,w) in enumerate(widths):
+       t.append("<col width='{}%' />".format(pwidths[i]))
+      t.append("</colgroup>")
 
     startloc = self.cl
     self.cl += 1 # move into the table rows
@@ -8076,7 +8161,7 @@ class Pph(Book):
       # see if centered line (will not have borders)
       if not "|" in self.wb[self.cl]:
         line = self.wb[self.cl].strip()
-        align = "text-align:center;"
+        align = "text-align: center; "
         if len(line) > 4 and line[0:4] == "<th>": # header row?
           cell_type1 = "<th"
           cell_type2 = "</th>"
@@ -8088,13 +8173,13 @@ class Pph(Book):
           m = re.match(r"^<al=([lrch])>", line) # pick up possible alignment directive
           if m:
             if m.group(1) == "l":
-              align = "text-align:left;"
+              align = "text-align: left; "
             elif m.group(1) == "r":
-              align = "text-align:right;"
+              align = "text-align: right; "
             elif m.group(1) == "c":
-              align = "text-align:center;"
+              align = "text-align: center; "
             elif m.group(1) == "h":
-              align = "text-align:center;"
+              align = "text-align: center; "
               self.warn_w_context("<al=h> not supported for centered table lines", self.cl)
           line = line[6:]
         t.append("  <tr>{} style='{}' colspan='{}'>{}{}</tr>".format(cell_type1, align,
@@ -8146,13 +8231,13 @@ class Pph(Book):
           m = re.match(r"^<al=([lrch])>", v[k]) # pick up possible alignment directive
           if m:
             if m.group(1) == "l":
-              caligns[k] = "text-align:left;"
+              caligns[k] = "text-align: left; "
             elif m.group(1) == "r":
-              caligns[k] = "text-align:right;"
+              caligns[k] = "text-align: right; "
             elif m.group(1) == "c":
-              caligns[k]= "text-align:center;"
+              caligns[k]= "text-align: center; "
             else: # must be h
-              caligns[k] = "text-align:left; text-indent:-1em; padding-left:1em;"
+              caligns[k] = "text-align: left; text-indent: -1em; padding-left: 1em; "
             v[k] = v[k][6:] # remove the alignment tag
         valgn = ""
         padding = ""
@@ -8160,17 +8245,17 @@ class Pph(Book):
         if v[k] != "<span>":
           if not borders_present: # if no left/right borders in table
             if k < len(v) - 1: # each column not the last gets padding to the right
-              padding += 'padding-right:1em;'
+              padding += 'padding-right: 1em; '
           # convert leading protected spaces (\  or \_) to padding
           t1 = v[k]
           t2 = re.sub(r"^ⓢ+","", v[k])
           if len(t1) - len(t2) > 0:
             padleft = round((len(t1) - len(t2))*0.7, 1)
-            padding += 'padding-left:{}em;'.format(padleft)
+            padding += 'padding-left: {}em; '.format(padleft)
           elif borders_present: # if no leading spaces, and borders in use, add left-padding
-            padding += 'padding-left:' + self.nregs["html-cell-padding-left"] + ';'
+            padding += 'padding-left: ' + self.nregs["html-cell-padding-left"] + '; '
           if borders_present: # if borders in use add right-padding
-            padding += 'padding-right:' + self.nregs["html-cell-padding-right"] + ';'
+            padding += 'padding-right: ' + self.nregs["html-cell-padding-right"] + '; '
 
           # inject saved page number if this is first column
           if k == 0:
@@ -8235,20 +8320,20 @@ class Pph(Book):
     s2 = (s1//2)/100 # forces one decimal place
     mtop = s2
     mbot = mtop
-    self.css.addcss("[1920] img.drop-capi { float:left;margin:0 0.5em 0 0;position:relative;z-index:1; }")
+    self.css.addcss("[1920] img.drop-capi { float: left; margin: 0 0.5em 0 0; position: relative; z-index: 1; }")
     if type == "p":
-      self.css.addcss("[1921] p.drop-capi{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(di["s_adj"],mtop,mbot))
-      self.css.addcss("[1922] p.drop-capi{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(di["s_adj"],d_adj))
+      self.css.addcss("[1921] p.drop-capi{} {{ text-indent: 0; margin-top: {}em; margin-bottom: {}em}}".format(di["s_adj"],mtop,mbot))
+      self.css.addcss("[1922] p.drop-capi{}:first-letter {{ color: transparent; visibility: hidden; margin-left: -{}em; }}".format(di["s_adj"],d_adj))
       self.css.addcss("[1923] @media handheld {")
-      self.css.addcss("[1924]   img.drop-capi { display:none; visibility:hidden; }")
-      self.css.addcss("[1925]   p.drop-capi{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(di["s_adj"]))
+      self.css.addcss("[1924]   img.drop-capi { display: none; visibility: hidden; }")
+      self.css.addcss("[1925]   p.drop-capi{}:first-letter {{ color: inherit; visibility: visible; margin-left: 0em; }}".format(di["s_adj"]))
       self.css.addcss("[1926] }")
     else:
-      self.css.addcss("[1941] div.drop-capinf{} {{ text-indent:0; margin-top:{}em; margin-bottom:{}em}}".format(di["s_adj"],mtop,mbot))
-      self.css.addcss("[1942] div.drop-capinf{}:first-letter {{ color:transparent; visibility:hidden; margin-left:-{}em; }}".format(di["s_adj"],d_adj))
+      self.css.addcss("[1941] div.drop-capinf{} {{ text-indent: 0; margin-top: {}em; margin-bottom: {}em}}".format(di["s_adj"],mtop,mbot))
+      self.css.addcss("[1942] div.drop-capinf{}:first-letter {{ color: transparent; visibility: hidden; margin-left: -{}em; }}".format(di["s_adj"],d_adj))
       self.css.addcss("[1943] @media handheld {")
-      self.css.addcss("[1944]   img.drop-capinf { display:none; visibility:hidden; }")
-      self.css.addcss("[1945]   div.drop-capinf{}:first-letter {{ color:inherit; visibility:visible; margin-left:0em; }}".format(di["s_adj"]))
+      self.css.addcss("[1944]   img.drop-capinf { display: none; visibility: hidden; }")
+      self.css.addcss("[1945]   div.drop-capinf{}:first-letter {{ color: inherit; visibility: visible; margin-left: 0em; }}".format(di["s_adj"]))
       self.css.addcss("[1946] }")
     self.warn("CSS3 drop-cap. Please note in upload.")
     return di
@@ -8284,19 +8369,19 @@ class Pph(Book):
     else:
       self.crash_w_context("incorrect format for .dc arg1 arg2 command", line)
     if type == "p":
-      self.css.addcss("[1930] p.drop-capa{} {{ text-indent:-{}em; }}".format(dcadjs,dcadj))
-      self.css.addcss("[1931] p.drop-capa{}:first-letter {{ float:left;margin:{:0.3f}em {:0.3f}em 0em 0em;font-size:{};line-height:{}em;text-indent:0 }}".format(dcadjs,mt,mr,self.nregs["dcs"],dclh))
+      self.css.addcss("[1930] p.drop-capa{} {{ text-indent: -{}em; }}".format(dcadjs,dcadj))
+      self.css.addcss("[1931] p.drop-capa{}:first-letter {{ float: left; margin: {:0.3f}em {:0.3f}em 0em 0em; font-size: {}; line-height: {}em; text-indent: 0; }}".format(dcadjs,mt,mr,self.nregs["dcs"],dclh))
       self.css.addcss("[1933] @media handheld {")
-      self.css.addcss("[1935]   p.drop-capa{} {{ text-indent:0 }}".format(dcadjs))
-      self.css.addcss("[1936]   p.drop-capa{}:first-letter {{ float:none;margin:0;font-size:100%; }}".format(dcadjs))
+      self.css.addcss("[1935]   p.drop-capa{} {{ text-indent: 0; }}".format(dcadjs))
+      self.css.addcss("[1936]   p.drop-capa{}:first-letter {{ float: none; margin: 0; font-size: 100%; }}".format(dcadjs))
       self.css.addcss("[1937] }")
       self.pdc = "drop-capa{}".format(dcadjs)
     else:
-      self.css.addcss("[1950] div.drop-capanf{} {{ text-indent:-{}em; }}".format(dcadjs,dcadj))
-      self.css.addcss("[1951] div.drop-capanf{}:first-letter {{ float:left;margin:{:0.3f}em {:0.3f}em 0em 0em;font-size:{};line-height:{}em;text-indent:0 }}".format(dcadjs,mt,mr,self.nregs["dcs"],dclh))
+      self.css.addcss("[1950] div.drop-capanf{} {{ text-indent: -{}em; }}".format(dcadjs,dcadj))
+      self.css.addcss("[1951] div.drop-capanf{}:first-letter {{ float: left; margin: {:0.3f}em {:0.3f}em 0em 0em; font-size: {}; line-height: {}em; text-indent: 0; }}".format(dcadjs,mt,mr,self.nregs["dcs"],dclh))
       self.css.addcss("[1953] @media handheld {")
-      self.css.addcss("[1955]   div.drop-capanf{} {{ text-indent:0 }}".format(dcadjs))
-      self.css.addcss("[1956]   div.drop-capanf{}:first-letter {{ float:none;margin:0;font-size:100%; }}".format(dcadjs))
+      self.css.addcss("[1955]   div.drop-capanf{} {{ text-indent: 0; }}".format(dcadjs))
+      self.css.addcss("[1956]   div.drop-capanf{}:first-letter {{ float: none; margin:0; font-size: 100%; }}".format(dcadjs))
       self.css.addcss("[1957] }")
       self.pdc = "drop-capanf{}".format(dcadjs)
     del self.wb[line]
@@ -8316,14 +8401,21 @@ class Pph(Book):
   def cleanup(self):
 
     h1cnt = 0
+    foundbody = False
     for i in range(len(self.wb)):
-      self.wb[i] = re.sub("\s+>", ">", self.wb[i])  # spaces before close ">"
-      self.wb[i] = re.sub("<p  ", "<p ", self.wb[i])
-      # next line broke German, where a space is significant before ">"
-      # self.wb[i] = re.sub(" >", ">", self.wb[i])
-      self.wb[i] = re.sub("⑦", "#", self.wb[i]) # used in links
-      if re.search("<h1", self.wb[i]): # expect to find one h1 in the file
-        h1cnt += 1
+      if not foundbody:
+        if '<body>' in self.wb[i]:
+          foundbody = True
+      else:
+        #self.wb[i] = re.sub("\s+>", ">", self.wb[i])  # spaces before close ">"
+        self.wb[i] = re.sub(r"(<.*?')\s+>", r"\1>", self.wb[i])  # remove spaces before
+                                                                 # closing HTML ">"
+        self.wb[i] = re.sub("<p  ", "<p ", self.wb[i])
+        # next line broke German, where a space is significant before ">"
+        # self.wb[i] = re.sub(" >", ">", self.wb[i])
+        self.wb[i] = re.sub("⑦", "#", self.wb[i]) # used in links
+        if re.search("<h1", self.wb[i]): # expect to find one h1 in the file
+          h1cnt += 1
 
     i = 0
     while not re.search(r"<style type=\"text/css\">", self.wb[i]):
@@ -8414,28 +8506,28 @@ class Pph(Book):
 
   # called to retrieve a style string representing current display parameters
   #
-  def fetchStyle(self, nfc=False):
+  def fetchStyle(self, nfc=False, rj=False):
     s = ""
     if self.regIN != 0:
       inpct = (self.regIN * 100)/72
-      s += "margin-left:{:3.2f}%;".format(inpct)
+      s += "margin-left: {:3.2f}%; ".format(inpct)
     if self.regLL != 72:
       llpct = ((72 - self.regLL) * 100)/72
-      s += "margin-right:{:3.2f}%;".format(llpct)
+      s += "margin-right: {:3.2f}%; ".format(llpct)
     if self.regTI == -1000: # special force of ti=0
-      s += "text-indent:0;"
+      s += "text-indent: 0; "
     else: # a possible regular indent
       if self.regTI != 0:
         tipct = (self.regTI * 100)/72
-        s += "text-indent:{:3.2f}%;".format(tipct)
+        s += "text-indent: {:3.2f}%; ".format(tipct)
     # there may be a pending vertical space.
     if self.pvs > 0:
-      s += "margin-top:{}em;".format(self.pvs)
+      s += "margin-top: {}em; ".format(self.pvs)
       self.pvs = 0
     if self.fsz != "100%" and self.fsz != "1.0em":
-      s += "font-size:{};".format(self.fsz)
-    if not nfc and self.regAD == 0:
-      s += "text-align:left;"
+      s += "font-size: {}; ".format(self.fsz)
+    if not nfc and not rj and self.regAD == 0:
+      s += "text-align: left; "
     return s
 
   def doPi(self):
@@ -8453,8 +8545,8 @@ class Pph(Book):
       del self.wb[self.cl]
       nlines = int(m.group(1))
       while nlines > 0:
-        s = self.fetchStyle() # style line with current parameters
-        rstyle = s + "text-align:right;"
+        s = self.fetchStyle(rj=True) # style line with current parameters
+        rstyle = s + "text-align: right; "
         self.pvs = 0  # if there is a pending vertial space, only use it once on first line
         self.wb[self.cl] = "<div style='{}'>{}</div>".format(rstyle, self.wb[self.cl])
         self.cl += 1
@@ -8470,15 +8562,150 @@ class Pph(Book):
       t = m.group(1).split("|") # split sidenote on | characters if any
       for i in range(len(t)):
         t[i] = t[i].strip()
-      t = "<br/>".join(t)
+      t = "<br />".join(t)
       if self.pvs > 0: # handle any pending vertical space before the .sn
-        self.wb[self.cl] = "<div class='sidenote' style='margin-top: {}em;'>{}</div>".format(self.pvs, t)
+        self.wb[self.cl] = "<div class='sidenote' style='margin-top: {}em; '>{}</div>".format(self.pvs, t)
         self.pvs = 0
       else:
         self.wb[self.cl] = "<div class='sidenote'>{}</div>".format(t)
       self.cl += 1
     else:
       self.crash_w_context("malformed .sn directive", self.cl)
+
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  # Index Processing (HTML)
+  def doIx(self):
+
+    def trimsp(linenum):
+      tmp = self.wb[linenum][:]
+      if tmp.startswith("⑯"):
+        m = re.match(r"^(⑯\w+⑰)(\s+)(.*)", tmp)
+        if m:
+          tmp = m.group(1) + m.group(3)
+          leadsp = len(m.group(2))
+        else:
+          leadsp = 0
+      else:
+        tmp2 = tmp.lstrip()
+        leadsp = len(tmp) - len(tmp2)
+        tmp = tmp2
+      return tmp, leadsp
+
+    # Figure out if this line needs a </li> or not. If the next line has the same, or smaller
+    # indentation, it does. If next line has greater indentation, then leave the <li> open so
+    # we can nest the inner <ul> properly.
+    def checknext(linenum):
+      linenum = linenum + 1
+      s = "</li>" # assume next line is same indentation
+      if linenum < len(self.wb) and self.wb[linenum] != ".ix-":
+        tmp, leadsp = trimsp(linenum)
+        if (leadsp > rindent): # don't add </li> if next line has larger indentation
+          s = ""
+      return s
+
+    self.css.addcss("[1240] .index li {list-style-type: none; " +
+                    "text-indent: -1em; padding-left: 1em; }")
+    ssty = ""
+    s = self.fetchStyle() # supplemental style
+    if s:
+      ssty = " style='{}'".format(s)
+    startloc = self.cl
+    i = self.cl
+    t = []
+    t.append("<ul class='index'{}>".format(ssty))
+
+    i += 1
+    cpvs = 0
+    rindent = 0 # relative indent of current line(s) based on leading spaces in input
+    ulindent = 0 # leading spaces in output (first ul at 0, 2nd ul at 4, ...)
+
+    while i < len(self.wb) and self.wb[i] != ".ix-":
+
+      # if this line is just bn info then just leave it in the output as-is
+      if self.bnPresent and self.is_bn_line(self.wb[i]):
+        i += 1
+        continue
+
+      if self.wb[i] == "":
+        cpvs += 1
+      else:
+        # need to calculate leading space for this line.
+        # there may be some tags *before* the leading space
+        # (Not as of 3.52a, which places them after the leading space.)
+        # But there may still be .bn info before leading space, so account for it
+        tmp, leadsp = trimsp(i)
+
+        if cpvs > 1:
+          spvs = " style='margin-top: {}em; ' ".format(cpvs)
+          cpvs = 0
+        else:
+          spvs = ""
+
+        if leadsp == rindent: # Indentation did not change; just need <li>
+          if spvs == "" and rindent == 0:
+            spvs = " style='margin-top: .5em; ' "
+            cpvs = 0
+          s = (" " * (ulindent + 2)) + "<li{}>".format(spvs) + tmp
+          s += checknext(i) # add </li> if next line at same or smaller indent
+          t.append(s)
+
+        elif leadsp > rindent: # Indentation increased; need possible additional <li>, then <ul> <li>
+          diff = leadsp - rindent
+          if diff%2: # if not an even number of spaces
+            self.crash_w_context("Indentation in index not a multiple of 2", i)
+          while (diff > 0):
+            ulindent += 4
+            t.append((" " * ulindent) + "<ul{}>".format(spvs))
+            spvs = ''
+            if diff > 2:
+              t.append((" " * (ulindent + 2)) + "<li>")
+            rindent += 2
+            diff -= 2
+          s = (" " * (ulindent + 2)) + "<li>" + tmp
+          s += checknext(i) # add </li> if next line at same or smaller indent
+          t.append(s)
+        else: # Indentation decreased; need </ul>, then </li>, then need to figure out what level we're at
+          diff = rindent - leadsp
+          if diff%2: # if not an even number of spaces
+            self.crash_w_context("Indentation in index not a multiple of 2", i)
+          while (diff > 0):
+            t.append((" " * ulindent) + "</ul>")
+            ulindent -= 4
+            t.append((" " * (ulindent + 2)) + "</li>")
+            rindent -= 2
+            diff -= 2
+          if spvs == "" and rindent == 0:
+            spvs = " style='margin-top: .5em; ' "
+            cpvs = 0
+          s = (" " * (ulindent + 2)) + "<li{}>".format(spvs) + tmp
+          s += checknext(i) # add </li> if next line at same or smaller indent
+          t.append(s)
+        cpvs = 0  # reset pending vertical space
+      i += 1
+
+    # at block end.
+    if self.wb[i] != ".ix-":
+        self.fatal("File ends with unclosed .ix block")
+
+    while (rindent > 0): # close out any inner lists
+      t.append((" " * ulindent) +
+               "</ul>")
+      ulindent -= 4
+      t.append((" " * (ulindent + 2)) + "</li>")
+      rindent -= 2
+
+    if cpvs > 0: # pending empty space?
+      spvs = " style='margin-bottom: {}em; ' ".format(cpvs)
+      cpvs = 0
+    else:
+      spvs = ""
+
+    t.append("</ul{}>".format(spvs)) # finish out the block
+
+    endloc = i
+    self.wb[startloc:endloc+1] = t # replace source lines with generated list
+    self.cl = startloc + len(t)
+
 
   def doPara(self):
     if self.regTIp != 0: # If persistent temporary indent in effect, pretend we got a .ti command
@@ -8490,7 +8717,7 @@ class Pph(Book):
     # if there is a text-indent already, don't change it
     # otherwise, add a text-indent if self.pindent is set.
     if self.pdc == ""  and self.pindent and 'text-indent' not in s:
-      s += 'text-indent:{};'.format(self.nregs["pti"])
+      s += 'text-indent: {}; '.format(self.nregs["pti"])
 
     # apply either "psi" or "psb" spacing
     if self.pindent:
@@ -8500,13 +8727,13 @@ class Pph(Book):
         s0 = re.sub("em", "", self.nregs["psi"]) # drop the "em"
         s1 = int(float(s0)*100.0) # in tenths of ems
         s2 = (s1//2)/100 # forces one decimal place
-        s += 'margin-top:{}em;'.format(s2)
+        s += 'margin-top: {}em; '.format(s2)
       if "margin-bottom" not in s:
         # psi represents the entire gap. split it
         s0 = re.sub("em", "", self.nregs["psi"]) # drop the "em"
         s1 = int(float(s0)*100.0) # in tenths of ems
         s2 = (s1//2)/100 # forces one decimal place
-        s += 'margin-bottom:{}em;'.format(s2)
+        s += 'margin-bottom: {}em; '.format(s2)
     else: # not indented, use "psb" spacing
       # unless there is a margin already set, set top margin
       if "margin-top" not in s:
@@ -8514,21 +8741,21 @@ class Pph(Book):
         s0 = re.sub("em", "", self.nregs["psb"]) # drop the "em"
         s1 = int(float(s0)*100.0) # in tenths of ems
         s2 = (s1//2)/100 # forces one decimal place
-        s += 'margin-top:{}em;'.format(s2)
+        s += 'margin-top: {}em; '.format(s2)
       if "margin-bottom" not in s:
         # psb represents the entire gap. split it
         s0 = re.sub("em", "", self.nregs["psb"]) # drop the "em"
         s1 = int(float(s0)*100.0) # in tenths of ems
         s2 = (s1//2)/100 # forces one decimal place
-        s += 'margin-bottom:{}em;'.format(s2)
+        s += 'margin-bottom: {}em; '.format(s2)
 
     s_str = "" # empty style string
     if s != "":
-      s_str = " style='{}' ".format(s)
+      s_str = "style='{}' ".format(s)
 
     c_str = "" # empty class string
     if self.pdc != "":
-      c_str = " class='{}' ".format(self.pdc) # only for drop cap
+      c_str = "class='{}' ".format(self.pdc) # only for drop cap
       self.pdc = ""
 
     if re.match("<div>", self.wb[self.cl]):
@@ -8539,8 +8766,11 @@ class Pph(Book):
       self.wb[self.cl] = "<p {}{}>".format(c_str,s_str) + self.wb[self.cl]
 
     while ( self.cl < len(self.wb) and
-            self.wb[self.cl] and
-            not self.wb[self.cl].startswith(".")): # any blank line or dot command ends paragraph
+            self.wb[self.cl]): # any blank line or dot command ends paragraph
+      if self.wb[self.cl].startswith("."):
+        m = re.match(r"\.[a-z]", self.wb[self.cl])
+        if m:
+          break
       self.cl += 1
     i = self.cl - 1
     # if para ended with .bn info, place the </p> before it, not after it to avoid extra
@@ -8663,7 +8893,7 @@ class Pph(Book):
         self.cl += 1
         continue
       # will hit either a dot directive, a user-defined <div>, or wrappable text
-      if re.match(r"\.", self.wb[self.cl]):
+      if re.match(r"\.[a-z]", self.wb[self.cl]):
         self.doDot()
         continue
       if self.wb[self.cl].startswith("<div class="):
@@ -8876,6 +9106,7 @@ if __name__ == '__main__':
 # 1224                .linegroup .line
 # 1225                div.linegroup > :first-child
 # 1227                .linegroup .<indent-class-name>
+# 1240      .ix: ul, li
 # 1378      <g>     gesperrt
 # 1379      Handheld version of <g>
 # 1430      div.footnote
