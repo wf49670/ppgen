@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.52k"    # 22-Aug-2015
+VERSION="3.52l"    # 24-Aug-2015
 #3.52:
 # Reversion to roll 3.51g into production
 #3.52a:
@@ -61,6 +61,10 @@ VERSION="3.52k"    # 22-Aug-2015
 #3.52k:
 #  Ignore <al=?> when determining whether table cells wrap in the text output file.
 #    (It was correct in one spot, but incorrect in another.)
+#3.52l:
+#  For wrapping paragraphs when .nr break-wrap-at is in effect, need to wrap at width+1 for a blank break char
+#    but at width for a non-blank break char, as it will be kept and wrapping at width+1 could leave the line
+#    one character over the limit.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3213,7 +3217,13 @@ class Ppt(Book):
         if c == BR:
           found = s.find(c, 0, twidth+1) # for <br> need to find the first one within the width
         else:
-          found = s.rfind(c, 0, twidth+1) # but for others, the last one
+          # for others need to find the last one within the width
+          # If the break character is a blank allow width+1 as we'll be deleting it anyway, but
+          # for non-blank break characters we need to find them within the width as they'll be kept
+          if c == ' ':
+            found = s.rfind(c, 0, twidth+1) # but for others, the last one
+          else:
+            found = s.rfind(c, 0, twidth) # but for others, the last one
         if found != -1:
           if c == BR: # if we have a <br> we need to honor it
             break
