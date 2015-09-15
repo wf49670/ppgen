@@ -22,15 +22,11 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.52b"    # 04-Jul-2015
-#3.52:
-# Reversion to roll 3.51g into production
-#3.52a:
-#  When fixing any open tags across lines in .nf blocks, if following line starts
-#    with blanks place new tags after the blanks, to avoid messing with indentation
-#    processing.
-#3.52b:
-#  CSS readability (consistency for semi-colons, spaces)
+VERSION="3.52bLists"    # 15-Sep-2015
+#3.52bLists:
+#  Replace dodot() with a routine that does a dictionary lookup rather than a long if/elif
+#    to find the right processing routine
+#  Implement .ul (unordered list) and .ol (ordered list) and .it (item)
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -97,6 +93,15 @@ class Book(object):
   llstack = [] # last line length
   psstack = [] # last para spacing
   nfstack = [] # block stack
+  liststack = [] # ul/ol stack
+  list_type = None   # no list in progress
+  list_item_style = ''  # no item marker for unordered lists yet
+  list_item_value = 0   # no item marker value for ordered lists yet
+  list_item_width = 0   # no item marker value width for ordered lists yet
+  list_item_sep = ''
+  list_item_active = False # no list item active
+  list_itblock_active = False
+  dotcmdstack = [] # stack for valid dotcmds
   warnings = [] # warnings displayed
   cl = 0 # current line number
   tcnt = 0 # table counter
@@ -1461,6 +1466,14 @@ class Book(object):
      ('[sampi]','\u03E1', '\\U03E1', 0), #
     ]
 
+  #item_greek_lower = (' \u03B1\u03B2\u03B3\u03B4\u03B5\u03B6\u03B7\u03B8\u03B9\u03BA\u03BB' +
+  #                    '\u03BC\u03BD\u03BE\u03BF\u03C0\u03C1\u03C3\u03C4\u03C5\u03C6\u03C7' +
+  #                    '\u03C8\u03C9')
+
+  #item_greek_upper = (' \u0391\u0392\u0393\u0394\u0395\u0396\u0397\u0398\u0399\u039A\u039B' +
+  #                    '\u039C\u039D\u039E\u039F\u03A0\u03A1\u03A3\u03A4\u03A5\u03A6\u03A7' +
+  #                    '\u03A8\u03A9')
+
   def __init__(self, args, renc):
     del self.wb[:]
     del self.eb[:]
@@ -1475,6 +1488,8 @@ class Book(object):
     del self.llstack[:]
     del self.psstack[:]
     del self.nfstack[:]
+    del self.liststack[:]
+    del self.dotcmdstack[:]
     del self.warnings[:]
     del self.mal[:]
     del self.mau[:]
@@ -1521,6 +1536,170 @@ class Book(object):
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string
     self.bnmatch = re.compile("^⑱.*?⑱$")
+
+    self.list_styles_u = {
+      'disc':'●',
+      'circle':'○',
+      'square':'▪',
+      'none':' '
+      }
+
+    self.list_styles_o = {
+          'decimal':('decimal', self.item_decimal),
+      'lower-alpha':('lower-alpha', self.item_lower_alpha),
+      'lower-roman':('lower-roman', self.item_lower_roman),
+      'upper-alpha':('upper-alpha', self.item_upper_alpha),
+      'upper-roman':('upper-roman', self.item_upper_roman),
+      }
+
+    self.item_alpha = ' abcdefghijklmnopqrstuvwxyz'
+
+    self.fulldotcmds = {          # switches dot directives to processing routines
+      ".h1" : (self.doH1, None),
+      ".h2" : (self.doH2, None),
+      ".h3" : (self.doH3, None),
+      ".h4" : (self.doH4, None),
+      ".h5" :  (self.doH5, None),
+      ".h6" :  (self.doH6, None),
+      ".sp" :  (self.doSpace, None),
+      ".fs" :  (self.doFontSize, None),
+      ".il" :  (self.doIllo, None),
+      ".in" :  (self.doIn, None),
+      ".ll" :  (self.doLl, None),
+      ".ti" :  (self.doTi, None),
+      ".li" :  (self.doLit, None),
+      ".de" :  (self.doDef, None),
+      ".pb" :  (self.doPb, None),
+      ".hr" :  (self.doHr, None),
+      ".tb" :  (self.doTbreak, None),
+      ".fn" :  (self.doFnote, None),
+      ".fm" :  (self.doFmark, None),
+      ".pi" :  (self.doPi, None),
+      ".ni" :  (self.doNi, None),
+      ".ta" :  (self.doTable, None),
+      ".di" :  (self.doDropimage, None),
+      ".dc" :  (self.doDropcap, "cl"),
+      ".na" :  (self.doNa, None),
+      ".ad" :  (self.doAd, None),
+      ".rj" :  (self.doRj, None),
+      ".nf" :  (self.doNf, None),
+      ".nr" :  (self.doNr, None),
+      ".dv" :  (self.doDiv, None),
+      ".sn" :  (self.doSidenote, None),
+      ".ul" :  (self.doUl, None),
+      ".ol" :  (self.doOl, None),
+      ".it" :  (self.doIt, None),
+      }
+
+    self.list_dotcmds = {          # restricted set of dot commands within a list (.ul, .ol)
+      ".h1" : (self.rejectWithinList, None),
+      ".h2" : (self.rejectWithinList, None),
+      ".h3" : (self.rejectWithinList, None),
+      ".h4" : (self.rejectWithinList, None),
+      ".h5" :  (self.rejectWithinList, None),
+      ".h6" :  (self.rejectWithinList, None),
+      ".sp" :  (self.doSpace, None),
+      ".fs" :  (self.doFontSize, None),
+      ".il" :  (self.doIllo, None),
+      ".in" :  (self.doIn, None),
+      ".ll" :  (self.doLl, None),
+      ".ti" :  (self.rejectWithinList, None), # can't allow this one without implementing a stack for persistent .ti
+      ".li" :  (self.doLit, None),
+      ".de" :  (self.doDef, None),
+      ".pb" :  (self.doPb, None),
+      ".hr" :  (self.doHr, None),
+      ".tb" :  (self.doTbreak, None),
+      ".fn" :  (self.rejectWithinList, None),
+      ".fm" :  (self.rejectWithinList, None),
+      ".pi" :  (self.doPi, None),
+      ".ni" :  (self.doNi, None),
+      ".ta" :  (self.doTable, None),
+      ".di" :  (self.doDropimage, None),
+      ".dc" :  (self.doDropcap, "cl"),
+      ".na" :  (self.doNa, None),
+      ".ad" :  (self.doAd, None),
+      ".rj" :  (self.doRj, None),
+      ".nf" :  (self.doNf, None),
+      ".nr" :  (self.doNr, None),
+      ".dv" :  (self.doDiv, None),
+      ".sn" :  (self.doSidenote, None),
+      ".ul" :  (self.doUl, None),
+      ".ol" :  (self.doOl, None),
+      ".it" :  (self.doIt, None),
+      }
+
+    self.dotcmds = self.fulldotcmds # initially allow full set of dot commands
+    self.dotcmdstack.append(self.dotcmds)
+
+  # -------------------------------------------------------------------------------------
+  # Roman numeral processsing
+
+  # Define digit mapping
+  romanNumeralMap = (('m',  1000), ('cm', 900), ('d',  500), ('cd', 400), ('c',  100),
+    ('xc', 90), ('l',  50), ('xl', 40), ('x',  10), ('ix', 9), ('v',  5),
+    ('iv', 4), ('i',  1))
+
+  def toRoman(self, n):
+    """convert integer to Roman numeral"""
+    result = ""
+    for numeral, integer in self.romanNumeralMap:
+        while n >= integer:
+            result += numeral
+            n -= integer
+    return result
+
+  def fromRoman(self, s):
+    """convert Roman numeral to integer"""
+    result = 0
+    index = 0
+    for numeral, integer in self.romanNumeralMap:
+        while s[index:index+len(numeral)] == numeral:
+            result += integer
+            index += len(numeral)
+    return result
+
+
+  # routine to increment a list item number and return it as a decimal number
+  # (used in doIt for text output)
+  def item_decimal(self):
+    self.list_item_value += 1
+    return str(self.list_item_value)
+
+  # routine to increment a list item number and return it as a lower-case alpha string
+  # a, b, c, ..., z, aa, ..., az, ba, ..., etc
+  # (limited to 676 items, zz)
+  # (used in doIt for text output)
+  def item_lower_alpha(self):
+    self.list_item_value += 1
+    value = ''
+    if self.list_item_value > 676:
+      self.crash_w_context("Too many list items for 'lower alpha': {}".format(self.list_item_value), self.cl)
+    else:
+      if self.list_item_value > 26:
+        value = self.item_alpha[self.list_item_value // 26] + self.item_alpha[self.list_item_value % 26]
+      else:
+        value = self.item_alpha[self.list_item_value]
+    return value
+
+  # routine to increment a list item number and return it as an upper-case alpha string
+  # A, B, C, ..., Z, AA, ..., AZ, BA, ..., etc
+  # (limited to 676 items, ZZ)
+  # (used in doIt for text output)
+  def item_upper_alpha(self):
+    return self.item_lower_alpha().upper()
+
+  # routine to increment a list item number and return it as a lower-case Roman numeral
+  # (used in doIt for text output)
+  def item_lower_roman(self):
+    self.list_item_value += 1
+    return self.toRoman(self.list_item_value)
+
+  # routine to increment a list item number and return it as an upper-case Roman numeral
+  # (used in doIt for text output)
+  def item_upper_roman(self):
+    self.list_item_value += 1
+    return self.toRoman(self.list_item_value).upper()
+
 
   def cvglist(self):
     if self.listcvg:
@@ -1774,69 +1953,13 @@ class Book(object):
   # all dot commands are switched here
   def doDot(self):
     dotcmd = self.wb[self.cl][0:3]
-    if ".h1" == dotcmd:
-      self.doH1()
-    elif ".h2" == dotcmd:
-      self.doH2()
-    elif ".h3" == dotcmd:
-      self.doH3()
-    elif ".h4" == dotcmd:
-      self.doH4()
-    elif ".h5" == dotcmd:
-      self.doH5()
-    elif ".h6" == dotcmd:
-      self.doH6()
-    elif ".sp" == dotcmd:
-      self.doSpace()
-    elif ".fs" == dotcmd:
-      self.doFontSize()
-    elif ".il" == dotcmd:
-      self.doIllo()
-    elif ".in" == dotcmd:
-      self.doIn()
-    elif ".ll" == dotcmd:
-      self.doLl()
-    elif ".ti" == dotcmd:
-      self.doTi()
-    elif ".li" == dotcmd:
-      self.doLit()
-    elif ".de" == dotcmd:
-      self.doDef()
-    elif ".pb" == dotcmd:
-      self.doPb()
-    elif ".hr" == dotcmd:
-      self.doHr()
-    elif ".tb" == dotcmd:
-      self.doTbreak()
-    elif ".fn" == dotcmd:
-      self.doFnote()
-    elif ".fm" == dotcmd:
-      self.doFmark()
-    elif ".pi" == dotcmd: # paragraph indenting
-      self.doPi()
-    elif ".ni" == dotcmd: # no (paragraph) indenting
-      self.doNi()
-    elif ".ta" == dotcmd: # tables
-      self.doTable()
-    elif ".di" == dotcmd: # dropcap images
-      self.doDropimage()
-    elif ".dc" == dotcmd: # dropcap alpha
-      self.doDropcap(self.cl)
-    elif ".na" == dotcmd: # no adjust (ragged right)
-      self.doNa()
-    elif ".ad" == dotcmd: # adjust (justify l/r margins)
-      self.doAd()
-    elif ".rj" == dotcmd: # 03-Apr-2014 right justify lines
-      self.doRj()
-    elif ".nf" == dotcmd:
-      self.doNf()
-    elif ".nr" == dotcmd: # named register
-      self.doNr()
-    elif ".dv" == dotcmd: # user-specifice <div> for HTML
-      self.doDiv()
-    elif ".sn" == dotcmd: # sidenote
-      self.doSidenote()
-    else:
+    try:
+      switch = self.dotcmds[dotcmd]
+      if not switch[1]:
+        switch[0]()
+      elif switch[1] == "cl": # this is the only value for now
+        switch[0](self.cl)
+    except KeyError:
       self.crash_w_context("unhandled dot command: {}".format(self.wb[self.cl]), self.cl)
 
   def crash_w_context(self, msg, i, r=5):
@@ -2031,6 +2154,175 @@ class Book(object):
       else:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
       del(self.wb[self.cl])
+
+  def rejectWithinList(self):
+    cmd = self.wb[self.cl][0:3]
+    self.crash_w_context("{} directive not allowed within .ul or .ol block".format(cmd), self.cl)
+
+  # Does common processing for doUl. Returns False if .ul- and True if .ul
+  #   note: CSS specifications more limited in some ways; only specific specifications allowed
+  #         but also allow none (space). Also, separator is always a "." for ol, ex. for "none".
+  #         \u25aa: small black square ▪
+  #         \u25cb: circle (unfilled) ○
+  #         \u25cf: disc (filled black circle) ●
+  #         default order when nested is disc, circle, square ●○▪
+  def doUlCommon(self):
+
+    id     = ""
+    clss   = ""
+    indent = ""
+    active = self.list_item_active      # remember if a list item was active or not before the .ul/.ul-
+
+    if self.wb[self.cl].startswith(".ul-"): # ending a list
+      if self.list_type == None:
+        self.crash_w_context("No open .ul block to close with .ul-", self.cl)
+      elif self.list_type != "u":
+        self.crash_w_context("Cannot close .ol block with .ul-", self.cl)
+      currlist = self.liststack.pop()
+      self.list_type = currlist[0]
+      self.list_item_style = currlist[1]
+      self.list_item_value = currlist[2]
+      self.list_item_width = currlist[3]
+      self.list_item_sep = currlist[4]
+      self.list_item_active = currlist[5]
+      self.list_itblock_active = currlist[6]
+      self.regIN = currlist[7]
+      self.dotcmds = self.dotcmdstack.pop()
+      return (False, active, "", id, clss)
+
+    else: # beginning an unordered list
+      if len(self.liststack) > 0:
+        if not self.list_item_active:
+          self.crash_w_context("Nested list must occur within a list item", self.cl)
+      self.dotcmdstack.append(self.dotcmds)
+      self.dotcmds = self.list_dotcmds   # restrict set of valid dot cmds within a list
+
+      self.liststack.append((self.list_type, self.list_item_style, self.list_item_value,
+                             self.list_item_width, self.list_item_sep, self.list_item_active,
+                             self.list_itblock_active, self.regIN)) # save important info for nested lists
+      self.list_type = "u"
+      self.list_item_active = False
+      prev_width = self.list_item_width # remember item width for prior level of list, if any
+      self.list_item_width = 2 # set list_item_width for this level of list: 1 for the character + 1 for a blank
+
+      options = self.wb[self.cl][4:].strip()
+
+      if "indent=" in options:
+        options, indent = self.get_id("indent", options)
+
+      if "style=" in options:
+        options, style = self.get_id("style", options)
+      else:
+        style = ""
+      if style:
+        if style.lower() in self.list_styles_u:
+          self.list_item_style = style.lower()
+        else:
+          self.warn_w_context("Unrecognized list item style {}, disc assumed.".format(style), self.cl)
+          self.list_item_style = 'disc'
+      else:
+        self.list_item_style = ['disc', 'circle', 'square'][(len(self.liststack) - 1) % 3] # figure out marker character for items
+
+      if "id=" in options:
+        options, id = self.get_id("id", options)
+
+      if "class=" in options:
+        options, clss = self.get_id("class", options)
+
+      if options.strip() != "":
+        self.warn_w_context("Unknown options on .ul directive: {}".format(options), self.cl)
+
+      return (True, active, indent, id, clss) 
+
+  # Does common processing for doOl. Returns False if .ol- and True if .ol
+  def doOlCommon(self):
+
+    id     = ""
+    clss   = ""
+    indent = ""
+    active = self.list_item_active      # remember if a list item was active or not
+
+    if self.wb[self.cl].startswith(".ol-"): # ending a list
+      if self.list_type == None:
+        self.crash_w_context("No open .ol block to close with .ol-", self.cl)
+      elif self.list_type != "o":
+        self.crash_w_context("Cannot close .ul block with .ol-", self.cl)
+      currlist = self.liststack.pop()
+      self.list_type = currlist[0]
+      self.list_item_style = currlist[1]
+      self.list_item_value = currlist[2]
+      self.list_item_width = currlist[3]
+      self.list_item_sep = currlist[4]
+      self.list_item_active = currlist[5]
+      self.list_itblock_active = currlist[6]
+      self.regIN = currlist[7]
+      self.dotcmds = self.dotcmdstack.pop()
+      return (False, active, "", id, clss)
+
+    else: # beginning an ordered list
+      if len(self.liststack) > 0:
+        if not self.list_item_active:
+          self.crash_w_context("Nested list must occur within a list item", self.cl)
+      self.dotcmdstack.append(self.dotcmds)
+      self.dotcmds = self.list_dotcmds   # restrict set of valid dot cmds within a list
+
+      self.liststack.append((self.list_type, self.list_item_style, self.list_item_value,
+                             self.list_item_width, self.list_item_sep, self.list_item_active,
+                             self.list_itblock_active, self.regIN)) # save important info for nested lists
+      self.list_type = "o"
+      self.list_item_active = False
+      self.list_item_value = 0 # will force to start at 1
+      prev_width = self.list_item_width
+
+      options = self.wb[self.cl][4:].strip()
+      if "style=" in options:
+        options, style = self.get_id("style", options)
+        style_tuple = self.list_styles_o.get(style.lower())
+        if style_tuple != None:
+          self.list_item_style = style_tuple
+        else:
+          self.warn_w_context("Unrecognized list item style {}, decimal assumed.".format(style), self.cl)
+          self.list_item_style = self.list_styles_o.get('decimal')
+      else:
+        self.list_item_style = self.list_styles_o.get('decimal')
+
+      if "w=" in options:
+        options, w = self.get_id("w", options)
+        try:
+          self.list_item_width = int(w) + 2 # specified width of number, + 2 for separator and a space
+        except:
+          self.crash_w_context("Invalid w= value: {}".format(indent), self.cl)
+      else:
+        self.list_item_width = 4 # default 2 for width of number, + 2 for separator and a space
+
+      if "indent=" in options:
+        options, indent = self.get_id("indent", options)
+
+      if "id=" in options:
+        options, id = self.get_id("id", options)
+
+      if "class=" in options:
+        options, clss = self.get_id("class", options)
+
+      if options.strip() != "":
+        self.warn_w_context("Unknown options on .ul directive: {}".format(options), self.cl)
+
+      return (True, active, indent, id, clss)
+
+  # Does common processing for doIt. Returns False if .it- and True if .it
+  def doItCommon(self):
+    if self.list_type == None: # do we have a list?
+      self.crash_w_context("No open .ol/.ul block for .it directive", self.cl)
+    elif self.wb[self.cl].startswith(".it-"): # trying to end a list item?
+      if self.list_itblock_active: # must have a list item to end
+        self.list_itblock_active = False
+      else:
+        self.crash_w_context("No open .it block to close with .it-", self.cl)
+      return False
+
+    # starting a list item
+    else:
+      return True
 
   def preProcessCommon(self):
 
@@ -2655,13 +2947,16 @@ class Book(object):
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # long caption lines may end with a single backslash (25-Jun-2014)
+    # also true for long list item lines (.it)
+    # Note: .de and .pm handled elsewhere
     i = 0
     while i < len(self.wb):
-      if self.wb[i].startswith(".ca"): # captions only. allow .de multi-line CSS passthrough
-        if re.search(r"\\$", self.wb[i]):
-          self.wb[i] = re.sub(r"\\$", " ", self.wb[i]) + self.wb[i+1]
+      if self.wb[i].startswith(".ca ") or self.wb[i].startswith(".it "): # long line allowed?
+        while i < (len(self.wb) - 1) and self.wb[i].endswith("\\"):
+          self.wb[i] = self.wb[i][:-1] + " " + self.wb[i+1]
           del self.wb[i+1]
-          i -= 1
+        if self.wb[i].endswith("\\"):
+          self.crash_w_context("File ends with continued {}".format(self.wb[i][0:2]), i)
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -3300,8 +3595,14 @@ class Ppt(Book):
     ts = [] # paragraph stats
     BR = "⓬" # temporary replacement for <br> for ease of programming
     done = False
-    while '  ' in s:   # squash any repeated spaces
-      s = s.replace('  ', ' ')
+    i = 0
+    while s[i] == ' ' and i < len(s): # preserve leading spaces
+      i += 1
+    if i > 0:
+      s2 = s[i:]
+      while '  ' in s2:   # squash any repeated spaces in interior of string
+        s2 = s2.replace('  ', ' ')
+      s = s[:i] + s2
     for i in range(0, -8, -2):
       t = self.wrap_para(s, indent, ll+i, ti, keep_br=True)
       ta.append(t)
@@ -3623,12 +3924,29 @@ class Ppt(Book):
     # combine space requests
     i = 0
     while i < len(self.eb) - 1:
-      m1 = re.match(r"\.RS (\d+)", self.eb[i])
-      m2 = re.match(r"\.RS (\d+)", self.eb[i+1])
+      m1 = re.match(r"\.RS (-?)(\d+)", self.eb[i])
+      m2 = re.match(r"\.RS (-?)(\d+)", self.eb[i+1])
       if m1 and m2:
-        spcrq1 = int(m1.group(1))
-        spcrq2 = int(m2.group(1))
-        spcrq = max(spcrq1, spcrq2)
+        spcrq1 = int(m1.group(2))
+        spcrq2 = int(m2.group(2))
+        # special case for beginning of .it block, with
+        # marker line
+        # .rs -2
+        # .rs 1
+        # stuff
+        if (m1.group(1) == "-" and m1.group(2) == "2" and
+            m2.group(1) == "" and m2.group(2) == "1"):
+          if i < len(self.eb) - 2 and not self.eb[i+2].startswith("."):
+            t = []
+            t.append(self.eb[i-1] + self.eb[i+2].strip()) ####
+            self.eb[i-1:i+3] = t
+            continue
+        if m1.group(1) == "-" and m2.group(1) == "":
+          spcrq = spcrq2 - spcrq1
+        elif m1.group(1) == "" and m2.group(1) == "-":
+          spcrq = spcrq1 - spcrq2
+        else:
+          spcrq = max(spcrq1, spcrq2)
         self.eb[i] = ".RS {}".format(spcrq)
         del self.eb[i+1] # combine
         continue
@@ -5185,6 +5503,103 @@ class Ppt(Book):
       self.crash_w_context("Unexpected problem with .bn info",pstart)
     self.cl = pend
 
+  # Unordered List (Text)
+  # .ul options
+  #    or
+  # .ul-
+  #
+  # options:
+  #   style="disc | circle | square | none" (default: disc)
+  #   indent="2" (indent is to the marker.)
+  #   id=<id-value> (ignored in text)
+  #   class=<class-value> (ignored in text)
+  #
+  def doUl(self):
+    startUl, active, indent, id, clss = self.doUlCommon()  # id, clss ignored for text
+
+    if not startUl: # end of unordered list
+      pass    # doUlCommon did everything we need
+
+    else:     # beginning an unordered list
+
+      if indent != "":
+        try:
+          self.regIN += int(indent) + 2 # indent specified is to marker; regIN is to text, not marker
+        except:
+          self.crash_w_context("Invalid indent= value: {}".format(indent), self.cl)
+      else:
+        if len(self.liststack) > 1: # nested?
+          self.regIN += self.list_item_width # indent to new text position
+        else:
+          self.regIN += 3 # if no indent specified, force an indent of 1 before the marker. 3 specifies indent to text
+
+    self.cl += 1
+
+
+  # Ordered List (Text)
+  # .ol options
+  #   or
+  # .ol-
+  #
+  # options: (default values shown)
+  #   style="decimal | lower-alpha | lower-roman | upper-alpha | upper-roman" (default: decimal)
+  #   w="2" (number of digits allowed in the item number)
+  #   indent="2" (indent to the item number.)
+  #   id=<id-value> (ignored in text)
+  #   class=<class-value> (ignored in text)
+  #
+  # note: to match HTML, separator is always "."
+  #
+  def doOl(self):
+    startOl, active, indent, id, clss = self.doOlCommon() # id, clss ignored for text
+
+    if not startOl:  # end of ordered list
+      pass           # doOlCommon did everything we need
+
+    else:            # beginning an ordered list
+      if indent != "":
+        options, indent = self.get_id("indent", options)
+        try:
+          self.regIN = int(indent) + 2 # indent specified is to marker; regIN is to text, not marker
+        except:
+          self.crash_w_context("Invalid indent= value: {}".format(indent), self.cl)
+      else:
+        if len(self.liststack) > 1: # nested?
+          self.regIN += self.list_item_width # indent to new text position
+        else:
+          self.regIN += 3 # if no indent specified, force an indent of 1 before the marker. 3 specifies indent to text
+
+    self.cl += 1
+
+  # List item (Text)
+  def doIt(self):
+    startIt = self.doItCommon()
+
+    if not startIt:   # end of list item
+      self.eb.append(".RS -1") # eliminate one blank line after the item block
+
+    # starting a list item
+    else:
+      hang = -1 * self.list_item_width # amount of hanging indent
+      if self.list_type == "o":
+        value = self.list_item_style[1]()
+        fmt = "{:>" + "{}".format(self.list_item_width - 2) + "}" + "." + " "
+        l = fmt.format(value)
+      else:
+        l = self.list_styles_u[self.list_item_style] + " "
+      if self.wb[self.cl] == ".it": # start of a .it block?
+        # this one won't be wrapped, so need to apply indent manually
+        l = ((self.regIN + hang) * " ") + l # note: hang is negative, so must add it
+        self.eb.append(l)
+        self.eb.append(".RS -2") # eliminate one blank line and merge lines
+        self.list_itblock_active = True
+      else:      # single (possibly very long) item line that we'll need to wrap
+        l += self.wb[self.cl][4:].strip() # append item text to line
+        t = self.wrap(l, self.regIN, self.regLL, hang)
+        self.eb += t
+
+    self.cl += 1
+
   def process(self):
     self.keepFnHere = False
     self.cl = 0
@@ -5306,32 +5721,6 @@ class Pph(Book):
         t.append("  " + s[3:])
       return t
 
-  # -------------------------------------------------------------------------------------
-  # Roman numeral processsing
-
-  # Define digit mapping
-  romanNumeralMap = (('m',  1000), ('cm', 900), ('d',  500), ('cd', 400), ('c',  100),
-    ('xc', 90), ('l',  50), ('xl', 40), ('x',  10), ('ix', 9), ('v',  5),
-    ('iv', 4), ('i',  1))
-
-  def toRoman(self, n):
-    """convert integer to Roman numeral"""
-    result = ""
-    for numeral, integer in self.romanNumeralMap:
-        while n >= integer:
-            result += numeral
-            n -= integer
-    return result
-
-  def fromRoman(self, s):
-    """convert Roman numeral to integer"""
-    result = 0
-    index = 0
-    for numeral, integer in self.romanNumeralMap:
-        while s[index:index+len(numeral)] == numeral:
-            result += integer
-            index += len(numeral)
-    return result
 
   # -------------------------------------------------------------------------------------
   # utility methods
@@ -6883,7 +7272,8 @@ class Pph(Book):
   def doSpace(self):
     m = re.match(r"\.sp (\d+)", self.wb[self.cl])
     if m:
-      self.pvs = max(int(m.group(1)), self.pvs)  # honor if larger than current pvs
+      howmany = int(m.group(1))
+      self.pvs = max(howmany, self.pvs)  # honor if larger than current pvs
       del self.wb[self.cl]
     else:
       self.crash_w_context("malformed .sp directive", self.cl)
@@ -8438,7 +8828,7 @@ class Pph(Book):
   #
   def fetchStyle(self, nfc=False, rj=False):
     s = ""
-    if self.regIN != 0:
+    if self.regIN != 0 and not self.list_item_active:
       inpct = (self.regIN * 100)/72
       s += "margin-left: {:3.2f}%; ".format(inpct)
     if self.regLL != 72:
@@ -8522,13 +8912,17 @@ class Pph(Book):
         s0 = re.sub("em", "", self.nregs["psi"]) # drop the "em"
         s1 = int(float(s0)*100.0) # in tenths of ems
         s2 = (s1//2)/100 # forces one decimal place
-        s += 'margin-top: {}em; '.format(s2)
+        s_top = 'margin-top: {}em; '.format(s2)
+        if not self.list_item_active:
+          s += s_top
       if "margin-bottom" not in s:
         # psi represents the entire gap. split it
         s0 = re.sub("em", "", self.nregs["psi"]) # drop the "em"
         s1 = int(float(s0)*100.0) # in tenths of ems
         s2 = (s1//2)/100 # forces one decimal place
-        s += 'margin-bottom: {}em; '.format(s2)
+        s_bot = 'margin-bottom: {}em; '.format(s2)
+        if not self.list_item_active:
+          s += s_bot
     else: # not indented, use "psb" spacing
       # unless there is a margin already set, set top margin
       if "margin-top" not in s:
@@ -8536,13 +8930,24 @@ class Pph(Book):
         s0 = re.sub("em", "", self.nregs["psb"]) # drop the "em"
         s1 = int(float(s0)*100.0) # in tenths of ems
         s2 = (s1//2)/100 # forces one decimal place
-        s += 'margin-top: {}em; '.format(s2)
+        s_top = 'margin-top: {}em; '.format(s2)
+        if not self.list_item_active:
+          s += s_top
       if "margin-bottom" not in s:
         # psb represents the entire gap. split it
         s0 = re.sub("em", "", self.nregs["psb"]) # drop the "em"
         s1 = int(float(s0)*100.0) # in tenths of ems
         s2 = (s1//2)/100 # forces one decimal place
-        s += 'margin-bottom: {}em; '.format(s2)
+        s_bot = 'margin-bottom: {}em; '.format(s2)
+        if not self.list_item_active:
+          s += s_bot
+
+    # setup CSS for paragraphs inside list items
+    if self.list_item_active:
+      self.css.addcss("[1171] .li-p-first { margin-top: inherit; " + s_bot + "}")
+      self.css.addcss("[1171] .li-p-mid {" + s_top + s_bot + "}")
+      self.css.addcss("[1171] .li-p-last {" + s_top + " margin-bottom: inherit; }")
+      self.css.addcss("[1171] .li-p-only { margin-top: inherit; margin-bottom: inherit; }")####
 
     s_str = "" # empty style string
     if s != "":
@@ -8558,7 +8963,15 @@ class Pph(Book):
       self.wb[self.cl] = "<div {}{}>".format(c_str,s_str) + self.wb[self.cl][5:] # ouch
     else:
       # it's a normal paragraph
-      self.wb[self.cl] = "<p {}{}>".format(c_str,s_str) + self.wb[self.cl]
+      pstart = self.cl  # remember where paragraph starts
+      if self.list_item_active:
+        if self.list_item_empty:
+          self.wb[self.cl] = "<p class='li-p-first' {}{}>".format(c_str,s_str) + self.wb[self.cl]
+          self.list_item_empty = False
+        else:
+          self.wb[self.cl] = "<p class='li-p-mid' {}{}>".format(c_str,s_str) + self.wb[self.cl]
+      else:
+        self.wb[self.cl] = "<p {}{}>".format(c_str,s_str) + self.wb[self.cl]
 
     while ( self.cl < len(self.wb) and
             self.wb[self.cl] and
@@ -8571,7 +8984,161 @@ class Pph(Book):
       i -= 1
     self.wb[i] = self.wb[i] + "</p>"
 
+    if (self.list_item_active and self.cl < len(self.wb) and 
+       (self.wb[self.cl].startswith(".it") or self.wb[self.cl].startswith(".ul") or
+        self.wb[self.cl].startswith(".ol"))):
+      self.wb[pstart], count = re.subn("li-p-mid", "li-p-last", self.wb[pstart], 1)
+      if count == 0:
+        self.wb[pstart], count = re.subn("li-p-first", "li-p-only", self.wb[pstart], 1)
+
     self.regTI = 0 # any temporary indent has been used.
+
+  # Unordered List (HTML)
+  # .ul options
+  #    or
+  # .ul-
+  #
+  # options:
+  # .ul options
+  #    or
+  # .ul-
+  #
+  # options:
+  #   style="disc | circle | square | none" (default: disc)
+  #   indent="2" (indent is to the marker. Text is indented a further 2 spaces)
+  #   id=<id-value>
+  #   class=<class-value>
+  #
+  def doUl(self):
+    startul, active, indent, id, clss = self.doUlCommon()
+
+    t = []
+    depth = len(self.liststack) - 1
+    ulspaces = 2 + (depth * 4)
+    lispaces = ulspaces + 6
+    prev_lispaces = ((depth - 1) * 4)
+
+    # ending an unordered list
+    if not startul:
+      t.append((lispaces * " ") + "</li>")
+      t.append(((ulspaces + 4) * " ") + "</ul>")
+      #if len(self.liststack) > 1:
+      #  t.append(((prev_lispaces + 4) * " ") + "</li>")
+
+    # beginning an unordered list
+    else:
+
+      #if active:           # if a list item was active
+      #  t.append(((prev_lispaces + 4) * " ") + "</li>")
+      self.list_item_active = False
+
+      s = self.fetchStyle()
+      s += "list-style-type: " + self.list_item_style + "; "
+      if id:
+        id = " id=" + id
+      if clss:
+        clss = " class=" + clss
+      if s:
+        t.append((ulspaces * " ") + "<ul style='{}'{}{}>".format(s, id, clss))
+      else:
+        t.append((ulspaces * " ") + "<ul {}{}>".format(id, clss))
+
+    self.wb[self.cl:self.cl+1] = t
+    self.cl += len(t)
+
+
+  # Ordered List (HTML)
+  # .ol options
+  #   or
+  # .ol-
+  #
+  # options: (default values shown)
+  #   style="decimal | lower-alpha | lower-roman | upper-alpha | upper-roman" (default: decimal)
+  #   w="2" (number of digits allowed in the item number)
+  #   indent="2" (indent to the item number; text is indented a further width + 1 + 1 spaces)
+  #   id=<id-value>
+  #   class=<class-value>
+  #
+  def doOl(self):
+    startol, active, indent, id, clss = self.doOlCommon()
+
+    t = []
+    depth = len(self.liststack) - 1
+    olspaces = 2 + (depth * 4)
+    lispaces = olspaces + 6
+    prev_lispaces = ((depth - 1) * 4)
+
+    # ending an ordered list
+    if not startol:
+      t.append((lispaces * " ") + "</li>")
+      t.append(((olspaces + 4) * " ") + "</ol>")
+      #if len(self.liststack) > 1:
+      #  t.append(((prev_lispaces + 4) * " ") + "</li>")
+
+    # beginning an ordered list
+    else:
+
+      #if active:           # if a list item was active
+      #  t.append(((prev_lispaces + 4) * " ") + "</li>")
+      self.list_item_active = False
+      s = self.fetchStyle()
+      s += "list-style-type: " + self.list_item_style[0] + "; "
+      if id:
+        id = " id=" + id
+      if clss:
+        clss = " class=" + clss
+      if s:
+        t.append((olspaces * " ") + "<ol style='{}'{}{}>".format(s, id, clss))
+      else:
+        t.append((olspaces * " ") + "<ol {}{}>".format(id, clss))
+
+    self.wb[self.cl:self.cl+1] = t
+    self.cl += len(t)
+
+  # List item (HTML)
+  def doIt(self):
+
+    startIt = self.doItCommon()
+
+    t = []
+    depth = len(self.liststack) - 1
+    ulolspaces = 2 + (depth * 4)
+    lispaces = ulolspaces + 2
+
+    if not startIt:   # end of list item
+      self.wb[self.cl] = (lispaces * " ") + "</li>" # end the item
+      self.list_item_active = False
+      self.cl += 1
+
+    # starting a list item
+    else:
+      if self.list_item_active:
+        t.append((lispaces * " ") + "</li>") # insert ending tag for prior item
+      else:
+        self.list_item_active = True
+      if self.wb[self.cl] == ".it":         # start of a .it block?
+        t.append((lispaces * " ") + "<li>")                    # yes, need an item start tag
+        self.list_item_empty = True
+        self.list_itblock_active = True
+
+      else:      # single (possibly very long) item line that we'll need to wrap
+        l = "<li>" + self.wb[self.cl][4:].strip() # append item text to line
+        self.list_item_empty = False
+
+        # to make editing/viewing the raw HTML easier, try to split the (long) line to a reasonable length
+        while len(l) > 90:
+          splitat = l.rfind(' ', 0, 90)
+          if splitat > 0:
+            s = (lispaces * " ") + l[:splitat+1]
+            t.append(s)
+            l = l[splitat+1:]
+        else:
+          t.append((lispaces * " ") + l)
+
+      self.wb[self.cl:self.cl+1] = t      # replace the .it with whatever we generated
+
+      self.cl += len(t)
+
 
   def doChecks(self):
     rb = [] # report buffer
