@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53a"    # 15-Sep-2015
+VERSION="3.53b"    # 15-Sep-2015
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
