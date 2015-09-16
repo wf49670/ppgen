@@ -22,11 +22,15 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53b"    # 15-Sep-2015
-#3.53:
-# Re-version to roll 3.52l2 into production
+VERSION="3.53a"    # 15-Sep-2015
+#3.53a:
+# Table issues:
+#   <th> sometimes appearing in table headers
+#   Irrelevant error message about a column being too narrow to hold the word <span>
+#   Performance enhancement by not wrapping cell text that is already narrow enough
+# Preserve leading blanks when stripping multiple consecutive blanks from a string.
 #3.53b (was 3.52bLists)
-#  Implement .ul (unordered list) and .ol (ordered list) and .it (item)
+# Implement .ul (unordered list) and .ol (ordered list) and .it (item)
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2965,16 +2969,19 @@ class Book(object):
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # long caption lines may end with a single backslash (25-Jun-2014)
+    # Also true for .ta directives (note: continuation of contents of tables handled in doTable)
     # also true for long list item lines (.it)
-    # Note: .de and .pm handled elsewhere
+    # Note: .de, .pm handled elsewhere
+
     i = 0
     while i < len(self.wb):
-      if self.wb[i].startswith(".ca ") or self.wb[i].startswith(".it "): # long line allowed?
+      if (self.wb[i].startswith(".ca ") or self.wb[i].startswith(".ta ") or # long lines allowed?
+          self.wb[i].startswith(".it ")):
         while i < (len(self.wb) - 1) and self.wb[i].endswith("\\"):
           self.wb[i] = self.wb[i][:-1] + " " + self.wb[i+1]
           del self.wb[i+1]
         if self.wb[i].endswith("\\"):
-          self.crash_w_context("File ends with continued {}".format(self.wb[i][0:2]), i)
+          self.crash_w_context("File ends with continued {}".format(self.wb[i][0:3]), i)
       i += 1
 
 
@@ -4311,7 +4318,7 @@ class Ppt(Book):
 
   # h3
   def doH3(self):
-    tmp = self.wb[self.cl + 1]####
+    tmp = self.wb[self.cl + 1]
     m = re.match(r"\.h3 (.*)", self.wb[self.cl])
     self.doHnText(m)
 
@@ -5005,9 +5012,9 @@ class Ppt(Book):
         if len(u) != ncols:
             self.crash_w_context("table has wrong number of columns:{}".format(self.wb[j]), j)
         t = u[c].strip()
-        if len(t) > 4 and t[0:4] == "<th>": # if cell starts with <th> remove it
+        if len(t) >= 4 and t[0:4] == "<th>": # if cell starts with <th> remove it
           t = t[4:]
-        if len(t) > 6 and t[0:4] == "<al=": # possible alignment directive?
+        if len(t) >= 6 and t[0:4] == "<al=": # possible alignment directive?
           t = re.sub(r"^<al=[lrch]>", "", t, 1) # ignore any alignment directives
         if t != "<span>": # ignore <span> cells for purposes of figuring max width of this column
           maxw = max(maxw, self.truelen(t)) # ignore lead/trail whitespace and account for non-spacing characters
@@ -5203,19 +5210,21 @@ class Ppt(Book):
         self.crash_w_context("table has wrong number of columns:{}".format(self.wb[k1]), k1)
       for i in range(0,ncols):
         t1 = t[i].strip()
-        if len(t1) > 4 and t1[0:4] == "<th>": # if <th> at start of cell remove it
+        if len(t1) >= 4 and t1[0:4] == "<th>": # if <th> at start of cell remove it
           t1 = t1[4:]
-        if len(t1) > 6 and t1[0:4] == "<al=":
+        if len(t1) >= 6 and t1[0:4] == "<al=":
           t1 = re.sub(r"^<al=[lrch]>", "", t1, 1) # ignore any alignment directives
-        w1 = widths[i]
-        for j in range(i+1, ncols):
-          if t[j].strip() == "<span>":
-            w1 += widths[j]
-          else:
-            break
-        k2 = self.wrap_para(t1, 0, w1, 0, warn=True) # should handle combining characters properly
-        if len(k2) > 1:
-          rowspace = True
+        if t1.strip() != "<span>":
+          w1 = widths[i]
+          for j in range(i+1, ncols):
+            if t[j].strip() == "<span>":
+              w1 += widths[j]
+            else:
+              break
+          if len(t1) > w1:
+            k2 = self.wrap_para(t1, 0, w1, 0, warn=True) # should handle combining characters properly
+            if len(k2) > 1:
+              rowspace = True
       k1 += 1
 
     # process each row of table
@@ -5248,9 +5257,9 @@ class Ppt(Book):
       # (Note: Honors <al=r/l> if specified.)
       if not "|" in self.wb[self.cl]:
         line = self.wb[self.cl].strip()
-        if len(line) > 4 and line[0:4] == "<th>": # remove any <th> from front of cell
+        if len(line) >= 4 and line[0:4] == "<th>": # remove any <th> from front of cell
           line = line[4:]
-        if len(line) > 6 and line[0:4] == "<al=":
+        if len(line) >= 6 and line[0:4] == "<al=":
           m = re.match(r"^<al=([lrch])>", line) # pick up possible alignment directive
           if m:
             if m.group(1) == "l":
@@ -5279,9 +5288,9 @@ class Ppt(Book):
       caligns = haligns[:] # copy standard alignment into cell override list
       for i in range(0,ncols):
         cell_text = t[i].strip()
-        if len(cell_text) > 4 and cell_text[0:4] == "<th>":
+        if len(cell_text) >= 4 and cell_text[0:4] == "<th>":
           cell_text = cell_text[4:]
-        if len(cell_text) > 6 and cell_text[0:4] == "<al=":
+        if len(cell_text) >= 6 and cell_text[0:4] == "<al=":
           m = re.match(r"^<al=([lrch])>", cell_text) # pick up possible alignment directive
           if m:
             if m.group(1) == "l":
@@ -5299,10 +5308,14 @@ class Ppt(Book):
             w1 += widths[j] + len(bafter[j-1]) + len(bbefore[j]) # account for space between columns
           else:
             break
-        if caligns[i] != 'h': # if not hanging indent, wrap normally
+         # don't bother wrapping a <span> column or one whose naive length is short enough to fit
+        if cell_text == "<span>" or len(cell_text) < w1:
+          w[i] = [cell_text]
+        elif caligns[i] != 'h': # if not hanging indent, wrap normally
           w[i] = self.wrap_para(cell_text, 0, w1, 0, warn=True) # should handle combining characters properly
         else: # use a 2-character indent, -2 ti if hanging indent
           w[i] = self.wrap_para(cell_text, 2, w1, -2, warn=True)
+        if caligns[i] == "h":
           caligns[i] = "<"
         for j,line in enumerate(w[i]):
           w[i][j] = line.rstrip()  # marginal whitespace (only remove spaces at ends of lines)
@@ -6073,6 +6086,13 @@ class Pph(Book):
             i += 2 # bump past new page number line and the .dv
             found = True
             continue
+          if self.wb[i].startswith(".ta"): # we can't put it on the .ta, but don't want it added to the next line, either
+                                           # as that can interfere with table horizontal border processing
+            self.wb.insert(i+1,"⑯{}⑰".format(pnum)) # insert page number after the .ta
+            i += 2 # bump past the .ta and the new page number line
+            found = True
+            continue
+
           # it is possible to hit another pn match before finding a suitable home
           m = re.match(r"⑯(.+)⑰", self.wb[i])  # must be on line by itself
           if m:
@@ -8292,9 +8312,9 @@ class Pph(Book):
         if len(u) != ncols:
             self.crash_w_context("table has wrong number of columns:{}".format(self.wb[j]), j)
         t = re.sub(r"<.*?>", "", u[c].strip())  # adjust column width for inline tags
-        if len(t) > 4 and t[0:4] == "<th>": # if cell starts with <th> remove it
+        if len(t) >= 4 and t[0:4] == "<th>": # if cell starts with <th> remove it
           t = t[4:]
-        if len(t) > 6 and t[0:4] == "<al=": # possible alignment directive?
+        if len(t) >= 6 and t[0:4] == "<al=": # possible alignment directive?
           t = re.sub(r"^<al=[lrch]>", "", t, 1) # ignore any alignment directives
         if t != "<span>": # ignore <span> cells for purposes of figuring max width of this column
           maxw = max(maxw, self.truelen(t))
@@ -8334,7 +8354,6 @@ class Pph(Book):
     # look for continuation characters; restore to one line
     k1 = self.cl
     while k1 < len(self.wb) and self.wb[k1] != ".ta-":
-      aaadbg = self.wb[k1]####
       while self.wb[k1].endswith("\\"):
         self.wb[k1] = re.sub(r"\\$", "", self.wb[k1])
         self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
@@ -8579,14 +8598,14 @@ class Pph(Book):
       if not "|" in self.wb[self.cl]:
         line = self.wb[self.cl].strip()
         align = "text-align: center; "
-        if len(line) > 4 and line[0:4] == "<th>": # header row?
+        if len(line) >= 4 and line[0:4] == "<th>": # header row?
           cell_type1 = "<th"
           cell_type2 = "</th>"
           line = line[4:]
         else:
           cell_type1 = "<td"
           cell_type2 = "</td>"
-        if len(line) > 6 and line[0:4] == "<al=":
+        if len(line) >= 6 and line[0:4] == "<al=":
           m = re.match(r"^<al=([lrch])>", line) # pick up possible alignment directive
           if m:
             if m.group(1) == "l":
@@ -8637,14 +8656,14 @@ class Pph(Book):
         #if not v[k]:
         #  v[k] = '&nbsp;' # force blank cells to nbsp
         if k == 0: # for first cell, check for <th> flag to indicate a header row
-          if len(v[k]) > 4 and v[k][0:4] == "<th>": # header row?
+          if len(v[k]) >= 4 and v[k][0:4] == "<th>": # header row?
             cell_type1 = "<th"
             cell_type2 = "</th>"
             v[k] = v[k][4:] # remove the tag
           else:
             cell_type1 = "<td"
             cell_type2 = "</td>"
-        if len(v[k]) > 6 and v[k][0:4] == "<al=":
+        if len(v[k]) >= 6 and v[k][0:4] == "<al=":
           m = re.match(r"^<al=([lrch])>", v[k]) # pick up possible alignment directive
           if m:
             if m.group(1) == "l":
