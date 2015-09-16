@@ -22,12 +22,11 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.52bLists"    # 15-Sep-2015
-#3.52bLists:
-#  Replace dodot() with a routine that does a dictionary lookup rather than a long if/elif
-#    to find the right processing routine
+VERSION="3.53b"    # 15-Sep-2015
+#3.53:
+# Re-version to roll 3.52l2 into production
+#3.53b (was 3.52bLists)
 #  Implement .ul (unordered list) and .ol (ordered list) and .it (item)
-
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -113,6 +112,7 @@ class Book(object):
   cimage = "cover.jpg" # default cover image
 
   nregs = {} # named registers
+  nregsusage = {} # usage counters for selected named registers
   macro = {} # user macro storage
   caption_model = {} # storage for named caption models for multi-line captions in text output
 
@@ -306,6 +306,10 @@ class Book(object):
      '\u2042':'***'
     }
 
+  # Format of Greek Transliterations:
+  # 1. character(s) the user enters
+  # 2. character(s) ppgen outputs
+  # 3. printable form for .cvglist output listing
   gk = [                              # builtin Greek transliterations
      ('ï/', 'i/\+', 'ï/'),            # i/u/y alternatives using dieresis
      ('ü/', 'y/\+', 'ü/'),            # standardize to doubly marked form and fall into normal processing
@@ -670,6 +674,12 @@ class Book(object):
      ('c',        '\u03E1', 'c (sampi)'),
     ]
 
+  # Format of diacritic table:
+  # 1. character(s) the user enters
+  # 2. character(s) ppgen outputs
+  # 3. printable form for .cvglist output listing
+  # 4. If 1, this is a nonstandard form of markup that will generate a warning message
+  #      if used.
   diacritics = [
     ('[=A]',    '\u0100', '\\u0100', 0), # LATIN CAPITAL LETTER A WITH MACRON    (Latin Extended-A)
     ('[=a]',    '\u0101', '\\u0101', 0), # LATIN SMALL LETTER A WITH MACRON
@@ -1532,6 +1542,8 @@ class Book(object):
     self.nregs["break-wrap-at"] = "" # set of allowable characters to break wrapping, separated by spaces
                                      # e.g., .nr break-wrap-at "- :" or .nr break-wrap-at "- —"
                                      # note that breaking on space and <br> is always allowed
+    self.nregs["nf-spaces-per-em"] = "2" # Used in HTML indentation calculation
+    self.nregsusage["nf-spaces-per-em"] = 1 # number of times we've specified this value
 
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string
@@ -1960,8 +1972,9 @@ class Book(object):
       elif switch[1] == "cl": # this is the only value for now
         switch[0](self.cl)
     except KeyError:
-      self.crash_w_context("unhandled dot command: {}".format(self.wb[self.cl]), self.cl)
+      self.crash_w_context("unknown dot command: {}".format(self.wb[self.cl]), self.cl)
 
+  # Issue error message, show context, and terminate
   def crash_w_context(self, msg, i, r=5):
     sys.stderr.write("\nERROR: {}\ncontext:\n".format(self.umap(msg)))
     startline = max(0,i-r)
@@ -2065,7 +2078,7 @@ class Book(object):
           self.fatal("Error occurred searching for {} in complete text blob".format(self.srs[srnum]))
       if m:                                             # if found
         if 'r' in self.debug:
-          print("{} found in complete text blob".format(self.srs[srnum]))
+          print(self.umap("{} found in complete text blob".format(self.srs[srnum])))
         try:
           text, l = re.subn(self.srs[srnum], self.srr[srnum], text) # replace all occurrences in the blob
           ll += l
@@ -2076,8 +2089,9 @@ class Book(object):
           else:
             self.fatal("Error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[srnum], self.srr[srnum]))
         if 'r' in self.debug:
-          print("Replaced with {}".format(self.srr[srnum]))
-      print("Search string {}:{} matched in complete text and replaced {} times.".format(srnum+1, self.srs[srnum], ll))
+          print(self.umap("Replaced with {}".format(self.srr[srnum])))
+      print(self.umap("Search string {}:{} matched in complete text and replaced {} times.".format(srnum+1,
+            self.srs[srnum], ll)))
       buffer = text.splitlines() # break blob back into individual lines
       text = ""
 
@@ -2096,12 +2110,13 @@ class Book(object):
         if m:                                   # if found
           k += 1
           if 'r' in self.debug or 'p' in self.srw[srnum]: # if debugging, or if prompt requested
-            print("Search string {}:{} found in:\n    {}".format(srnum+1, self.srs[srnum], buffer[j]))
+            print(self.umap("Search string {}:{} found in:\n    {}".format(srnum+1,
+                  self.srs[srnum], buffer[j])))
           try:
             if 'p' in self.srw[srnum]:                                           # prompting requested?
               l = 0
               temp = re.sub(self.srs[srnum], self.srr[srnum], buffer[j])
-              print("replacement will be:\n    {}".format(temp))
+              print(self.umap("replacement will be:\n    {}".format(temp)))
               try:
                 reply = input("replace? (y/n/q/r)")
               except EOFError:
@@ -2133,11 +2148,12 @@ class Book(object):
             else:
               self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[srnum], self.srr[srnum], buffer[j]))
           if 'r' in self.debug:
-            print("Replaced: {}".format(buffer[j]))
+            print(self.umap("Replaced: {}".format(buffer[j])))
         j += 1
       if quit:
         exit(1)
-      print("Search string {}:{} matched in {} lines, replaced {} times.".format(srnum+1, self.srs[srnum], k, ll))
+      print(self.umap("Search string {}:{} matched in {} lines, replaced {} times.".format(srnum+1,
+            self.srs[srnum], k, ll)))
 
 
   # .nr named register
@@ -2151,6 +2167,8 @@ class Book(object):
       registerValue = m.group(2)
       if registerName in self.nregs:
         self.nregs[registerName] = self.deQuote(m.group(2), self.cl)
+        if registerName in self.nregsusage:
+          self.nregsusage[registerName] += 1 # bump count of times we've specified this reg
       else:
         self.crash_w_context("undefined register: {}".format(registerName), self.cl)
       del(self.wb[self.cl])
@@ -2487,10 +2505,10 @@ class Book(object):
         # characters we need to protect
         count = 1
         while count:
-          text, count = re.subn(r"(\[Greek:.*?)\\\|(.*?\])", r"\1⑩\2", text, flags=re.DOTALL)
+          text, count = re.subn(r"(\[Greek:[^]]*?)\\\|([^]]*?\])", r"\1⑩\2", text, flags=re.DOTALL)
         count = 1
         while count:
-          text, count = re.subn(r"(\[Greek:.*?)\\ (.*?\])", r"\1⑮\2", text, flags=re.DOTALL)
+          text, count = re.subn(r"(\[Greek:[^]]*?)\\ ([^]]*?\])", r"\1⑮\2", text, flags=re.DOTALL)
 
         self.wb = text.splitlines()
         text = ""
@@ -2959,6 +2977,7 @@ class Book(object):
           self.crash_w_context("File ends with continued {}".format(self.wb[i][0:2]), i)
       i += 1
 
+
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # courtesy remaps
     #
@@ -2984,6 +3003,7 @@ class Book(object):
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # remaps of protected characters and escapes
+
     for i, line in enumerate(self.wb):
       # dots not part of dot directive
       self.wb[i] = self.wb[i].replace("....", "ⓓⓓⓓⓓ") # four dot ellipsis
@@ -3445,7 +3465,8 @@ class Ppt(Book):
 
     # at this point, s is ready to wrap
     mywidth = ll - indent
-    t = []
+    t = []    # list of lines
+    tbr = []  # list of the break characters that ended the lines
     perturb_limit = -1   # index of earliest line we can try to perturb
     twidth = mywidth
     true_len_s = self.truelen(s)
@@ -3462,18 +3483,26 @@ class Ppt(Book):
             twidth += len(m.group(2)) # allow wider split to account for .bn info
             stemp = m.group(3)
             m = re.match("(.*?)(⑱.*?⑱)(.*)",stemp)
-      #brloc = s.find(BR, 0, twidth + 1) # look for a <br> within the string
-      #if true_len_s > twidth or brloc != -1: # if line is long or contains a <br>
+
       issue_warning = warn
       snip_at = -1 # no snip spot found yet
-      # Plan A: snip at a breakchar within first twidth+1 characters
+      # Plan A: snip at a breakchar within first twidth or twidth+1 characters (see below)
       maxfound = -1
       maxchar = ""
       for c in breakchars:
         if c == BR:
-          found = s.find(c, 0, twidth+1) # for <br> need to find the first one within the width
+          found = s.find(c, 0, twidth+1) # for <br> need to find the first one within the width + 1 to
+                                         # to allow the <br> to be just after the allowed width
         else:
-          found = s.rfind(c, 0, twidth+1) # but for others, the last one
+          # for others need to find the last one within the width
+          # Note that the break "character" could actually be a string, so we need to
+          # know its length in some cases.
+          # If the break character is a blank allow width+1 as we'll be deleting it anyway, but
+          # for non-blank break characters we need to find them within the width as they'll be kept
+          if c == ' ':
+            found = s.rfind(c, 0, twidth+1) # but for others, the last one
+          else:
+            found = s.rfind(c, 0, twidth) # but for others, the last one
         if found != -1:
           if c == BR: # if we have a <br> we need to honor it
             break
@@ -3489,9 +3518,9 @@ class Ppt(Book):
         if c == " ":
           snip_at = found
         else: # not snipping at a blank; need to preserve the character we're snipping around
-          snip_at = found + 1 # bump snip spot past the character
-          true_len_s += 1     # increase string length accordingly
-          s = s[0:snip_at] + " " + s[snip_at:] # add a blank after the snip char (snip will remove it)
+          snip_at = found + len(c) # bump snip spot past the character
+          true_len_s += len(c)     # increase string length accordingly
+          s = s[0:snip_at] + " " + s[snip_at:] # add a blank after the snip char (snip will remove this blank)
       # if snip spot not found within specified width, go to plan B
       else:
         # try to snip on any break character, leaving it wider than the specified width
@@ -3511,8 +3540,8 @@ class Ppt(Book):
           if c == " ":
             snip_at = found
           else: # not snipping at a blank; need to preserve the character we're snipping around
-            snip_at = found + 1 # bump snip spot past the character
-            true_len_s += 1     # increase string length accordingly
+            snip_at = found + len(c) # bump snip spot past the character
+            true_len_s += len(c)     # increase string length accordingly
             s = s.replace(c, c + " ", 1) # add a blank after the snip character (blank will be deleted)
         else: # if still didn't find a snip spot
           snip_at = len(s) # Plan C: leave the line wide
@@ -3522,7 +3551,8 @@ class Ppt(Book):
         self.warn("Specified width {} too narrow for word: {}".format(twidth, stemp))
       if not perturb or (snip_at + indent) >= 55 or not t: # for normal processing:
                                                 #   Not perturbing, line long enough, or first line
-        t.append(s[:snip_at])
+        t.append(s[:snip_at]) # append next line
+        tbr.append(c)         # remember the break character that caused the line break
         if snip_at < len(s):
           s = s[snip_at+1:]
         else:
@@ -3533,13 +3563,18 @@ class Ppt(Book):
       else:          # here only if wrap() wanted us to try to avoid short lines,
                      # this line is short, and it's not the first line (which we can't fix)
         savet = t[:]    # save t, s in case need to restore them
+        savetbr = tbr[:] # and also save the break characters used
         saves = s
         while (perturb and  # While perturbing and
                t and        # t has data and
                len(t) > perturb_limit and # is long enough to try perturbing and
                not t[-1].endswith(BR)): # last line does not end with a <br>
           for c in breakchars[1:]: # ignore <br> processing for this attempt as it can't match
-            snip2 = t[-1].rfind(c) # Can we snip a word from the last line of t?
+            # Remember that c can be a string, not just a single character
+            # Also, it might be the last "character" of the previous line, and we need to
+            # find the one before that, so we actually have something to snip off
+            tlen = len(t[-1]) - len(c)
+            snip2 = t[-1].rfind(c, 0, tlen) # Can we snip a word from the last line of t?
             if snip2 != -1: # If so,
               if c == " ": # if snipping on a blank
                 ttemp = t[-1][:snip2] # make copy of snipped previous line skipping the blank
@@ -3547,15 +3582,19 @@ class Ppt(Book):
                 ttemp = t[-1][:snip2+len(c)] # include the snipping character in the copy
               true_len_ttemp = self.truelen(ttemp) # get its true length
               if true_len_ttemp + indent >= 55: # is prior line still long enough?
-                s = t[-1][snip2+len(c):] + ' ' + s # copy last word of the last line of t
+                sep = ' ' if (tbr[-1] == ' ') else ''
+                s = t[-1][snip2+len(c):] + sep + s # copy last word of the last line of t
                 t[-1] = ttemp
+                tbr[-1] = c
                 true_len_s = self.truelen(s)
                 twidth = mywidth
                 brloc = s.find(BR, 0, twidth+1) # look for a <br> within the width we're looking at
                 break
           else: # if no snips worked
             if len(t) > 1:            # can't perturb last line; try further back if possible
-              s = t.pop() + ' ' + s   # first add last line back to s
+              s2 = t.pop() # get previous line
+              sep = ' ' if (tbr.pop() == ' ') else '' # figure out whether we need to add a blank
+              s = s2 + sep + s   # first add last line back to s
               continue
             else:                     # perturbing failed; leave this line short
               perturb = False
@@ -3564,11 +3603,13 @@ class Ppt(Book):
         else:                          #
           perturb = False
         if not perturb:                # if perturbing failed leave this line short
-          t = savet[:]                 # restore t, s
+          t = savet[:]                 # restore t, tbr, s
+          tbr = savetbr[:]
           s = saves
           perturb = True               # we can keep going in perturb mode, but can't backtrack beyond here
           peturb_limit = len(t)        # so remember where we failed
           t.append(s[:snip_at])
+          tbr.append(c)         # remember the break character that caused the line break
           if snip_at < true_len_s:
             s = s[snip_at+1:]
           else:
@@ -3594,15 +3635,27 @@ class Ppt(Book):
     ta = [] # list of paragraph (lists)
     ts = [] # paragraph stats
     BR = "⓬" # temporary replacement for <br> for ease of programming
+    if indent >= ll: # catch problematic ll vs indent issues
+      self.crash_w_context("Cannot wrap text.\n" +
+                           "Indent (.in + leading spaces) bigger than line length (.ll):\n" +
+                           "line length = {}; indent = {}\n".format(ll, indent) +
+                           ".ll = {}; .in = {}\n".format(self.regLL, self.regIN) +
+                           "while wrapping: {}".format(s), self.cl)
     done = False
+
     i = 0
-    while s[i] == ' ' and i < len(s): # preserve leading spaces
+    while i < len(s) and s[i] == ' ': # preserve leading spaces
       i += 1
     if i > 0:
-      s2 = s[i:]
-      while '  ' in s2:   # squash any repeated spaces in interior of string
-        s2 = s2.replace('  ', ' ')
-      s = s[:i] + s2
+      s0 = s[:i+1]
+      s2 = s[i+1:]
+    else:
+      s0 = ""
+      s2 = s
+    while '  ' in s2:   # squash any repeated spaces in interior of string
+      s2 = s2.replace('  ', ' ')
+    s = s0 + s2
+
     for i in range(0, -8, -2):
       t = self.wrap_para(s, indent, ll+i, ti, keep_br=True)
       ta.append(t)
@@ -4258,6 +4311,7 @@ class Ppt(Book):
 
   # h3
   def doH3(self):
+    tmp = self.wb[self.cl + 1]####
     m = re.match(r"\.h3 (.*)", self.wb[self.cl])
     self.doHnText(m)
 
@@ -4397,7 +4451,7 @@ class Ppt(Book):
         self.eb += t
       self.eb.append(".RS 1") # request at least one space in text after illustration
     else:
-      self.crash_w_context("Malformed .il directive: {}".format(self.wb[self.cl]))
+      self.crash_w_context("Malformed .il directive: {}".format(self.wb[self.cl]), self.cl)
 
   # .in left margin indent
   def doIn(self):
@@ -4664,7 +4718,7 @@ class Ppt(Book):
     regBW = min(self.calculateBW(".nf-"), self.regLL)
     i = self.cl + 1 # skip the .nf b line
     xt = self.regLL - self.regIN
-    lmar = (xt - regBW)//2
+    lmar = max((xt - regBW)//2, 0)
     bnInBlock = False                # no .bn info encountered in this block yet
     while self.wb[i] != ".nf-":
 
@@ -4972,8 +5026,8 @@ class Ppt(Book):
     k1 = self.cl
     s = self.wb[k1]
     while k1 < len(self.wb) and self.wb[k1] != ".ta-":
-      while "\\" in self.wb[k1]:
-        self.wb[k1] = re.sub(r"\\", "", self.wb[k1])
+      while self.wb[k1].endswith("\\"):
+        self.wb[k1] = re.sub(r"\\$", "", self.wb[k1])
         self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
         del self.wb[k1+1]
       k1 += 1
@@ -5159,7 +5213,7 @@ class Ppt(Book):
             w1 += widths[j]
           else:
             break
-        k2 = self.wrap_para(t[i].strip(), 0, w1, 0, warn=True) # should handle combining characters properly
+        k2 = self.wrap_para(t1, 0, w1, 0, warn=True) # should handle combining characters properly
         if len(k2) > 1:
           rowspace = True
       k1 += 1
@@ -5449,6 +5503,39 @@ class Ppt(Book):
     else:
       self.crash_w_context("malformed .sn directive", self.cl) # should never hit this as preprocesscommon() checked it
 
+  # Index processing (Text)
+  def doIx(self):
+    indent = self.regIN if (self.regIN) else 1 # ensure indented at least 1 space
+    self.eb.append(".RS 1")
+    regBW = min(self.calculateBW(".ix-"), self.regLL)
+    i = self.cl + 1 # skip the .ix
+    while self.wb[i] != ".ix-": # calculateBW will have complained if .ix- is missing
+
+      if self.bnPresent and self.is_bn_line(self.wb[i]):   # just copy .bn info lines, don't change them at all
+        self.eb.append(self.wb[i])
+        i += 1
+        continue
+
+      s = (" " * indent + self.wb[i])
+      # if the line is shorter than the line length just send it to emit buffer
+      # if longer, calculate the leading spaces on line and use as shift amount during
+      # wrapping
+      if self.truelen(s) > self.regLL:
+        wi = 0
+        m = re.match("^(\s+)(.*)", s)
+        if m:
+          wi = len(m.group(1))
+          s = m.group(2)
+        u = self.wrap(s, wi+3, self.regLL, -3)
+        for line in u:
+          self.eb.append(line)
+      else:
+        self.eb.append(s)
+      i += 1
+    self.eb.append(".RS 1")
+    self.cl = i + 1 # skip the closing .ix-
+
+
   def doPara(self):
     t = []
     bnt = []
@@ -5463,8 +5550,11 @@ class Ppt(Book):
     # paragraphs does not wrap the text, leaving that to the browser or other rendering engine.
     j = pstart
     while (j < len(self.wb) and
-           self.wb[j] and
-           not self.wb[j].startswith(".")): # any blank line or dot directive ends paragraph
+           self.wb[j]): # any blank line or dot directive ends paragraph
+      if self.wb[j].startswith("."):
+        m = re.match(r"\.[a-z]", self.wb[j])
+        if m:
+          break
       t.append(self.wb[j])
       j += 1
     pend = j
@@ -5618,7 +5708,7 @@ class Ppt(Book):
         continue
 
       # will hit either a dot directive or wrappable text
-      if re.match(r"\.", self.wb[self.cl]):
+      if re.match(r"\.[a-z]", self.wb[self.cl]):
         self.doDot()
         continue
       self.doPara()
@@ -6138,6 +6228,7 @@ class Pph(Book):
         if name in fnlist2:  # if it's there, we have a reference to a footnote
           fnlist2[name] += 1 # remember we saw a reference to it
           fnDupCheck(name)
+        name = '[' + name + ']'
         line = re.sub(re.escape(name), "", line, 1) # remove the hit so we can look for another
         m2 = re.search(r"\[([A-Za-z0-9\-_\:\.]+)\]", line)
 
@@ -6917,7 +7008,7 @@ class Pph(Book):
     align = "c" # default to centered heading
     title = ""
 
-    self.css.addcss("[1100] h2 { text-align: center; font-weight: normal; font-size: 1.2em; page-break-before: auto; }")
+    self.css.addcss("[1100] h2 { text-align: center; font-weight: normal; font-size: 1.2em; }") # 3.52e
 
     m = re.match(r"\.h2 (.*)", self.wb[self.cl])
     if m: # modifier
@@ -6944,7 +7035,11 @@ class Pph(Book):
     elif align != "c":
       self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
 
-    # hcss += "page-break-before:auto;" # not needed, as we now have it in the CSS for h2. page-break is controlled by .chapter div
+    hcss += "page-break-before:auto; " # always have this on an <h2> element; if a break
+                                       # is needed we'll have the <h2> inside a
+                                       # <div class='chapter'> to force one. If it's not on
+                                       # the <h2> then epubmaker's CSS for <h2> will override
+                                       # and may force a second page break
 
     if self.pvs > 0:
       hcss += "margin-top: {}em; ".format(self.pvs)
@@ -7433,7 +7528,7 @@ class Pph(Book):
       # no "=" should remain in .il string
       if "=" in s:
         s = re.sub("\.il", "", s).strip()
-        self.warn("unprocessed value in illustration: {}".format(s))
+        self.warn_w_context("unprocessed value in illustration: {}".format(s), self.cl)
       return(ia)
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -7972,9 +8067,14 @@ class Pph(Book):
             t.append("      <div class='linedc {0} {1}' {2}>{3}</div>".format(iclass, self.pdc, spvs, ss+tmp.lstrip()))
           else:
             iclass = "in{}".format(leadsp)  # create an indent class
-            iamt = str(-3 + leadsp/2) # calculate based on -3 base
+            if self.nregsusage["nf-spaces-per-em"] > 1:
+              iclass += "_{}".format(self.nregsusage["nf-spaces-per-em"])
+            #iamt = str(-3 + leadsp/2) # calculate based on -3 base
+            divisor = float(self.nregs["nf-spaces-per-em"])
+            iamt = str(3 + round(leadsp/divisor, 1)) # calculate based on 2 spaces per em, and
+                                               #  add in the 3em base padding-left.
             t.append("      <div class='line {0}' {1}>{2}</div>".format(iclass, spvs, ss+tmp.lstrip()))
-          self.css.addcss("[1227] .linegroup .{} {{ text-indent: {}em; }}".format(iclass, iamt))
+          self.css.addcss("[1227] .linegroup .{} {{ padding-left: {}em; }}".format(iclass, iamt))
           printable_lines_in_block += 1
         else:
           if nf_pdc:
@@ -8234,8 +8334,9 @@ class Pph(Book):
     # look for continuation characters; restore to one line
     k1 = self.cl
     while k1 < len(self.wb) and self.wb[k1] != ".ta-":
-      while "\\" in self.wb[k1]:
-        self.wb[k1] = re.sub(r"\\", "", self.wb[k1])
+      aaadbg = self.wb[k1]####
+      while self.wb[k1].endswith("\\"):
+        self.wb[k1] = re.sub(r"\\$", "", self.wb[k1])
         self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
         del self.wb[k1+1]
       k1 += 1
@@ -8258,7 +8359,7 @@ class Pph(Book):
     tw_html = ""
     if "w=" in self.wb[self.cl]:
       self.wb[self.cl], tw_html = self.get_id("w", self.wb[self.cl])
-      if "%" not in tw_html:
+      if tw_html != "none" and "%" not in tw_html:
         self.fatal("please specify table HTML width as percent, i.e. \"{0}%\" \n on line: {1}".format(tw_html, il_line))
 
     # pull out optional id=
@@ -8393,15 +8494,6 @@ class Pph(Book):
     # lmarpct = 21  left margin percent. (2 * lmarpct + tablewidth = 100)
     # totalwidth = width of table in characters
 
-    # unwrap any user-wrapped text in table
-    k1 = self.cl + 1
-    while self.wb[k1] != ".ta-":
-      while "\\" in self.wb[k1]:
-        self.wb[k1] = re.sub(r"\\", "", self.wb[k1])
-        self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
-        del self.wb[k1+1]
-      k1 += 1
-
     t = []
 
     s = "margin: auto; "  # start building class for table
@@ -8413,30 +8505,33 @@ class Pph(Book):
     # if user specified table width (in %), put in a class and attach to table
     # if user also specified table width for epub, put that in a media handheld class
     # fudge factor if ppgen calculates it: 20% to allow for an ALL CAPS (wide) column
-    if tw_html != "":
-      s += "width: {}; ".format(tw_html)  # use what we are told
-    else:
-      our_width = min( 100, int(120*(totalwidth/72)) )  # limit to 100%
-      left_indent_pct = (100 - our_width) // 2
-      right_indent_pct = 100 - our_width - left_indent_pct
-      s += "margin-left: {}%; margin-right: {}%; width: {}%; ".format( left_indent_pct, right_indent_pct, our_width )
+    if tw_html != "none":
+      if tw_html != "":
+        s += "width: {}; ".format(tw_html)  # use what we are told
+      else:
+        our_width = min( 100, int(120*(totalwidth/72)) )  # limit to 100%
+        left_indent_pct = (100 - our_width) // 2
+        right_indent_pct = 100 - our_width - left_indent_pct
+        s += "margin-left: {}%; margin-right: {}%; width: {}%; ".format( left_indent_pct, right_indent_pct, our_width )
+
     if borders_present:
       s += "border-collapse: {}; ".format(self.nregs["border-collapse"])
     self.css.addcss("[1670] .table{0} {{ {1} }}".format(self.tcnt, s))
 
-    if tw_epub != "":
-      epw = int(re.sub("%", "", tw_epub)) # as integer
-      left_indent_pct = (100 - epw) // 2
-      right_indent_pct = 100 - epw - left_indent_pct
-      self.css.addcss("[1671] @media handheld {{ .table{} {{ margin-left: {}%; margin-right: {}%; width: {}%; }} }}".format(self.tcnt, left_indent_pct, right_indent_pct, epw))
+    if tw_html != "none" and tw_epub != "":
+        epw = int(re.sub("%", "", tw_epub)) # as integer
+        left_indent_pct = (100 - epw) // 2
+        right_indent_pct = 100 - epw - left_indent_pct
+        self.css.addcss("[1671] @media handheld {{ .table{} {{ margin-left: {}%; margin-right: {}%; width: {}%; }} }}".format(self.tcnt, left_indent_pct, right_indent_pct, epw))
 
     t.append("<table class='table{}' summary='{}'{}>".format(self.tcnt, tsum, tid))
 
     # set relative widths of columns
-    t.append("<colgroup>")
-    for (i,w) in enumerate(widths):
-     t.append("<col width='{}%' />".format(pwidths[i]))
-    t.append("</colgroup>")
+    if tw_html != "none":
+      t.append("<colgroup>")
+      for (i,w) in enumerate(widths):
+       t.append("<col width='{}%' />".format(pwidths[i]))
+      t.append("</colgroup>")
 
     startloc = self.cl
     self.cl += 1 # move into the table rows
@@ -8729,7 +8824,9 @@ class Pph(Book):
         if '<body>' in self.wb[i]:
           foundbody = True
       else:
-        self.wb[i] = re.sub("\s+>", ">", self.wb[i])  # spaces before close ">"
+        #self.wb[i] = re.sub("\s+>", ">", self.wb[i])  # spaces before close ">"
+        self.wb[i] = re.sub(r"(<.*?')\s+>", r"\1>", self.wb[i])  # remove spaces before
+                                                                 # closing HTML ">"
         self.wb[i] = re.sub("<p  ", "<p ", self.wb[i])
         # next line broke German, where a space is significant before ">"
         # self.wb[i] = re.sub(" >", ">", self.wb[i])
@@ -8892,6 +8989,141 @@ class Pph(Book):
     else:
       self.crash_w_context("malformed .sn directive", self.cl)
 
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  # Index Processing (HTML)
+  def doIx(self):
+
+    def trimsp(linenum):
+      tmp = self.wb[linenum][:]
+      if tmp.startswith("⑯"):
+        m = re.match(r"^(⑯\w+⑰)(\s+)(.*)", tmp)
+        if m:
+          tmp = m.group(1) + m.group(3)
+          leadsp = len(m.group(2))
+        else:
+          leadsp = 0
+      else:
+        tmp2 = tmp.lstrip()
+        leadsp = len(tmp) - len(tmp2)
+        tmp = tmp2
+      return tmp, leadsp
+
+    # Figure out if this line needs a </li> or not. If the next line has the same, or smaller
+    # indentation, it does. If next line has greater indentation, then leave the <li> open so
+    # we can nest the inner <ul> properly.
+    def checknext(linenum):
+      linenum = linenum + 1
+      s = "</li>" # assume next line is same indentation
+      if linenum < len(self.wb) and self.wb[linenum] != ".ix-":
+        tmp, leadsp = trimsp(linenum)
+        if (leadsp > rindent): # don't add </li> if next line has larger indentation
+          s = ""
+      return s
+
+    self.css.addcss("[1240] .index li {list-style-type: none; " +
+                    "text-indent: -1em; padding-left: 1em; }")
+    ssty = ""
+    s = self.fetchStyle() # supplemental style
+    if s:
+      ssty = " style='{}'".format(s)
+    startloc = self.cl
+    i = self.cl
+    t = []
+    t.append("<ul class='index'{}>".format(ssty))
+
+    i += 1
+    cpvs = 0
+    rindent = 0 # relative indent of current line(s) based on leading spaces in input
+    ulindent = 0 # leading spaces in output (first ul at 0, 2nd ul at 4, ...)
+
+    while i < len(self.wb) and self.wb[i] != ".ix-":
+
+      # if this line is just bn info then just leave it in the output as-is
+      if self.bnPresent and self.is_bn_line(self.wb[i]):
+        i += 1
+        continue
+
+      if self.wb[i] == "":
+        cpvs += 1
+      else:
+        # need to calculate leading space for this line.
+        # there may be some tags *before* the leading space
+        # (Not as of 3.52a, which places them after the leading space.)
+        # But there may still be .bn info before leading space, so account for it
+        tmp, leadsp = trimsp(i)
+
+        if cpvs > 1:
+          spvs = " style='margin-top: {}em; ' ".format(cpvs)
+          cpvs = 0
+        else:
+          spvs = ""
+
+        if leadsp == rindent: # Indentation did not change; just need <li>
+          if spvs == "" and rindent == 0:
+            spvs = " style='margin-top: .5em; ' "
+            cpvs = 0
+          s = (" " * (ulindent + 2)) + "<li{}>".format(spvs) + tmp
+          s += checknext(i) # add </li> if next line at same or smaller indent
+          t.append(s)
+
+        elif leadsp > rindent: # Indentation increased; need possible additional <li>, then <ul> <li>
+          diff = leadsp - rindent
+          if diff%2: # if not an even number of spaces
+            self.crash_w_context("Indentation in index not a multiple of 2", i)
+          while (diff > 0):
+            ulindent += 4
+            t.append((" " * ulindent) + "<ul{}>".format(spvs))
+            spvs = ''
+            if diff > 2:
+              t.append((" " * (ulindent + 2)) + "<li>")
+            rindent += 2
+            diff -= 2
+          s = (" " * (ulindent + 2)) + "<li>" + tmp
+          s += checknext(i) # add </li> if next line at same or smaller indent
+          t.append(s)
+        else: # Indentation decreased; need </ul>, then </li>, then need to figure out what level we're at
+          diff = rindent - leadsp
+          if diff%2: # if not an even number of spaces
+            self.crash_w_context("Indentation in index not a multiple of 2", i)
+          while (diff > 0):
+            t.append((" " * ulindent) + "</ul>")
+            ulindent -= 4
+            t.append((" " * (ulindent + 2)) + "</li>")
+            rindent -= 2
+            diff -= 2
+          if spvs == "" and rindent == 0:
+            spvs = " style='margin-top: .5em; ' "
+            cpvs = 0
+          s = (" " * (ulindent + 2)) + "<li{}>".format(spvs) + tmp
+          s += checknext(i) # add </li> if next line at same or smaller indent
+          t.append(s)
+        cpvs = 0  # reset pending vertical space
+      i += 1
+
+    # at block end.
+    if self.wb[i] != ".ix-":
+        self.fatal("File ends with unclosed .ix block")
+
+    while (rindent > 0): # close out any inner lists
+      t.append((" " * ulindent) +
+               "</ul>")
+      ulindent -= 4
+      t.append((" " * (ulindent + 2)) + "</li>")
+      rindent -= 2
+
+    if cpvs > 0: # pending empty space?
+      spvs = " style='margin-bottom: {}em; ' ".format(cpvs)
+      cpvs = 0
+    else:
+      spvs = ""
+
+    t.append("</ul{}>".format(spvs)) # finish out the block
+
+    endloc = i
+    self.wb[startloc:endloc+1] = t # replace source lines with generated list
+    self.cl = startloc + len(t)
+
+
   def doPara(self):
     if self.regTIp != 0: # If persistent temporary indent in effect, pretend we got a .ti command
       self.regTI = self.regTIp
@@ -8974,8 +9206,11 @@ class Pph(Book):
         self.wb[self.cl] = "<p {}{}>".format(c_str,s_str) + self.wb[self.cl]
 
     while ( self.cl < len(self.wb) and
-            self.wb[self.cl] and
-            not self.wb[self.cl].startswith(".")): # any blank line or dot command ends paragraph
+            self.wb[self.cl]): # any blank line or dot command ends paragraph
+      if self.wb[self.cl].startswith("."):
+        m = re.match(r"\.[a-z]", self.wb[self.cl])
+        if m:
+          break
       self.cl += 1
     i = self.cl - 1
     # if para ended with .bn info, place the </p> before it, not after it to avoid extra
@@ -9252,7 +9487,7 @@ class Pph(Book):
         self.cl += 1
         continue
       # will hit either a dot directive, a user-defined <div>, or wrappable text
-      if re.match(r"\.", self.wb[self.cl]):
+      if re.match(r"\.[a-z]", self.wb[self.cl]):
         self.doDot()
         continue
       if self.wb[self.cl].startswith("<div class="):
@@ -9465,6 +9700,7 @@ if __name__ == '__main__':
 # 1224                .linegroup .line
 # 1225                div.linegroup > :first-child
 # 1227                .linegroup .<indent-class-name>
+# 1240      .ix: ul, li
 # 1378      <g>     gesperrt
 # 1379      Handheld version of <g>
 # 1430      div.footnote
