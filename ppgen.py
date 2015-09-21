@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53c1"    # 21-Sep-2015
+VERSION="3.53c2"    # 21-Sep-2015
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -35,6 +35,8 @@ VERSION="3.53c1"    # 21-Sep-2015
 #  Implement .dl (definition list) and .dl-
 #3.53c1:
 #  Forgot the @media handheld CSS for .dl with style=float
+#3.53c2:
+#  Fix error recognizing .dt and .dd directives
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -5924,9 +5926,10 @@ class Ppt(Book):
     while self.cl < len(self.wb) and not self.wb[self.cl] == ".dl-":  # process until we hit our .dl-
 
       # If we hit a dot command, handle it
-      if re.match(r"\.[a-z]", self.wb[self.cl]):
-        self.doDot()
-        continue
+      if not self.wb[self.cl].startswith(".dt") and not self.wb[self.cl].startswith(".dd"):
+        if re.match(r"\.[a-z]", self.wb[self.cl]):
+          self.doDot()
+          continue
 
       # Not a dot command, must be a definition or blank line
       #
@@ -9986,10 +9989,10 @@ class Pph(Book):
     while self.cl < len(self.wb) and not self.wb[self.cl] == ".dl-":  # process until we hit our .dl-
 
       # If we hit a dot command, handle it
-      if re.match(r"\.[a-z]", self.wb[self.cl]):
-        emit()  # flush out the buffer we have so far
-        self.doDot()
-        continue
+      if not self.wb[self.cl].startswith(".dt") and not self.wb[self.cl].startswith(".dd"):
+        if re.match(r"\.[a-z]", self.wb[self.cl]):
+          self.doDot()
+          continue
 
       # Not a dot command, must be a definition or blank line
       #
@@ -10021,8 +10024,9 @@ class Pph(Book):
         m = re.match(r"\.dd( +class=[^ ]*?)? +(.*)", self.wb[self.cl])
         if m:
           self.wb[self.cl] = m.group(2)
-          temp = ".dd " + m.group(1)
-          temp, dd_class = self.get_id("class", temp)
+          if m.group(1):
+            temp = ".dd " + m.group(1)
+            temp, dd_class = self.get_id("class", temp)
 
         else:
           self.crash_w_context("Error parsing .dd directive: {} \n".format(self.wb[self.cl]), self.cl)
