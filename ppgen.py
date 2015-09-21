@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53c"    # 21-Sep-2015
+VERSION="3.53c1"    # 21-Sep-2015
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -33,6 +33,8 @@ VERSION="3.53c"    # 21-Sep-2015
 # Implement .ul (unordered list) and .ol (ordered list) and .it (item)
 #3.53c:
 #  Implement .dl (definition list) and .dl-
+#3.53c1:
+#  Forgot the @media handheld CSS for .dl with style=float
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -9768,6 +9770,8 @@ class Pph(Book):
           self.css.addcss("[1241] dl {margin: .5em auto .5em auto;}")
           if self.list_item_style == "f":
             self.css.addcss("[1241] .dlfloat dt {float: left; clear: left; text-align: left; padding-top: .5em; }")
+            self.css.addcss("[1241] @media handheld { " +
+                            ".dlfloat dt {float: left; clear: left; text-align: left; padding-top: .5em; } }")
             self.css.addcss("[1241] .dlfloat dd {text-indent: -2em; text-align: left; padding-top: .5em; }")
           elif self.list_item_style == "n":
             self.css.addcss("[1241] .dlnofloat dt {text-align: left; padding-top: .5em; }")
