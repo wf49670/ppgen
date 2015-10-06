@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53c2"    # 21-Sep-2015
+VERSION="3.53c3"    # 21-Sep-2015
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -37,6 +37,8 @@ VERSION="3.53c2"    # 21-Sep-2015
 #  Forgot the @media handheld CSS for .dl with style=float
 #3.53c2:
 #  Fix error recognizing .dt and .dd directives
+#3.53c3:
+#  Revise .dt handling to avoid conflict with original .dt directive.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3312,13 +3314,19 @@ class Book(object):
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # search for display title directive, record and remove
     i = 0
+    indl = False
     while i < len(self.wb):
       # option with a value
-      m = re.match(r"\.dt (.*)", self.wb[i])
-      if m:
-        self.dtitle = m.group(1)
-        del self.wb[i]
-        i -= 1
+      if self.wb[i].startswith(".dl "):
+        indl = True
+      elif self.wb[i].startswith(".dl-"):
+        indl = False
+      elif not indl:
+        m = re.match(r"\.dt (.*)", self.wb[i])
+        if m:
+          self.dtitle = m.group(1)
+          del self.wb[i]
+          i -= 1
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
