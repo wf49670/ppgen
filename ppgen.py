@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53c3"    # 21-Sep-2015
+VERSION="3.53c4"    # 06-Oct-2015
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -39,6 +39,8 @@ VERSION="3.53c3"    # 21-Sep-2015
 #  Fix error recognizing .dt and .dd directives
 #3.53c3:
 #  Revise .dt handling to avoid conflict with original .dt directive.
+#3.53c4:
+#  Fix loop with blank lines inside .dl block when generating HTML
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -10018,6 +10020,7 @@ class Pph(Book):
           build_paragraph()
           emit()
         self.pvs += 1
+        del self.wb[self.cl] # remove the blank line
         continue
 
       # check for .dt or .dd (form d of definition line) and handle
