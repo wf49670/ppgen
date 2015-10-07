@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53c4"    # 06-Oct-2015
+VERSION="3.53c5"    # 07-Oct-2015
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -41,6 +41,8 @@ VERSION="3.53c4"    # 06-Oct-2015
 #  Revise .dt handling to avoid conflict with original .dt directive.
 #3.53c4:
 #  Fix loop with blank lines inside .dl block when generating HTML
+#3.53c5:
+#  Fix error in wrapping a paragraph that contains a .bn directive (text version only)
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3579,7 +3581,7 @@ class Ppt(Book):
           if m:
             howmany1 = len(m.group(1))
             howmany2 = howmany - howmany1
-            hold = s[0:howmany1] + m.group(2) + m.group3[0:howmany2]
+            hold = s[0:howmany1] + m.group(2) + m.group(3)[0:howmany2]
             howmany3 = len(hold)
             s = s[howmany3:]
           else:
@@ -10018,7 +10020,7 @@ class Pph(Book):
         # check for paragraph that we need to emit
         if self.list_item_style == "p" and paragraph != "":
           build_paragraph()
-          emit()
+          emit(True)
         self.pvs += 1
         del self.wb[self.cl] # remove the blank line
         continue
