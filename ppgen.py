@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53c5"    # 07-Oct-2015
+VERSION="3.53c6"    # 08-Oct-2015
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -43,6 +43,8 @@ VERSION="3.53c5"    # 07-Oct-2015
 #  Fix loop with blank lines inside .dl block when generating HTML
 #3.53c5:
 #  Fix error in wrapping a paragraph that contains a .bn directive (text version only)
+#3.53c6:
+#  Fix .sr error resulting in no changes when processing search strings containing \n 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2118,7 +2120,7 @@ class Book(object):
           self.fatal("Error occurred searching for {} in complete text blob".format(self.srs[srnum]))
       if m:                                             # if found
         if 'r' in self.debug:
-          print(self.umap("{} found in complete text blob".format(self.srs[srnum])))
+          print(self.umap("Search string {}:{} found in complete text blob".format(srnum+1, self.srs[srnum])))
         try:
           text, l = re.subn(self.srs[srnum], self.srr[srnum], text) # replace all occurrences in the blob
           ll += l
@@ -2132,7 +2134,7 @@ class Book(object):
           print(self.umap("Replaced with {}".format(self.srr[srnum])))
       print(self.umap("Search string {}:{} matched in complete text and replaced {} times.".format(srnum+1,
             self.srs[srnum], ll)))
-      buffer = text.splitlines() # break blob back into individual lines
+      buffer[:] = text.splitlines() # break blob back into individual lines
       text = ""
 
     else:
