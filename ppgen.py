@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53c6"    # 08-Oct-2015
+VERSION="3.53c7"    # 12-Oct-2015
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -45,6 +45,12 @@ VERSION="3.53c6"    # 08-Oct-2015
 #  Fix error in wrapping a paragraph that contains a .bn directive (text version only)
 #3.53c6:
 #  Fix .sr error resulting in no changes when processing search strings containing \n 
+#3.53c7:
+#  Change px specifications on borders to "thin". 
+#  Change padding on .pageno to use "em" rather than "px".
+#  Implement new named register, pnstyle, with values of title or content, to control
+#    how the page numbers are generated and provide workaround for CSS validator bug.
+#    Default: content, which avoids the bug.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1538,6 +1544,8 @@ class Book(object):
     self.nregs["pti"] = "1em" # default paragraph indentation for indented text
     self.nregs["psb"] = "1.0em" # default above/below paragraph spacing for block text
     self.nregs["pnc"] = "silver" # use to define page number color in HTML
+    self.nregs["pnstyle"] = "content" # use the "content" form of page numbers by default, rather than "title" form
+                                      # to avoid the CSS validator bug
     self.nregs["lang"] = "en" # base language for the book (used in HTML header)
     self.nregs["Footnote"] = "Footnote" # English word for Footnote for text files
     self.nregs["Illustration"] = "Illustration" # English word for Illustration for text files
@@ -6195,7 +6203,6 @@ class Pph(Book):
     # unwrap page number spans
     i = 0
     while i < len(self.wb):
-      # m = re.search("(.*?)(<span class='pagenum'><a.*?a></span>)(.*)$", self.wb[i])
       m = re.search("(.*?)(<span class='pageno'>.*?</span>)(.*)$", self.wb[i])  # new 3.24M
       if m:
         t = []
@@ -6740,7 +6747,7 @@ class Pph(Book):
     # (3) <abbr rend=spell>Ph.D.</abbr>
     #       would generate <abbr class='spell'>Ph.D.</abbr>
     #       along with CSS: abbr.spell { speak: spell-out; }
-    # Any use of <abbr> will generate CSS: abbr { border-bottom-width: 1px; border-bottom-style: dotted; }
+    # Any use of <abbr> will generate CSS: abbr { border-bottom-width: thin; border-bottom-style: dotted; }
     i = 0
     abbrfound = False
     while i < len(self.wb):
@@ -6776,7 +6783,7 @@ class Pph(Book):
           self.wb[i] = re.sub(re.escape(m.group(0)), "<abbr class='spell'>", self.wb[i]) # replace in original line
           m = re.search(r"<abbr rend=[\"']?spell[\"']?>",temp) # search for more <abbr rend=spell tags in copy
         if abbrfound:
-          self.css.addcss("[1210] abbr { border-bottom-width: 1px; border-bottom-style: dotted; }")
+          self.css.addcss("[1210] abbr { border-bottom-width: thin; border-bottom-style: dotted; }")
         if spellfound:
           self.css.addcss("[1210] abbr.spell { speak: spell-out; }")
         if "<abbr" in temp: # should not have any <abbr tags left in the temp copy
@@ -7021,10 +7028,14 @@ class Pph(Book):
         ptmp = m.group(1)
         if self.pnshow:  # visible page number
           # in a paragraph usually, but can be orphaned (repaired later)
-          self.wb[i] = re.sub(r"⑯(.+)⑰",
-          "<span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ptmp),
-          self.wb[i])
-          # "<span class='pagenum'><a id='Page_{0}'>{0}</a></span>".format(ptmp)
+          if self.nregs["pnstyle"] == "title":
+            self.wb[i] = re.sub(r"⑯(.+)⑰",
+                                "<span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ptmp),
+                                self.wb[i])
+          else:
+            self.wb[i] = re.sub(r"⑯(.+)⑰",
+                                "<span class='pageno' id='Page_{0}' >{0}</span>".format(ptmp),
+                                self.wb[i])
         elif self.pnlink:  # just the link
           self.wb[i] = re.sub(r"⑯(.+)⑰", "<a id='Page_{0}'></a>".format(ptmp), self.wb[i])
       i += 1
@@ -7100,9 +7111,14 @@ class Pph(Book):
       self.css.addcss("[1100] body { margin-left: 8%; margin-right: 10%; }")
       self.css.addcss("[1105] .pageno { right: 1%; font-size: x-small; background-color: inherit; color: " + self.nregs["pnc"] + "; ")
       self.css.addcss("[1106]         text-indent: 0em; text-align: right; position: absolute; ")
-      self.css.addcss("[1107]         border: 1px solid " + self.nregs["pnc"] + "; padding: 1px 3px; font-style: normal; ")
+      self.css.addcss("[1107]         border: thin solid " + self.nregs["pnc"] + "; padding: .1em .2em; font-style: normal; ")
       self.css.addcss("[1108]         font-variant: normal; font-weight: normal; text-decoration: none; }")
-      self.css.addcss("[1109] .pageno:after { color: " + self.nregs["pnc"] + "; content: attr(title); }")  # new 3.24M
+      if self.nregs["pnstyle"] == "title":
+        self.css.addcss("[1109] .pageno:after { color: " + self.nregs["pnc"] + "; content: attr(title); }")  # new 3.24M
+      elif self.nregs["pnstyle"] != "content":
+        self.warn("Invalid .nr pnstyle value {}; content assumed".format(self.nregs["pnstyle"]))
+        self.nregs["pnstyle"] = "content"
+        
     else:
       self.css.addcss("[1100] body { margin-left: 8%; margin-right: 8%; }")
 
@@ -7200,7 +7216,7 @@ class Pph(Book):
       self.pvs = 0
 
     self.css.addcss("[1465] div.pbb { page-break-before: always; }")
-    self.css.addcss("[1466] hr.pb { border: none; border-bottom: 1px solid; margin-bottom:1em; }")
+    self.css.addcss("[1466] hr.pb { border: none; border-bottom: thin solid; margin-bottom:1em; }")
     self.css.addcss("[1467] @media handheld { hr.pb { display: none; }}")
     self.wb[self.cl:self.cl+1] = ["<div class='pbb'>",
                                   "  <hr class='pb' style='{}' />".format(hcss),
@@ -7244,11 +7260,11 @@ class Pph(Book):
     if m:
       hrpct = int(m.group(1))
     if hrpct == 100:
-      self.wb[self.cl] = "<hr style='border: none; border-bottom: 1px solid; margin: 1em auto; {}' />".format(hcss)
+      self.wb[self.cl] = "<hr style='border: none; border-bottom: thin solid; margin: 1em auto; {}' />".format(hcss)
     else:
       lmarp = (100 - hrpct)//2
       rmarp = 100 - hrpct - lmarp
-      self.wb[self.cl] = "<hr style='border: none; border-bottom: 1px solid; margin-top: 1em; margin-bottom: 1em; margin-left: {}%; width: {}%; margin-right: {}%; {}' />".format(lmarp,hrpct,rmarp, hcss)
+      self.wb[self.cl] = "<hr style='border: none; border-bottom: thin solid; margin-top: 1em; margin-bottom: 1em; margin-left: {}%; width: {}%; margin-right: {}%; {}' />".format(lmarp,hrpct,rmarp, hcss)
     self.cl += 1
 
   # .tb thought break
@@ -7259,9 +7275,9 @@ class Pph(Book):
     if self.pvs > 0:
       hcss = "margin-top: {}em; ".format(self.pvs)
       self.pvs = 0
-      self.wb[self.cl] = "<hr style='border: none; border-bottom: 1px solid; margin-bottom: 0.8em; margin-left: 35%; margin-right: 35%; width: 30%; {}' />".format(hcss) # for IE
+      self.wb[self.cl] = "<hr style='border: none; border-bottom: thin solid; margin-bottom: 0.8em; margin-left: 35%; margin-right: 35%; width: 30%; {}' />".format(hcss) # for IE
     else:
-      self.wb[self.cl] = "<hr style='border: none; border-bottom: 1px solid; margin-top: 0.8em; margin-bottom: 0.8em; margin-left: 35%; margin-right: 35%; width: 30%; ' />" # for IE
+      self.wb[self.cl] = "<hr style='border: none; border-bottom: thin solid; margin-top: 0.8em; margin-bottom: 0.8em; margin-left: 35%; margin-right: 35%; width: 30%; ' />" # for IE
     self.cl += 1
 
   # .de CSS definition
@@ -7354,7 +7370,10 @@ class Pph(Book):
     t.append("<div>")
     if pnum != "":
       if self.pnshow:
-        t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+        if self.nregs["pnstyle"] == "title":
+          t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+        else:
+          t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
       elif self.pnlink:
         t.append("  <a id='Page_{0}'></a>".format(pnum))
     if id != "":
@@ -7436,7 +7455,10 @@ class Pph(Book):
       t.append("<div>") # always want a div around the h2
     if pnum != "":
       if self.pnshow:
-        t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+        if self.nregs["pnstyle"] == "title":
+          t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+        else:
+          t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
       elif self.pnlink:
         t.append("  <a id='Page_{0}'></a>".format(pnum))
     if id != "":
@@ -7508,7 +7530,10 @@ class Pph(Book):
     if pnum != "":
       t.append("<div>")
       if self.pnshow:
-        t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+        if self.nregs["pnstyle"] == "title":
+          t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+        else:
+          t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
       elif self.pnlink:
         t.append("  <a id='Page_{0}'></a>".format(pnum))
     if id != "":
@@ -7578,7 +7603,10 @@ class Pph(Book):
     if pnum != "":
       t.append("<div>")
       if self.pnshow:
-        t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+        if self.nregs["pnstyle"] == "title":
+          t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+        else:
+          t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
       elif self.pnlink:
         t.append("  <a id='Page_{0}'></a>".format(pnum))
       t.append("</div>")
@@ -7647,7 +7675,10 @@ class Pph(Book):
     if pnum != "":
       t.append("<div>")
       if self.pnshow:
-        t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+        if self.nregs["pnstyle"] == "title":
+          t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+        else:
+          t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
       elif self.pnlink:
         t.append("  <a id='Page_{0}'></a>".format(pnum))
       t.append("</div>")
@@ -7716,7 +7747,10 @@ class Pph(Book):
     if pnum != "":
       t.append("<div>")
       if self.pnshow:
-        t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+        if self.nregs["pnstyle"] == "title":
+          t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
+        else:
+          t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
       elif self.pnlink:
         t.append("  <a id='Page_{0}'></a>".format(pnum))
       t.append("</div>")
@@ -8053,7 +8087,11 @@ class Pph(Book):
       u.append("<div {} class='figright {}'>".format(ia["id"], idn))
 
     if ia["pageno"] != "":
-      u.append("<span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ia["pageno"]))
+      if self.nregs["pnstyle"] == "title":
+        u.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ia["pageno"])) # new 3.24M
+      else:
+        u.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(ia["pageno"]))
+      #u.append("<span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ia["pageno"]))
       ia["pageno"] = ""
 
     # 16-Apr-2014: placed link in div
@@ -8523,7 +8561,7 @@ class Pph(Book):
       if "=" in options:
         self.warn("Unrecognized option in .fm command: {}".format(self.wb[self.cl]))
     if rend and ((not lz) or (lz and len(self.fnlist))):
-      self.wb[self.cl] = "<hr style='border: none; border-bottom: 1px solid; width: 10%; margin-left: 0; margin-top: 1em; text-align: left; ' />"
+      self.wb[self.cl] = "<hr style='border: none; border-bottom: thin solid; width: 10%; margin-left: 0; margin-top: 1em; text-align: left; ' />"
       self.cl += 1
     else:
       rend = False
@@ -8541,7 +8579,7 @@ class Pph(Book):
         del self.fnlist[:]  # remove everything we handled
         self.fnlist = []
         if rend and rendafter:
-          self.wb.append("<hr style='border: none; border-bottom: 1px solid; width: 10%; margin-left: 0; margin-top: 1em; text-align: left; ' />")
+          self.wb.append("<hr style='border: none; border-bottom: thin solid; width: 10%; margin-left: 0; margin-top: 1em; text-align: left; ' />")
           self.cl += 1
       else:
         self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
