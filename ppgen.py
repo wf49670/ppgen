@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53c7"    # 12-Oct-2015
+VERSION="3.53c8"    # 14-Oct-2015
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -51,6 +51,8 @@ VERSION="3.53c7"    # 12-Oct-2015
 #  Implement new named register, pnstyle, with values of title or content, to control
 #    how the page numbers are generated and provide workaround for CSS validator bug.
 #    Default: content, which avoids the bug.
+#3.53c8:
+#  Fix dotcmds table so it accepts the .ix directive
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1609,6 +1611,7 @@ class Book(object):
       ".fs" :  (self.doFontSize, None),
       ".il" :  (self.doIllo, None),
       ".in" :  (self.doIn, None),
+      ".ix" :  (self.doIx, None),
       ".ll" :  (self.doLl, None),
       ".ti" :  (self.doTi, None),
       ".li" :  (self.doLit, None),
@@ -1649,6 +1652,7 @@ class Book(object):
       ".fs" :  (self.doFontSize, None),
       ".il" :  (self.doIllo, None),
       ".in" :  (self.doIn, None),
+      ".ix" :  (self.doIx, None),
       ".ll" :  (self.doLl, None),
       ".ti" :  (self.rejectWithinList, None), # can't allow this one without implementing a stack for persistent .ti
       ".li" :  (self.doLit, None),
