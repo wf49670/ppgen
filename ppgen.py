@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53c8"    # 14-Oct-2015
+VERSION="3.53c9"    # 08-Nov-2015
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -53,6 +53,9 @@ VERSION="3.53c8"    # 14-Oct-2015
 #    Default: content, which avoids the bug.
 #3.53c8:
 #  Fix dotcmds table so it accepts the .ix directive
+#3.53c9:
+#  (HTML) Allow .nf blocks to have only centered (.ce) and right-aligned (.rj) lines of text
+#  (txt)  Fix problem of <span> appearing in text tables with multi-line cells and valign = b or m
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -5470,7 +5473,7 @@ class Ppt(Book):
         if len(w[i]) < maxheight: # need to add blank lines in this cell
           if not valigns[i] in ['t','b','m']:
             self.fatal("table vertial alignment must be 't', 'b', or 'm'")
-          if valigns[i] == 't':
+          if valigns[i] == 't' or w[i][0].strip() == "<span>": # force <span> to top of cell to make it easier to recognize and remove
             w[i] = w[i] + [""] * (maxheight - len(w[i]))
           if valigns[i] == 'b':
             w[i] = [""] * (maxheight - len(w[i])) + w[i]
@@ -8401,6 +8404,7 @@ class Pph(Book):
             self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
           else:
             t.append("      <div style='{}{}'>{}</div>".format(pst, spvs, self.wb[i]))
+            printable_lines_in_block += 1
           i += 1
           count -= 1
         continue
@@ -8426,6 +8430,7 @@ class Pph(Book):
             self.warn(".di not supported within .nf block: {}".format(self.wb[i]))
           else:
             t.append("      <div style='{}{}'>{}</div>".format(pst, spvs, self.wb[i]))
+            printable_lines_in_block += 1
           i += 1
           count -= 1
         continue
