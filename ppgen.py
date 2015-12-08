@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53c9"    # 08-Nov-2015
+VERSION="3.53ca"    # 8-Dec-2015
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -56,6 +56,8 @@ VERSION="3.53c9"    # 08-Nov-2015
 #3.53c9:
 #  (HTML) Allow .nf blocks to have only centered (.ce) and right-aligned (.rj) lines of text
 #  (txt)  Fix problem of <span> appearing in text tables with multi-line cells and valign = b or m
+#3.53ca:
+#  (txt) Fix error of long .it lines not being generated with proper hanging indent.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -5807,16 +5809,15 @@ class Ppt(Book):
 
     else:            # beginning an ordered list
       if indent != "":
-        options, indent = self.get_id("indent", options)
         try:
-          self.regIN = int(indent) + 2 # indent specified is to marker; regIN is to text, not marker
+          self.regIN = int(indent) + self.list_item_width + 2 # indent specified is to marker; regIN is to text, not marker
         except:
           self.crash_w_context("Invalid indent= value: {}".format(indent), self.cl)
       else:
         if len(self.liststack) > 1: # nested?
           self.regIN += self.list_item_width # indent to new text position
         else:
-          self.regIN += 3 # if no indent specified, force an indent of 1 before the marker. 3 specifies indent to text
+          self.regIN += 1 + self.list_item_width + 2 # if no indent specified, force an indent of 1 before the marker. 3 specifies indent to text
 
     self.cl += 1
 
