@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53ca"    # 8-Dec-2015
+VERSION="3.53ca1"    # 8-Dec-2015
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -58,6 +58,8 @@ VERSION="3.53ca"    # 8-Dec-2015
 #  (txt)  Fix problem of <span> appearing in text tables with multi-line cells and valign = b or m
 #3.53ca:
 #  (txt) Fix error of long .it lines not being generated with proper hanging indent.
+#3.53ca1
+#  Fix several nesting issues for .ol, .ul
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2269,7 +2271,7 @@ class Book(object):
 
     else: # beginning an unordered list
       if len(self.liststack) > 0:
-        if not self.list_item_active:
+        if not self.list_itblock_active:
           self.crash_w_context("Nested list must occur within a list item", self.cl)
       self.dotcmdstack.append(self.dotcmds)
       self.dotcmds = self.list_dotcmds   # restrict set of valid dot cmds within a list
@@ -2338,7 +2340,7 @@ class Book(object):
 
     else: # beginning an ordered list
       if len(self.liststack) > 0:
-        if not self.list_item_active:
+        if not self.list_itblock_active:
           self.crash_w_context("Nested list must occur within a list item", self.cl)
       self.dotcmdstack.append(self.dotcmds)
       self.dotcmds = self.list_dotcmds   # restrict set of valid dot cmds within a list
@@ -5826,7 +5828,8 @@ class Ppt(Book):
     startIt = self.doItCommon()
 
     if not startIt:   # end of list item
-      self.eb.append(".RS -1") # eliminate one blank line after the item block
+      pass
+      ###self.eb.append(".RS -1") # eliminate one blank line after the item block
 
     # starting a list item
     else:
@@ -9757,6 +9760,7 @@ class Pph(Book):
     if not startIt:   # end of list item
       self.wb[self.cl] = (lispaces * " ") + "</li>" # end the item
       self.list_item_active = False
+      self.list_itblock_active = False
       self.cl += 1
 
     # starting a list item
