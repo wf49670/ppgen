@@ -22,7 +22,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53ca1"    # 8-Dec-2015
+VERSION="3.53ca3"    # 13-Dec-2015
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -44,9 +44,9 @@ VERSION="3.53ca1"    # 8-Dec-2015
 #3.53c5:
 #  Fix error in wrapping a paragraph that contains a .bn directive (text version only)
 #3.53c6:
-#  Fix .sr error resulting in no changes when processing search strings containing \n 
+#  Fix .sr error resulting in no changes when processing search strings containing \n
 #3.53c7:
-#  Change px specifications on borders to "thin". 
+#  Change px specifications on borders to "thin".
 #  Change padding on .pageno to use "em" rather than "px".
 #  Implement new named register, pnstyle, with values of title or content, to control
 #    how the page numbers are generated and provide workaround for CSS validator bug.
@@ -60,6 +60,10 @@ VERSION="3.53ca1"    # 8-Dec-2015
 #  (txt) Fix error of long .it lines not being generated with proper hanging indent.
 #3.53ca1
 #  Fix several nesting issues for .ol, .ul
+#3.53ca2
+#  Fix more nesting issues for .ol, .ul
+#  Fix alignment for .ul items when style=none
+
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -130,6 +134,7 @@ class Book(object):
   list_item_style = ''  # no item marker for unordered lists yet
   list_item_value = 0   # no item marker value for ordered lists yet
   list_item_width = 0   # no item marker value width for ordered lists yet
+  prev_width = 0        # no previous width yet for lists
   list_item_sep = ''
   list_item_active = False # no list item active
   list_itblock_active = False
@@ -1661,7 +1666,7 @@ class Book(object):
       ".in" :  (self.doIn, None),
       ".ix" :  (self.doIx, None),
       ".ll" :  (self.doLl, None),
-      ".ti" :  (self.rejectWithinList, None), # can't allow this one without implementing a stack for persistent .ti
+      ".ti" :  (self.doTi, None),
       ".li" :  (self.doLit, None),
       ".de" :  (self.doDef, None),
       ".pb" :  (self.doPb, None),
@@ -2238,6 +2243,33 @@ class Book(object):
     cmd = self.wb[self.cl][0:3]
     self.crash_w_context("{} directive not allowed within .ul or .ol block".format(cmd), self.cl)
 
+  # push the list-related settings onto a stack when beginning a new list
+  def push_list_stack(self, dotcmds):
+    self.dotcmdstack.append(self.dotcmds)
+    self.liststack.append((self.list_type, self.list_item_style, self.list_item_value,
+                           self.list_item_width, self.dlbuffer, self.list_item_active,
+                           self.list_itblock_active, self.regIN, self.prev_width,
+                           self.regTI, self.regTIp)) # save important info for nested lists
+    self.dotcmds = dotcmds   # restrict set of valid dot cmds within a list
+    self.regTI = 0    # always start these at 0 for a new stack
+    self.regTIP = 0
+
+  # pop the stacked list settings and restore to self variables
+  def pop_list_stack(self):
+    currlist = self.liststack.pop()
+    self.list_type = currlist[0]
+    self.list_item_style = currlist[1]
+    self.list_item_value = currlist[2]
+    self.list_item_width = currlist[3]
+    self.dlbuffer = currlist[4]
+    self.list_item_active = currlist[5]
+    self.list_itblock_active = currlist[6]
+    self.regIN = currlist[7]
+    self.prev_width = currlist[8]
+    self.regTI = currlist[9]
+    self.regTIp = currlist[10]
+    self.dotcmds = self.dotcmdstack.pop()
+
   # Does common processing for doUl. Returns False if .ul- and True if .ul
   #   note: CSS specifications more limited in some ways; only specific specifications allowed
   #         but also allow none (space). Also, separator is always a "." for ol, ex. for "none".
@@ -2257,31 +2289,19 @@ class Book(object):
         self.crash_w_context("No open .ul block to close with .ul-", self.cl)
       elif self.list_type != "u":
         self.crash_w_context("Cannot close .ol block with .ul-", self.cl)
-      currlist = self.liststack.pop()
-      self.list_type = currlist[0]
-      self.list_item_style = currlist[1]
-      self.list_item_value = currlist[2]
-      self.list_item_width = currlist[3]
-      self.dlbuffer = currlist[4]
-      self.list_item_active = currlist[5]
-      self.list_itblock_active = currlist[6]
-      self.regIN = currlist[7]
-      self.dotcmds = self.dotcmdstack.pop()
+      self.pop_list_stack()
       return (False, active, "", id, clss)
 
     else: # beginning an unordered list
       if len(self.liststack) > 0:
-        if not self.list_itblock_active:
+        if not self.list_item_active:
           self.crash_w_context("Nested list must occur within a list item", self.cl)
-      self.dotcmdstack.append(self.dotcmds)
-      self.dotcmds = self.list_dotcmds   # restrict set of valid dot cmds within a list
 
-      self.liststack.append((self.list_type, self.list_item_style, self.list_item_value,
-                             self.list_item_width, self.dlbuffer, self.list_item_active,
-                             self.list_itblock_active, self.regIN)) # save important info for nested lists
+      self.push_list_stack(self.list_dotcmds)
+
       self.list_type = "u"
       self.list_item_active = False
-      prev_width = self.list_item_width # remember item width for prior level of list, if any
+      self.prev_width = self.list_item_width # remember item width for prior level of list, if any
       self.list_item_width = 2 # set list_item_width for this level of list: 1 for the character + 1 for a blank
 
       options = self.wb[self.cl][4:].strip()
@@ -2296,6 +2316,8 @@ class Book(object):
       if style:
         if style.lower() in self.list_styles_u:
           self.list_item_style = style.lower()
+          if self.list_item_style == "none": # no marker or space if style=none
+             self.list_item_width = 0
         else:
           self.warn_w_context("Unrecognized list item style {}, disc assumed.".format(style), self.cl)
           self.list_item_style = 'disc'
@@ -2326,32 +2348,21 @@ class Book(object):
         self.crash_w_context("No open .ol block to close with .ol-", self.cl)
       elif self.list_type != "o":
         self.crash_w_context("Cannot close .ul block with .ol-", self.cl)
-      currlist = self.liststack.pop()
-      self.list_type = currlist[0]
-      self.list_item_style = currlist[1]
-      self.list_item_value = currlist[2]
-      self.list_item_width = currlist[3]
-      self.dlbuffer = currlist[4]
-      self.list_item_active = currlist[5]
-      self.list_itblock_active = currlist[6]
-      self.regIN = currlist[7]
-      self.dotcmds = self.dotcmdstack.pop()
+      self.pop_list_stack()
       return (False, active, "", id, clss)
 
     else: # beginning an ordered list
       if len(self.liststack) > 0:
-        if not self.list_itblock_active:
+        if not self.list_item_active:
           self.crash_w_context("Nested list must occur within a list item", self.cl)
-      self.dotcmdstack.append(self.dotcmds)
-      self.dotcmds = self.list_dotcmds   # restrict set of valid dot cmds within a list
 
-      self.liststack.append((self.list_type, self.list_item_style, self.list_item_value,
-                             self.list_item_width, self.dlbuffer, self.list_item_active,
-                             self.list_itblock_active, self.regIN)) # save important info for nested lists
+      self.push_list_stack(self.list_dotcmds)
+
       self.list_type = "o"
       self.list_item_active = False
+      self.list_itblock_active = False
       self.list_item_value = 0 # will force to start at 1
-      prev_width = self.list_item_width
+      self.prev_width = self.list_item_width
 
       options = self.wb[self.cl][4:].strip()
       if "style=" in options:
@@ -2390,7 +2401,7 @@ class Book(object):
 
   # Does common processing for doIt. Returns False if .it- and True if .it
   def doItCommon(self):
-    if self.list_type == None: # do we have a list?
+    if self.list_type != "o" and self.list_type != "u": # do we have a list?
       self.crash_w_context("No open .ol/.ul block for .it directive", self.cl)
     elif self.wb[self.cl].startswith(".it-"): # trying to end a list item?
       if self.list_itblock_active: # must have a list item to end
@@ -2416,33 +2427,22 @@ class Book(object):
         self.crash_w_context("No open .dl block to close with .dl-", self.cl)
       elif self.list_type != "d":
         self.crash_w_context("Cannot close .dl block with {}".format(self.wb[self.cl][0:3]), self.cl)
-      currlist = self.liststack.pop()
-      self.list_type = currlist[0]
-      self.list_item_style = currlist[1]
-      self.list_item_value = currlist[2]
-      self.list_item_width = currlist[3]
-      self.dlbuffer = currlist[4]
-      self.list_item_active = currlist[5]
-      self.list_itblock_active = currlist[6]
-      self.regIN = currlist[7]
-      self.dotcmds = self.dotcmdstack.pop()
+
+      self.pop_list_stack()
       return (False, "", id, clss)
 
     else: # beginning a definition list
       if len(self.liststack) > 0:
         if not self.list_item_active:
           self.crash_w_context("Nested list must occur within a list item", self.cl)
-      self.dotcmdstack.append(self.dotcmds)
-      self.dotcmds = self.list_dotcmds   # restrict set of valid dot cmds within a list
 
-      self.liststack.append((self.list_type, self.list_item_style, self.list_item_value,
-                             self.list_item_width, self.dlbuffer, self.list_item_active,
-                             self.list_itblock_active, self.regIN)) # save important info for nested lists
+      self.push_list_stack(self.list_dotcmds)
+
       self.list_type = "d"
       self.list_item_active = False
-      prev_width = self.list_item_width # remember item width for prior level of list, if any
+      self.prev_width = self.list_item_width # remember item width for prior level of list, if any
       ### not sure what next line should be
-      self.list_item_width = 0 # set list_item_width for this level of list: 1 for the character + 1 for a blank
+      self.list_item_width = 0 # set list_item_width for this level of list (no markers, so 0)
 
       options = self.wb[self.cl][4:].strip()
 
@@ -4131,9 +4131,19 @@ class Ppt(Book):
               break
         i += 1
 
+    # remove any left-over .RS -3 directives
+    i = 0
+    while i < len(self.eb):
+      if self.eb[i] == ".RS -3": # if special internal flag for .ul/.ol/.it processing survived, delete it
+        del self.eb[i]
+        continue
+      i += 1
+
     # combine space requests
     i = 0
     while i < len(self.eb) - 1:
+      if self.eb[i] == ".RS c": # if special flag for .ul/.ol/.it processing survived, convert to normal spacing request
+        self.eb[i] = ".RS 1"
       m1 = re.match(r"\.RS (-?)(\d+)", self.eb[i])
       m2 = re.match(r"\.RS (-?)(\d+)", self.eb[i+1])
       if m1 and m2:
@@ -4144,6 +4154,7 @@ class Ppt(Book):
         # .rs -2
         # .rs 1
         # stuff
+        # where we will delete the .RS 1 and append "stuff" to the marker line
         if (m1.group(1) == "-" and m1.group(2) == "2" and
             m2.group(1) == "" and m2.group(2) == "1"):
           if i < len(self.eb) - 2 and not self.eb[i+2].startswith("."):
@@ -4160,6 +4171,20 @@ class Ppt(Book):
         self.eb[i] = ".RS {}".format(spcrq)
         del self.eb[i+1] # combine
         continue
+      elif m1:
+        # special case for .ol/.ul of .RS -1 before an item
+        # without another .RS after it. Delete a blank line (if there is
+        # one) and delete the .RS -1
+        if m1.group(1) == "-" and m1.group(2) == "1":
+          if i > 0 and self.eb[i-1] == "":
+            del self.eb[i]
+            del self.eb[i-1]
+          elif i < (len(self.eb)-1) and self.eb[i+1] == "":
+            del self.eb[i+1]
+            del self.eb[i]
+          else:
+            del self.eb[i]
+          continue
       i += 1
 
     # convert remaining .RS requests into real spaces
@@ -4606,7 +4631,8 @@ class Ppt(Book):
         else:
           t = ["[{}]".format(self.nregs["Illustration"])]
         self.eb += t
-      self.eb.append(".RS 1") # request at least one space in text after illustration
+      self.eb.append(".RS c") # request at least one space in text after illustration
+                              # (special flag for .ul/.ol/.it processing)
     else:
       self.crash_w_context("Malformed .il directive: {}".format(self.wb[self.cl]), self.cl)
 
@@ -4766,7 +4792,7 @@ class Ppt(Book):
       for i,line in enumerate(t):
         t[i] = " "+ t[i]
     t.insert(0, ".RS 1")
-    t.append(".RS 1")
+    t.append(".RS c") # (special flag for .ul/.ol/.it processing)
     self.eb.extend(t)
 
   # calculate block width
@@ -4865,7 +4891,7 @@ class Ppt(Book):
       else:
         self.eb.append(s) ### need to squash blanks
       i += 1
-    self.eb.append(".RS 1")
+    self.eb.append(".RS c") # (special flag for .ul/.ol/.it processing)
     self.cl = i + 1 # skip the closing .nf-
 
   # no-fill, block (text)
@@ -4951,7 +4977,7 @@ class Ppt(Book):
       for i,line in enumerate(t):
         t[i] = " "+ t[i]
     t.insert(0, ".RS 1")
-    t.append(".RS 1")
+    t.append(".RS c") # (special flag for .ul/.ol/.it processing)
     self.eb.extend(t)
 
   # no-fill, right (text)
@@ -5019,7 +5045,7 @@ class Ppt(Book):
         self.eb.append(s) ### need to squash blanks
       i += 1
     self.cl = i + 1 # skip the closing .nf-
-    self.eb.append(".RS 1")
+    self.eb.append(".RS c") # (special flag for .ul/.ol/.it processing)
 
   # .nf no-fill blocks, all types (text)
   # called first, then dispatched
@@ -5592,7 +5618,7 @@ class Ppt(Book):
           kl = temp # set next "left" character from remembered character
         self.eb[r] = line
 
-    self.eb.append(".RS 1")  # request blank line below table
+    self.eb.append(".RS c")  # request blank line below table (special flag for .ul/.ol/.it processing)
     self.cl += 1  # move past .ta-
 
   def doDropimage(self):
@@ -5747,7 +5773,7 @@ class Ppt(Book):
       self.regTI = 0 # reset any temporary indent
       # set paragraph spacing
       u.insert(0, ".RS 1") # before
-      u.append(".RS 1") # after
+      u.append(".RS c") # after (special flag for .ul/.ol/.it processing)
       self.eb += u
     elif bnInPara:
       bnt.append(s)
@@ -5768,12 +5794,22 @@ class Ppt(Book):
   #   class=<class-value> (ignored in text)
   #
   def doUl(self):
+
+    prev_itblock_active = self.list_itblock_active
+
     startUl, active, indent, id, clss = self.doUlCommon()  # id, clss ignored for text
 
     if not startUl: # end of unordered list
       pass    # doUlCommon did everything we need
 
     else:     # beginning an unordered list
+
+      if len(self.eb) > 0 and self.eb[-1] == ".RS -3": # are we immediately after a .it directive?
+        self.eb.pop()             # If so, remove the .RS -3 directive
+      elif prev_itblock_active:   # If not, is a list item block active?
+        if len(self.eb) > 0 and self.eb[-1] == ".RS c":  # yes, see if there's an .RS c from prior processing and delete it
+                                                         # PPer is responsibility for spacing within .ul/.ol block
+          self.eb.pop()             # if if found as it's extraneous
 
       if indent != "":
         try:
@@ -5783,8 +5819,10 @@ class Ppt(Book):
       else:
         if len(self.liststack) > 1: # nested?
           self.regIN += self.list_item_width # indent to new text position
-        else:
+        elif self.list_item_style != "none":
           self.regIN += 3 # if no indent specified, force an indent of 1 before the marker. 3 specifies indent to text
+        else:
+          pass # don't adjust indent if no indent specified and style = none
 
     self.cl += 1
 
@@ -5804,12 +5842,23 @@ class Ppt(Book):
   # note: to match HTML, separator is always "."
   #
   def doOl(self):
+
+    prev_itblock_active = self.list_itblock_active
+
     startOl, active, indent, id, clss = self.doOlCommon() # id, clss ignored for text
 
     if not startOl:  # end of ordered list
       pass           # doOlCommon did everything we need
 
     else:            # beginning an ordered list
+
+      if len(self.eb) > 0 and self.eb[-1] == ".RS -3": # are we immediately after a .it directive?
+        self.eb.pop()             # If so, remove the .RS -3 directive
+      elif prev_itblock_active:   # If not, is a list item block active?
+        if len(self.eb) > 0 and self.eb[-1] == ".RS c":  # yes, see if there's an .RS c from prior processing, and delete
+                                                         # PPer is responsibility for spacing within .ul/.ol block
+          self.eb.pop()             # if if found as it's extraneous
+
       if indent != "":
         try:
           self.regIN = int(indent) + self.list_item_width + 2 # indent specified is to marker; regIN is to text, not marker
@@ -5827,28 +5876,38 @@ class Ppt(Book):
   def doIt(self):
     startIt = self.doItCommon()
 
+    aaadbg = self.wb[self.cl]
     if not startIt:   # end of list item
-      pass
-      ###self.eb.append(".RS -1") # eliminate one blank line after the item block
+      self.list_item_active = False
+      self.list_itblock_active = False
+      if len(self.eb) > 0 and self.eb[-1] == ".RS c":
+        self.eb.pop() # Delete the .RS c; PPer is in charge of spacing
 
     # starting a list item
     else:
-      hang = -1 * self.list_item_width # amount of hanging indent
+      self.list_item_active = True
+      indent = self.regIN + self.list_item_width####
+      if self.list_item_style == "none":
+        indent += 2
+      hang = -1 * self.list_item_width if (self.list_item_style != "none") else -2
       if self.list_type == "o":
         value = self.list_item_style[1]()
         fmt = "{:>" + "{}".format(self.list_item_width - 2) + "}" + "." + " "
         l = fmt.format(value)
       else:
-        l = self.list_styles_u[self.list_item_style] + " "
+        l = (self.list_styles_u[self.list_item_style] + " ") if (self.list_item_style != "none") else ""
       if self.wb[self.cl] == ".it": # start of a .it block?
+        if self.list_itblock_active: # already immediately inside a .it block?
+          self.crash_w_context("Can't have .it within a .it block", self.cl)
+        self.list_itblock_active = True
+        self.eb.append(".RS -3") # special flag for doul/dool
         # this one won't be wrapped, so need to apply indent manually
         l = ((self.regIN + hang) * " ") + l # note: hang is negative, so must add it ### need to squash blanks
         self.eb.append(l)
         self.eb.append(".RS -2") # eliminate one blank line and merge lines
-        self.list_itblock_active = True
       else:      # single (possibly very long) item line that we'll need to wrap
         l += self.wb[self.cl][4:].strip() # append item text to line
-        t = self.wrap(l, self.regIN, self.regLL, hang)
+        t = self.wrap(l, indent, self.regLL, hang)
         self.eb += t
 
     self.cl += 1
@@ -7129,7 +7188,7 @@ class Pph(Book):
       elif self.nregs["pnstyle"] != "content":
         self.warn("Invalid .nr pnstyle value {}; content assumed".format(self.nregs["pnstyle"]))
         self.nregs["pnstyle"] = "content"
-        
+
     else:
       self.css.addcss("[1100] body { margin-left: 8%; margin-right: 8%; }")
 
@@ -9592,7 +9651,7 @@ class Pph(Book):
           s += s_bot
 
     # setup CSS for paragraphs inside list items
-    if self.list_item_active:
+    if self.list_item_active and (self.list_type == "o" or self.list_type == "u"):
       self.css.addcss("[1171] .li-p-first { margin-top: inherit; " + s_bot + "}")
       self.css.addcss("[1171] .li-p-mid {" + s_top + s_bot + "}")
       self.css.addcss("[1171] .li-p-last {" + s_top + " margin-bottom: inherit; }")
@@ -9662,7 +9721,7 @@ class Pph(Book):
   #   class=<class-value>
   #
   def doUl(self):
-    startul, active, indent, id, clss = self.doUlCommon()
+    startul, li_active, indent, id, clss = self.doUlCommon()
 
     t = []
     depth = len(self.liststack) - 1
@@ -9672,7 +9731,8 @@ class Pph(Book):
 
     # ending an unordered list
     if not startul:
-      t.append((lispaces * " ") + "</li>")
+      if li_active:
+        t.append((lispaces * " ") + "</li>")
       t.append(((ulspaces + 4) * " ") + "</ul>")
       #if len(self.liststack) > 1:
       #  t.append(((prev_lispaces + 4) * " ") + "</li>")
@@ -9712,7 +9772,7 @@ class Pph(Book):
   #   class=<class-value>
   #
   def doOl(self):
-    startol, active, indent, id, clss = self.doOlCommon()
+    startol, li_active, indent, id, clss = self.doOlCommon()
 
     t = []
     depth = len(self.liststack) - 1
@@ -9722,7 +9782,8 @@ class Pph(Book):
 
     # ending an ordered list
     if not startol:
-      t.append((lispaces * " ") + "</li>")
+      if li_active:
+        t.append((lispaces * " ") + "</li>")
       t.append(((olspaces + 4) * " ") + "</ol>")
       #if len(self.liststack) > 1:
       #  t.append(((prev_lispaces + 4) * " ") + "</li>")
@@ -9757,11 +9818,12 @@ class Pph(Book):
     ulolspaces = 2 + (depth * 4)
     lispaces = ulolspaces + 2
 
-    if not startIt:   # end of list item
-      self.wb[self.cl] = (lispaces * " ") + "</li>" # end the item
-      self.list_item_active = False
+    if not startIt:   # end of list item;
+      #self.wb[self.cl] = (lispaces * " ") + "</li>" # end the item
+      #self.list_item_active = False
       self.list_itblock_active = False
-      self.cl += 1
+      #self.cl += 1
+      del self.wb[self.cl] # delete .it-
 
     # starting a list item
     else:
