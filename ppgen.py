@@ -10,7 +10,14 @@
 
 import argparse
 from time import gmtime, strftime
-import re, sys, string, os, platform
+try:
+  import regex as re
+  re.DEFAULT_VERSION = re.VERSION0
+  with_regex = " (with regex)"
+except:
+  import re
+  with_regex = ""
+import sys, string, os, platform
 import textwrap
 import codecs
 import unicodedata
@@ -22,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53ca2"    # 13-Dec-2015
+VERSION="3.53ca4" + with_regex   # 8-Jan-2016
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -63,7 +70,18 @@ VERSION="3.53ca2"    # 13-Dec-2015
 #3.53ca2
 #  Fix more nesting issues for .ol, .ul
 #  Fix alignment for .ul items when style=none
-
+#3.53ca3
+#  Remove support for .it blocks (.it, .it-) leaving only the form ".it some text" as .it blocks aren't really needed.
+#3.53ca4
+#  move some escape processing before doGreek to allow \[ and \] within [Greek: ...] tagging
+#  use the regex package instead of re if available on the user's system, but set default as VERSION0 (compatible with re)
+#  .dl improvements
+#  Fix for <target> inside <sc> string using wrong small-cap class name.
+#  Fix for incorrect HTML on <ul> and <ol> when a class name is specified.
+#  Fix for <fs=..> within page link markup (#...:...#) in HTML. We now use the protected : instead of normal : to avoid
+#    confusing the link handling.
+#  Eliminate possible ".RS c" at end of text output file
+#  Warn about (and then ignore) any specified table borders in Latin-1 output
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -106,7 +124,7 @@ def xp(msg):
   frame,filename,line_number,function_name,lines,index = inspect.stack()[1]
   print("{:5}: {}".format(line_number,msg))
 
-# ====== Book, parent of text and ppnh classes ==========================================
+# ====== Book, parent of Ppt (text) and Pph (HTML) classes ==========================================
 
 class Book(object):
   wb = [] # working buffer
@@ -134,10 +152,15 @@ class Book(object):
   list_item_style = ''  # no item marker for unordered lists yet
   list_item_value = 0   # no item marker value for ordered lists yet
   list_item_width = 0   # no item marker value width for ordered lists yet
+  list_space = False
   prev_width = 0        # no previous width yet for lists
-  list_item_sep = ''
+  outerwidth = 0
+  outerstyle = ''
+  outertype = ''
+  outerregIN = 0
+  list_hang = False
+  list_align = ''
   list_item_active = False # no list item active
-  list_itblock_active = False
   dotcmdstack = [] # stack for valid dotcmds
   warnings = [] # warnings displayed
   cl = 0 # current line number
@@ -1604,94 +1627,108 @@ class Book(object):
       'upper-roman':('upper-roman', self.item_upper_roman),
       }
 
-    self.list_styles_d = {
-      'float':'f',
-      'nofloat':'n',
-      'paragraph':'p',
-      }
-
     self.item_alpha = ' abcdefghijklmnopqrstuvwxyz'
 
-    self.fulldotcmds = {          # switches dot directives to processing routines
+    # format of dotcmds dictionary:
+    # 1. key: the dot directive
+    # 2. the processing routine for the directive
+    # 3. None: no parameters passed to routine
+    #    "cl": self.cl passed to routine
+    self.fulldotcmds = {          # switches dot directives to processing routines####
+      ".ad" :  (self.doAd, None),
+      # .bn handled separately
+      # .ca handled separately
+      # .ce handled separately
+      # .ci handled separately
+      # .cm handled separately
+      # .cv handled separately
+      ".dc" :  (self.doDropcap, "cl"),
+      ".dd" :  (self.doDd, None),  # routine to say "only valid inside a .dl block
+      ".de" :  (self.doDef, None),
+      ".di" :  (self.doDropimage, None),
+      ".dl" :  (self.doDl, None),
+      # .dm handled separately
+      # .dt outside of a .dl block handled separately
+      ".dv" :  (self.doDiv, None),
+      ".fm" :  (self.doFmark, None),
+      ".fn" :  (self.doFnote, None),
+      ".fs" :  (self.doFontSize, None),
+      # .gk handled separately
+      # .gl handled separately
+      # .gu handled separately
       ".h1" : (self.doH1, None),
       ".h2" : (self.doH2, None),
       ".h3" : (self.doH3, None),
       ".h4" : (self.doH4, None),
       ".h5" :  (self.doH5, None),
       ".h6" :  (self.doH6, None),
-      ".sp" :  (self.doSpace, None),
-      ".fs" :  (self.doFontSize, None),
+      ".hr" :  (self.doHr, None),
+      # .if handled separately
+      # .ig handled separately
       ".il" :  (self.doIllo, None),
       ".in" :  (self.doIn, None),
-      ".ix" :  (self.doIx, None),
-      ".ll" :  (self.doLl, None),
-      ".ti" :  (self.doTi, None),
-      ".li" :  (self.doLit, None),
-      ".de" :  (self.doDef, None),
-      ".pb" :  (self.doPb, None),
-      ".hr" :  (self.doHr, None),
-      ".tb" :  (self.doTbreak, None),
-      ".fn" :  (self.doFnote, None),
-      ".fm" :  (self.doFmark, None),
-      ".pi" :  (self.doPi, None),
-      ".ni" :  (self.doNi, None),
-      ".ta" :  (self.doTable, None),
-      ".di" :  (self.doDropimage, None),
-      ".dc" :  (self.doDropcap, "cl"),
-      ".na" :  (self.doNa, None),
-      ".ad" :  (self.doAd, None),
-      ".rj" :  (self.doRj, None),
-      ".nf" :  (self.doNf, None),
-      ".nr" :  (self.doNr, None),
-      ".dv" :  (self.doDiv, None),
-      ".sn" :  (self.doSidenote, None),
-      ".ul" :  (self.doUl, None),
-      ".ol" :  (self.doOl, None),
       ".it" :  (self.doIt, None),
-      ".dl" :  (self.doDl, None),
-      ".dt" :  (self.doDtDd, None),  # routine to say "only valid inside a .dl block
-      ".dd" :  (self.doDtDd, None),  # routine to say "only valid inside a .dl block
+      ".ix" :  (self.doIx, None),
+      ".li" :  (self.doLit, None),
+      ".ll" :  (self.doLl, None),
+      # .ma handled separately
+      ".na" :  (self.doNa, None),
+      ".nf" :  (self.doNf, None),
+      ".ni" :  (self.doNi, None),
+      ".nr" :  (self.doNr, None),
+      ".ol" :  (self.doOl, None),
+      ".pb" :  (self.doPb, None),
+      ".pi" :  (self.doPi, None),
+      # .pm handled separately
+      # .pn handled separately
+      ".rj" :  (self.doRj, None),
+      ".sn" :  (self.doSidenote, None),
+      ".sp" :  (self.doSpace, None),
+      # .sr handled separately
+      ".ta" :  (self.doTable, None),
+      ".tb" :  (self.doTbreak, None),
+      ".ti" :  (self.doTi, None),
+      ".ul" :  (self.doUl, None),
       }
 
     self.list_dotcmds = {          # restricted set of dot commands within a list (.ul, .ol)
+      ".ad" :  (self.doAd, None),
+      ".dc" :  (self.doDropcap, "cl"),
+      ".dd" :  (self.doDd, None),  # routine to crash and say "only valid inside a .dl block"
+      ".de" :  (self.doDef, None),
+      ".di" :  (self.doDropimage, None),
+      ".dl" :  (self.doDl, None),
+      ".dv" :  (self.doDiv, None),
+      ".fm" :  (self.rejectWithinList, None),
+      ".fn" :  (self.rejectWithinList, None),
+      ".fs" :  (self.doFontSize, None),
       ".h1" : (self.rejectWithinList, None),
       ".h2" : (self.rejectWithinList, None),
       ".h3" : (self.rejectWithinList, None),
       ".h4" : (self.rejectWithinList, None),
       ".h5" :  (self.rejectWithinList, None),
       ".h6" :  (self.rejectWithinList, None),
-      ".sp" :  (self.doSpace, None),
-      ".fs" :  (self.doFontSize, None),
+      ".hr" :  (self.doHr, None),
       ".il" :  (self.doIllo, None),
       ".in" :  (self.doIn, None),
-      ".ix" :  (self.doIx, None),
-      ".ll" :  (self.doLl, None),
-      ".ti" :  (self.doTi, None),
-      ".li" :  (self.doLit, None),
-      ".de" :  (self.doDef, None),
-      ".pb" :  (self.doPb, None),
-      ".hr" :  (self.doHr, None),
-      ".tb" :  (self.doTbreak, None),
-      ".fn" :  (self.rejectWithinList, None),
-      ".fm" :  (self.rejectWithinList, None),
-      ".pi" :  (self.doPi, None),
-      ".ni" :  (self.doNi, None),
-      ".ta" :  (self.doTable, None),
-      ".di" :  (self.doDropimage, None),
-      ".dc" :  (self.doDropcap, "cl"),
-      ".na" :  (self.doNa, None),
-      ".ad" :  (self.doAd, None),
-      ".rj" :  (self.doRj, None),
-      ".nf" :  (self.doNf, None),
-      ".nr" :  (self.doNr, None),
-      ".dv" :  (self.doDiv, None),
-      ".sn" :  (self.doSidenote, None),
-      ".ul" :  (self.doUl, None),
-      ".ol" :  (self.doOl, None),
       ".it" :  (self.doIt, None),
-      ".dl" :  (self.doDl, None),
-      ".dt" :  (self.doDtDd, None),  # routine to crash and say "only valid inside a .dl block"
-      ".dd" :  (self.doDtDd, None),  # routine to crash and say "only valid inside a .dl block"
+      ".ix" :  (self.doIx, None),
+      ".li" :  (self.doLit, None),
+      ".ll" :  (self.doLl, None),
+      ".na" :  (self.doNa, None),
+      ".nf" :  (self.doNf, None),
+      ".ni" :  (self.doNi, None),
+      ".nr" :  (self.doNr, None),
+      ".ol" :  (self.doOl, None),
+      ".pb" :  (self.doPb, None),
+      ".pi" :  (self.doPi, None),
+      ".rj" :  (self.doRj, None),
+      ".sn" :  (self.doSidenote, None),
+      ".sp" :  (self.doSpace, None),
+      ".ta" :  (self.doTable, None),
+      ".tb" :  (self.doTbreak, None),
+      ".ti" :  (self.rejectWithinList, None), # can't allow this one without implementing a stack for persistent .ti
+      ".ul" :  (self.doUl, None),
       }
 
     self.dotcmds = self.fulldotcmds # initially allow full set of dot commands
@@ -1699,12 +1736,12 @@ class Book(object):
 
     self.dlbuffer = []
 
-  # Backstop routine to crash and say "only valid inside a .dl block" upon hitting .dt or .dd
+  # Backstop routine to crash and say "only valid inside a .dl block" upon hitting .dd
   #
   # Note: doDl processes and routes all input between .dl and .dl- and also directly
-  #  processes .dt and .dd itself. If they're ever encountered outside of a .dl block this
-  #  routine will get control to reject them.
-  def doDtDd(self):
+  #  processes .dt and .dd itself. If .dd is ever encountered outside of a .dl block this
+  #  routine will get control to reject it.
+  def doDd(self):
 
     self.crash_w_context("{} allowed only as part of a .dl block.".format(self.wb[self.cl][0:3]), self.cl)
 
@@ -1918,6 +1955,7 @@ class Book(object):
   def get_id(self, tgt, attr, np=2):
 
     done = False
+    the_id = None
     m = re.search(r"{}='(.*?)'".format(tgt), attr)  # single quotes
     if m:
       the_id = m.group(1)
@@ -2027,6 +2065,428 @@ class Book(object):
   # display informational message
   def info(self, message):
     sys.stderr.write("  info: " + message + "\n")
+
+  class DefList(object):
+    # Definition List Class (Base definition)
+    # .dl options
+    #    or
+    # .dl-
+    #
+    # options:
+    #   class=<class-value> (specifies a class for the list in HTML; ignored in text)
+    #   collapse = n (default) | y (controls whether metric lines without a term, or successive wrapped paragraph lines,
+    #                               appear at left margin or aligned after the end of the term)
+    #   combine = n (default) | y (controls whether lines without a term (format c) are combined with the prior
+    #                              definition value and wrapped as a paragraph, or not)
+    #   dintent=<integer>       (indents the definition by that amount (default: 0))
+    #   float = y (default) | n (controls whether definition starts on same line as term or not)
+    #   hang = n (default) | y  (controls whether definition lines that must be wrapped will have a hanging indent)
+    #   id=<id-value> (specifies an id for the list in HTML; ignored in text)
+    #   style = dl (default) | paragraph (controls whether html is generated using <dl> or <p>)
+    #   tindent=<integer>       (indents the term by that amount (default: 0))
+    #   w=<integer>             (max length of term or speaker name (default: 10))
+    #
+    #   debug = n (default) | y (controls printing of debug information for .dl)
+    #
+    # Options from the .dl directive are maintained in a dictionary:
+    #   "class": string
+    #   "collapse": True, False
+    #   "combine": True, False
+    #   "dindent":  integer
+    #   "float": True, False
+    #   "hang":     True, False
+    #   "id": string
+    #   "start": True = .dl; False = .dl-
+    #   "style": d(l), p(aragraph)
+    #   "tindent": integer
+    #   "width": integer
+    #
+    # Note: Definition lists operate differently from other dot commands. First, the processing is part of an object,
+    #       defined in this class definition but subclassed for text and HTML processing. Next, the object is in
+    #       control of processing until the matching .dl- is encountered. All lines will either be directly part of
+    #       its output, or indirectly if they are consumed/generated by another dot directive inside the .dl block.
+    #       That is, .dl allows other dot commands within its scope, and actually invokes their associated
+    #       processing routine, until the relevant .dl- is hit.
+
+    def __init__(self, book):
+      self.book = book # save a pointer to the Book object (Ppt or PPh "self") that invoked us, as we will need to
+                       # reference its attributes
+      self.term = ""
+      self.paragraph = ""
+      self.definition = ""
+
+    # Overridable routine to bump the current line counter
+    # (Ppt will simply increment Ppt.cl, which counts lines in self.wb. Pph will delete the current line, as it uses
+    #  Pph.wb as its output buffer.)
+    def bump_cl(self):
+      self.book.crash_w_context("Internal error; class method bump_cl not overridden", self.book.cl)
+
+    def analyze_dl(self):
+      # Analyzes the .dl (or .dl-) command, saving options and doing common initialization or termination processing
+      #
+      # Also sets:
+      #   self.book.list_item_style ("p" = paragraph, "d" = dl)
+      #   self.book. list_item_width (max width of a term/speaker name)
+      #   and some other self. or self.book. things
+
+      b = self.book # short pointer to Ppt or Pph "self"
+
+      dopts = {}
+      dopts["class"] = ""
+      dopts["collapse"] = False
+      dopts["combine"] = False
+      dopts["dindent"] = 0
+      dopts["float"] = True
+      dopts["hang"] = True
+      dopts["id"] = ""
+      dopts["start"] = True
+      dopts["style"] = "d"
+      dopts["tindent"] = 0
+      dopts["width"] = 10
+      dopts["debug"] = False
+
+      if b.wb[b.cl].startswith(".dl-"): # ending a list
+        b.crash_w_context("No open .dl block to close with .dl-", b.cl)
+
+      else: # beginning a definition list
+        if len(b.liststack) > 0:
+          if not b.list_item_active:
+            b.crash_w_context("Nested list must occur within a list item", b.cl)
+        b.dotcmdstack.append(b.dotcmds)
+        b.dotcmds = b.list_dotcmds   # restrict set of valid dot cmds within a list
+
+        b.liststack.append((b.list_type, b.list_item_style, b.list_item_value,
+                               b.list_item_width, b.dlbuffer, b.list_item_active,
+                               b.list_itblock_active, b.regIN)) # save important info for nested lists
+        b.list_type = "d"
+        b.list_item_active = False
+        prev_width = b.list_item_width # remember item width for prior level of list, if any
+
+        options = b.wb[b.cl][4:].strip()
+
+        if "class=" in options:
+          options, dopts["class"] = b.get_id("class", options)
+
+        if "collapse=" in options:
+          options, temp = b.get_id("collapse", options)
+          if temp.lower().startswith("y"):
+            dopts["collapse"] = True
+          elif temp.lower().startswith("n"):
+            dopts["collapse"] = False
+          else:
+            b.crash_w_context("Invalid collapse value: {}".format(temp), b.cl)
+
+        if "combine=" in options:
+          options, temp = b.get_id("combine", options)
+          if temp.lower().startswith("y"):
+            dopts["combine"] = True
+          elif temp.lower().startswith("n"):
+            dopts["combine"] = False
+          else:
+            b.crash_w_context("Invalid combine value: {}".format(temp), b.cl)
+
+        if "dindent=" in options:
+          options, temp = b.get_id("dindent", options)
+          try:
+            dopts["dindent"] = int(temp)
+          except:
+            b.crash_w_context("Invalid dindent value: {}".format(temp), b.cl)
+
+        if "float=" in options:
+          options, temp = b.get_id("float", options)
+          if temp.lower().startswith("y"):
+            dopts["float"] = True
+          elif temp.lower().startswith("n"):
+            dopts["float"] = False
+          else:
+            b.crash_w_context("Invalid float value: {}".format(temp), b.cl)
+
+        if "hang=" in options:
+          options, temp = b.get_id("hang", options)
+          if temp.lower().startswith("y"):
+            dopts["hang"] = True
+          elif temp.lower().startswith("n"):
+            dopts["hang"] = False
+          else:
+            b.crash_w_context("Invalid hang value: {}".format(temp), b.cl)
+
+        if "id=" in options:
+          options, dopts["id"] = b.get_id("id", options)
+
+        if "style=" in options:
+          options, temp = b.get_id("float", options)
+          if temp.lower().startswith("d"):
+            dopts["style"] = "d"
+          elif temp.lower().startswith("p"):
+            dopts["style"] = "p"
+          else:
+            b.crash_w_context("Invalid style value: {}".format(temp), b.cl)
+        b.list_item_style = dopts["style"]
+
+        if "tindent=" in options:
+          options, temp = b.get_id("tindent", options)
+          try:
+            dopts["tindent"] = int(temp)
+          except:
+            b.crash_w_context("Invalid tindent value: {}".format(temp), b.cl)
+
+        if "w=" in options:
+          options, temp = b.get_id("w", options)
+          try:
+            dopts["width"] = int(temp)
+          except:
+            b.crash_w_context("Invalid w= value: {}".format(w), b.cl)
+        b.list_item_width = dopts["width"]
+
+        if "debug=" in options:
+          options, temp = b.get_id("debug", options)
+          if temp.lower().startswith("y"):
+            dopts["debug"] = True
+          elif temp.lower().startswith("n"):
+            dopts["debug"] = False
+          else:
+            b.crash_w_context("Invalid debug value: {}".format(temp), b.cl)
+
+        if options.strip() != "":
+          b.warn_w_context("Unknown options on .dl directive: {}".format(options), b.cl)
+
+      return dopts
+
+    # Print debug info if requested
+    def print_debug(self, info): # Ppt and Pph will override this
+      print(info)
+
+    # Format debug info if requested
+    def format_debug(self): # Basic data gathering.
+      if self.options["debug"]:
+        b = self.book
+        s = []
+        s.append("*** " + b.wb[b.cl])
+        s.append("*** options: ")
+        keylist = list(self.options.keys())
+        keylist.sort()
+        for key in keylist:
+          s.append("             " + key + ": " + str(self.options[key]))
+        s.append("***")
+        self.print_debug(s) # let Ppt or Pph figure out what to do with it
+
+    # Routine to handle beginning of a .dl
+    def begin_dl(self):
+      self.book.crash_w_context("Internal error; class method begin_dl not overridden", self.book.cl)
+
+    # Routine to handle .dl-
+    def end_dl(self):
+      b = self.book
+      currlist = b.liststack.pop()
+      b.list_type = currlist[0]
+      b.list_item_style = currlist[1]
+      b.list_item_value = currlist[2]
+      b.list_item_width = currlist[3]
+      b.dlbuffer = currlist[4]
+      b.list_item_active = currlist[5]
+      b.list_itblock_active = currlist[6]
+      b.regIN = currlist[7]
+      b.dotcmds = b.dotcmdstack.pop()
+      self.bump_cl()
+
+    # Routine to wrap a definition line that is too long
+    def wrap_def(self):
+      self.book.crash_w_context("Internal error; class method wrap_def not overridden", self.book.cl)
+
+    # Routine to layout a term + definition (non-combining mode)
+    def layout(self):
+      self.book.crash_w_context("Internal error; class method layout not overridden", self.book.cl)
+
+    # Routine to emit term + definition (non-combining mode)
+    def emit_def(self):
+      self.book.crash_w_context("Internal error; class method emit_def not overridden", self.book.cl)
+
+    # Emit a paragraph of definition/dialog for the case where combining
+    def emit_paragraph(self):
+      self.book.crash_w_context("Internal error; class being_dl not overridden", self.book.cl)
+
+    # Routine to finish up any necessary .dl processing before .dl- is handled
+    def finalize_dl(self):
+      self.book.crash_w_context("Internal error; class method finalize_dl not overridden", self.book.cl)
+
+    # Routine to handle blank lines after the first one
+    def add_blank(self):
+      self.book.crash_w_context("Internal error; class method add_blank not overridden", self.book.cl)
+
+    # Routine to handle class= operand on a .dd statement
+    def set_dd_class(self):
+      self.book.crash_w_context("Internal error; class method set_dd_class not overridden", self.book.cl)
+
+    # main processing
+    def run(self):
+
+      b = self.book # short pointer to Ppt or Pph "self"
+
+      self.options  = self.analyze_dl()  # Determine kind of .dl and any specified options
+      self.format_debug()
+      self.bump_cl()
+
+      # Start of definition list
+      # (we won't have a .dl- at this point, as analyze_dl() will issue a crash in that case)
+
+      self.begin_dl() # Let Ppt and Pph do any necessary "beginning of .dl" processing
+
+      # Process the block of statements until we find a matching .dl- or end-of-file
+      #
+      # Each definition line has one of these forms:
+      #   a:  term or speaker name |
+      #   b1: term or speaker name | definition or line of dialog
+      #   b2: | definition or line of dialog (implied term/speaker)
+      #   c:  another line of definition or dialog for prior speaker
+      #
+      #   d:  .dt term or speaker name
+      #       .dd optional-parms definition line of form b2 or c
+      #           where optional-parms is class=class-name
+      #
+      # Notes:
+      #   1. Definition lines may be continued using a backslash as the last character. Such
+      #        lines will be concatenated (the backslash becomes a space) and wrapped.
+      #   2. Blanks preceding the | will be deleted. The | may be followed by
+      #        0 or 1 blank (which will be removed). If followed by more than 1 blank all
+      #        after the first are significant and will be kept. If a line (after processing
+      #        continuation characters) has no | characters (format c), it is treated as a definition/dialog
+      #        line where all leading blanks are significant for the first line if combine=y or on
+      #        all format c lines if combine=n.
+      #   3. Only the first unprotected | within a definition line is significant. Any others will
+      #        be considered part of the text.
+      #   4. Definition entries may contain other blocks, such as .ul, .ol, .nf, etc.
+      #   5. Standard DP formatting has each new speaker as a new paragraph, with a blank line before it, and possibly
+      #        a blank line before the speech, depending on how the book was printed. Therefore, 1 blank line before
+      #        each format a or b line (or the first format c line after a format a line) will be removed. If there is more
+      #        than 1 blank line, the others will be significant and affect vertical spacing.
+      #   6. For combine=y:
+      #           Definition lines of format c occurring after a definition line of format a or b will be
+      #           wrapped into a paragraph with the prior text. The first line will start after the speaker name or term.
+      #           Subsequent lines will appear at the left margin (self.regIN) if collapse=y, but aligned under
+      #           the first line if collapse=n.
+      #   7. For combine=n:
+      #           Definition lines of format c will not combine with previous lines, and will be
+      #           individually left-aligned at the margin (self.regIN) if collapse=y or placed after the implied term if
+      #           collapse=n
+
+
+      blankfound = False
+
+      while b.cl < len(b.wb) and not b.wb[b.cl] == ".dl-":  # process until we hit our .dl-
+
+        # If we hit a dot command, handle it
+        if not b.wb[b.cl].startswith(".dt") and not b.wb[b.cl].startswith(".dd"):
+          if re.match(r"\.[a-z]", b.wb[b.cl]):
+            if self.options["combine"] and (self.term or self.paragraph):
+              self.emit_paragraph()
+            else:
+              assert len(self.dlbuffer) == 0, "Trying to invoke a dot directive from .dl while dlbuffer contains data"
+            b.doDot()
+            continue
+
+        # Not a dot command, must be a definition or blank line
+        #
+        b.list_item_active = True
+        i = b.cl
+        while i < (len(b.wb) - 1) and b.wb[i].endswith("\\"): # handle continued lines
+          b.wb[i] = b.wb[i][:-1] + " " + b.wb[i+1]
+          del b.wb[i+1]
+        if b.wb[i].endswith("\\"):
+          b.crash_w_context("File ends with continued definition line: {}".format(b.wb[i]), i)
+
+        # check for (and emit) blank lines
+        if b.wb[b.cl] == "":
+          # check for paragraph that we need to emit
+          if self.options["combine"] and (self.term or self.paragraph):
+            self.emit_paragraph()
+          else:
+            if blankfound:
+              self.add_blank() # emit any blank lines after the first one in a group
+            else:
+              blankfound = True
+          self.bump_cl()
+          continue
+
+        # check for .dt or .dd (form d of definition line) and handle
+        # Note: text processing is straightforward: turn into form a or b2
+        #       We can ignore the optional parameters on .dd
+        if b.wb[b.cl].startswith(".dt"):
+          b.wb[b.cl] = b.wb[self.cl][4:] + "|"
+
+        elif b.wb[b.cl].startswith(".dd"):
+          m = re.match(r"\.dd( +class=[^ ]*?)? +(.*)", b.wb[b.cl])
+          if m:
+            if m.group(1):
+              self.set_dd_class(m.group(1))
+            if m.group(2).startswith("|"):   # don't add a | if it's already there as the first character
+              b.wb[b.cl] = m.group(2)
+            else:
+              b.wb[b.cl] = "|" + m.group(2)
+          else:
+            b.crash_w_context("Error parsing .dd directive: {} \n".format(b.wb[b.cl]), b.cl)
+
+        # isolate term and definition
+        blankfound = False
+        t = b.wb[b.cl].split("|", maxsplit=1) # split term and definition
+        if len(t) == 2:  # form a or b above
+          self.form_c = False
+          # new term/speaker needs to force emission of prior paragraph for combine=y
+          if self.options["combine"] and (self.term or self.paragraph):
+            self.emit_paragraph()
+          self.term = t[0].rstrip()
+          self.definition = t[1]
+          if len(self.definition) >= 1:   # remove at most 1 leading blank from the definition
+            if self.definition[0] == " ":
+              self.definition = self.definition[1:]
+
+          if self.options["combine"]:
+            self.paragraph += self.definition + " "
+            self.bump_cl()
+            continue
+
+        else:   # form c above
+          self.form_c = True
+          if not self.options["combine"]: # if not combining,
+            self.term = ""
+            self.definition = t[0].rstrip() # leading blanks are significant
+
+          else: # combining
+            if not self.paragraph: # if first line of definition
+              self.term = ""           # nullify the term
+              t[0] = t[0].rstrip() # remove only trailing blanks from form c line
+
+            self.paragraph += t[0] + " "
+            self.bump_cl()
+            continue
+
+        # wrap the definition as needed (Note: only get here if not combining)
+        #
+        self.wrap_def()
+
+        # layout the term and definition line(s)
+        self.layout()
+
+        # append definition line(s) to output
+        self.emit_def()
+
+        self.bump_cl()
+
+      # hit eof or .dl-
+      if b.cl >= len(b.wb): # oops: no .dl- for me
+        b.crash_w_context("Missing .dl- for this .dl block", dlstart)
+
+      else:
+        if self.options["combine"] and (self.term or self.paragraph):
+          self.emit_paragraph()
+
+
+      # At this point we have hit the .dl- that matches our .dl, so
+      # First, we give Ppt or Pph an opportunity to do any final output for the current .dl
+      # Then we allow them to do whatever final cleanup may be needed
+      self.finalize_dl()
+      self.end_dl()
+
+      return
 
   # all dot commands are switched here
   def doDot(self):
@@ -2246,10 +2706,27 @@ class Book(object):
   # push the list-related settings onto a stack when beginning a new list
   def push_list_stack(self, dotcmds):
     self.dotcmdstack.append(self.dotcmds)
-    self.liststack.append((self.list_type, self.list_item_style, self.list_item_value,
-                           self.list_item_width, self.dlbuffer, self.list_item_active,
-                           self.list_itblock_active, self.regIN, self.prev_width,
-                           self.regTI, self.regTIp)) # save important info for nested lists
+    self.outerstyle = self.list_item_style # remember item style for outer level of list, if any
+    self.outerwidth = self.list_item_width # also outer item width
+    self.outertype = self.list_type        # and outer list type
+    self.outerregIN = self.regIN
+    # save important info for nested lists
+    self.liststack.append((self.list_type,       # 0
+                           self.list_item_style, # 1
+                           self.list_item_value, # 2
+                           self.list_item_width, # 3
+                           self.dlbuffer,        # 4
+                           self.list_item_active,# 5
+                           self.list_space,      # 6
+                           self.regIN,           # 7
+                           self.outerwidth,      # 8
+                           self.regTI,           # 9
+                           self.regTIp,          # 10
+                           self.outerstyle,      # 11
+                           self.outertype,       # 12
+                           self.outerregIN,      # 13
+                           self.list_hang,       # 14
+                           self.list_align))     # 15
     self.dotcmds = dotcmds   # restrict set of valid dot cmds within a list
     self.regTI = 0    # always start these at 0 for a new stack
     self.regTIP = 0
@@ -2263,12 +2740,135 @@ class Book(object):
     self.list_item_width = currlist[3]
     self.dlbuffer = currlist[4]
     self.list_item_active = currlist[5]
-    self.list_itblock_active = currlist[6]
+    self.list_space = currlist[6]
     self.regIN = currlist[7]
-    self.prev_width = currlist[8]
+    self.outerwidth = currlist[8]
     self.regTI = currlist[9]
     self.regTIp = currlist[10]
+    self.outerstyle = currlist[11]
+    self.outertype = currlist[12]
+    self.outerregIN = currlist[13]
+    self.list_hang = currlist[14]
+    self.list_align = currlist[15]
     self.dotcmds = self.dotcmdstack.pop()
+
+  # Parse options on .ul or .ol directives
+  # type: "u" (.ul) or "o" (.ol)
+  # options:
+  #   for .ul:  style="disc | circle | square | none" (default: disc)
+  #   for .ol: style="decimal | lower-alpha | lower-roman | upper-alpha | upper-roman" (default: decimal)
+  #   indent="2" (indent is to the marker.)
+  #   for .ol: w="2" (number of characters allowed for the item "number")
+  #   for .ol: align=r (default) or l
+  #   space=n (default) or y
+  #   hang=n (default) or y
+  #   id=<id-value> (ignored in text)
+  #   class=<class-value> (ignored in text)
+  #
+  def parse_UlOl_options(self, type):
+      options = self.wb[self.cl][4:].strip()
+
+      id     = ""
+      clss   = ""
+      indent = -1
+
+      if "indent=" in options:
+        options, indent = self.get_id("indent", options)
+        if indent:
+          try:
+            temp = int(indent)
+          except:
+            self.crash_w_context("Invalid indent= value: {}".format(indent), self.cl)
+          else:
+            indent = temp
+
+      if "style=" in options:
+        options, style = self.get_id("style", options)
+      else:
+        style = ""
+
+      if type == "u":
+        if style:
+          if style.lower() in self.list_styles_u:
+            self.list_item_style = style.lower()
+          else:
+            self.warn_w_context("Unrecognized list item style {}, disc assumed.".format(style), self.cl)
+            self.list_item_style = 'disc'
+        else:
+          self.list_item_style = ['disc', 'circle', 'square'][(len(self.liststack) - 1) % 3] # figure out marker character for items
+
+      else: # type = "o"
+        if style:
+          style_tuple = self.list_styles_o.get(style.lower())
+          if style_tuple != None:
+            self.list_item_style = style_tuple
+          else:
+            self.warn_w_context("Unrecognized list item style {}, decimal assumed.".format(style), self.cl)
+            self.list_item_style = self.list_styles_o.get('decimal')
+        else:
+          self.list_item_style = self.list_styles_o.get('decimal')
+
+      if type == "o": # handle width for .ol
+        if "w=" in options:
+          options, w = self.get_id("w", options)
+          try:
+            self.list_item_width = int(w) + 2 # specified width of number, + 2 for separator and a space
+          except:
+            self.crash_w_context("Invalid w= value: {}".format(indent), self.cl)
+        else:
+          self.list_item_width = 4 # default 2 for width of number, + 2 for separator and a space
+
+      else: # handle width for .ul
+        if self.list_item_style != "none":
+          self.list_item_width = 2 # 1 for the marker character + 1 for a blank
+        else:
+          self.list_item_width = 0 # no room needed for marker for .ul style=none
+
+      if "align=" in options:
+        options, align = self.get_id("align", options)
+        temp = align.lower()[0]
+        if temp != "l" and temp != "r":
+          self.warn_w_context("Unrecognized align value: {}, r assumed.".format(align))
+          self.list_align = "r"
+        else:
+          self.list_align = temp
+      else:
+        self.list_align = "r"
+
+      if "id=" in options:
+        options, id = self.get_id("id", options)
+
+      if "class=" in options:
+        options, clss = self.get_id("class", options)
+
+      if "hang=" in options:
+        options, hang = self.get_id("hang", options)
+        if hang.lower().startswith("y"):
+          self.list_hang = True
+        elif hang.lower().startswith("n"):
+          self.list_hang = False
+        else:
+          self.warn_w_context("Unknown hang value: {}. hang=no assumed".format(hang), self.cl)
+          self.list_hang = False
+      else:
+        self.list_hang = False
+
+      if "space=" in options:
+        options, space = self.get_id("space", options)
+        if space.lower().startswith("y"):
+          self.list_space = True
+        elif space.lower().startswith("n"):
+          self.list_space = False
+        else:
+          self.warn_w_context("Unknown spaced value: {}. spaced=no assumed".format(spaced), self.cl)
+          self.list_space = False
+      else:
+        self.list_space = False
+
+      if options.strip() != "":
+        self.warn_w_context("Unknown options on .ul directive: {}".format(options), self.cl)
+
+      return (indent, id, clss)
 
   # Does common processing for doUl. Returns False if .ul- and True if .ul
   #   note: CSS specifications more limited in some ways; only specific specifications allowed
@@ -2281,7 +2881,6 @@ class Book(object):
 
     id     = ""
     clss   = ""
-    indent = ""
     active = self.list_item_active      # remember if a list item was active or not before the .ul/.ul-
 
     if self.wb[self.cl].startswith(".ul-"): # ending a list
@@ -2290,7 +2889,7 @@ class Book(object):
       elif self.list_type != "u":
         self.crash_w_context("Cannot close .ol block with .ul-", self.cl)
       self.pop_list_stack()
-      return (False, active, "", id, clss)
+      return (False, active, -1, id, clss)
 
     else: # beginning an unordered list
       if len(self.liststack) > 0:
@@ -2301,37 +2900,8 @@ class Book(object):
 
       self.list_type = "u"
       self.list_item_active = False
-      self.prev_width = self.list_item_width # remember item width for prior level of list, if any
-      self.list_item_width = 2 # set list_item_width for this level of list: 1 for the character + 1 for a blank
 
-      options = self.wb[self.cl][4:].strip()
-
-      if "indent=" in options:
-        options, indent = self.get_id("indent", options)
-
-      if "style=" in options:
-        options, style = self.get_id("style", options)
-      else:
-        style = ""
-      if style:
-        if style.lower() in self.list_styles_u:
-          self.list_item_style = style.lower()
-          if self.list_item_style == "none": # no marker or space if style=none
-             self.list_item_width = 0
-        else:
-          self.warn_w_context("Unrecognized list item style {}, disc assumed.".format(style), self.cl)
-          self.list_item_style = 'disc'
-      else:
-        self.list_item_style = ['disc', 'circle', 'square'][(len(self.liststack) - 1) % 3] # figure out marker character for items
-
-      if "id=" in options:
-        options, id = self.get_id("id", options)
-
-      if "class=" in options:
-        options, clss = self.get_id("class", options)
-
-      if options.strip() != "":
-        self.warn_w_context("Unknown options on .ul directive: {}".format(options), self.cl)
+      indent, id, clss = self.parse_UlOl_options("u")
 
       return (True, active, indent, id, clss)
 
@@ -2340,7 +2910,6 @@ class Book(object):
 
     id     = ""
     clss   = ""
-    indent = ""
     active = self.list_item_active      # remember if a list item was active or not
 
     if self.wb[self.cl].startswith(".ol-"): # ending a list
@@ -2349,7 +2918,7 @@ class Book(object):
       elif self.list_type != "o":
         self.crash_w_context("Cannot close .ul block with .ol-", self.cl)
       self.pop_list_stack()
-      return (False, active, "", id, clss)
+      return (False, active, -1, id, clss)
 
     else: # beginning an ordered list
       if len(self.liststack) > 0:
@@ -2360,129 +2929,20 @@ class Book(object):
 
       self.list_type = "o"
       self.list_item_active = False
-      self.list_itblock_active = False
+
       self.list_item_value = 0 # will force to start at 1
-      self.prev_width = self.list_item_width
 
-      options = self.wb[self.cl][4:].strip()
-      if "style=" in options:
-        options, style = self.get_id("style", options)
-        style_tuple = self.list_styles_o.get(style.lower())
-        if style_tuple != None:
-          self.list_item_style = style_tuple
-        else:
-          self.warn_w_context("Unrecognized list item style {}, decimal assumed.".format(style), self.cl)
-          self.list_item_style = self.list_styles_o.get('decimal')
-      else:
-        self.list_item_style = self.list_styles_o.get('decimal')
-
-      if "w=" in options:
-        options, w = self.get_id("w", options)
-        try:
-          self.list_item_width = int(w) + 2 # specified width of number, + 2 for separator and a space
-        except:
-          self.crash_w_context("Invalid w= value: {}".format(indent), self.cl)
-      else:
-        self.list_item_width = 4 # default 2 for width of number, + 2 for separator and a space
-
-      if "indent=" in options:
-        options, indent = self.get_id("indent", options)
-
-      if "id=" in options:
-        options, id = self.get_id("id", options)
-
-      if "class=" in options:
-        options, clss = self.get_id("class", options)
-
-      if options.strip() != "":
-        self.warn_w_context("Unknown options on .ul directive: {}".format(options), self.cl)
+      indent, id, clss = self.parse_UlOl_options("o")
 
       return (True, active, indent, id, clss)
 
-  # Does common processing for doIt. Returns False if .it- and True if .it
+  # Does common processing for doIt.
   def doItCommon(self):
     if self.list_type != "o" and self.list_type != "u": # do we have a list?
       self.crash_w_context("No open .ol/.ul block for .it directive", self.cl)
-    elif self.wb[self.cl].startswith(".it-"): # trying to end a list item?
-      if self.list_itblock_active: # must have a list item to end
-        self.list_itblock_active = False
-      else:
-        self.crash_w_context("No open .it block to close with .it-", self.cl)
-      return False
+    if self.wb[self.cl] == ".it" or self.wb[self.cl] == ".it-":
+      self.crash_w_context("Block form of .it no longer supported.", self.cl)
 
-    # starting a list item
-    else:
-      return True
-
-  # Does common processing for doDl. Returns False if .dl- and True if .dl
-  def doDlCommon(self):
-
-    id     = ""
-    clss   = ""
-    indent = ""
-    #active = self.list_item_active      # remember if a list item was active or not before the .dl/.dl-
-
-    if self.wb[self.cl].startswith(".dl-"): # ending a list
-      if self.list_type == None:
-        self.crash_w_context("No open .dl block to close with .dl-", self.cl)
-      elif self.list_type != "d":
-        self.crash_w_context("Cannot close .dl block with {}".format(self.wb[self.cl][0:3]), self.cl)
-
-      self.pop_list_stack()
-      return (False, "", id, clss)
-
-    else: # beginning a definition list
-      if len(self.liststack) > 0:
-        if not self.list_item_active:
-          self.crash_w_context("Nested list must occur within a list item", self.cl)
-
-      self.push_list_stack(self.list_dotcmds)
-
-      self.list_type = "d"
-      self.list_item_active = False
-      self.prev_width = self.list_item_width # remember item width for prior level of list, if any
-      ### not sure what next line should be
-      self.list_item_width = 0 # set list_item_width for this level of list (no markers, so 0)
-
-      options = self.wb[self.cl][4:].strip()
-
-      if "indent=" in options:
-        options, indent = self.get_id("indent", options)
-        if indent:
-          try:
-            temp = int(indent)
-          except:
-            self.crash_w_context("Invalid indent= value: {}".format(indent), self.cl)
-
-      if "style=" in options:
-        options, style = self.get_id("style", options)
-        if style.lower() in self.list_styles_d:
-          self.list_item_style = self.list_styles_d[style.lower()]
-        else:
-          self.warn_w_context("Unrecognized list item style {}, float assumed.".format(style), self.cl)
-          self.list_item_style = self.list_styles_d['float']
-      else:
-        self.list_item_style = self.list_styles_d['float']
-
-      if "w=" in options:
-        options, w = self.get_id("w", options)
-        try:
-          self.list_item_width = int(w) # specified max width of term/speaker
-        except:
-          self.crash_w_context("Invalid w= value: {}".format(indent), self.cl)
-      else:
-        self.list_item_width = 10 # default 10
-
-      if "id=" in options:
-        options, id = self.get_id("id", options)
-
-      if "class=" in options:
-        options, clss = self.get_id("class", options)
-
-      if options.strip() != "":
-        self.warn_w_context("Unknown options on .dl directive: {}".format(options), self.cl)
-
-      return (True, indent, id, clss)
 
 
   def preProcessCommon(self):
@@ -2536,8 +2996,8 @@ class Book(object):
       elif self.gkkeep.lower().startswith("a"): # original after?
         gkoriga = gkmatch.group(0)
       gkfull = gkorigb + self.gkpre + gkstring + self.gksuf + gkoriga
-      gkfull = gkfull.replace(r"\|", "⑩") # temporarily protect \| and \(space)
-      gkfull = gkfull.replace(r"\ ", "⑮")
+      gkfull = gkfull.replace(r"\|", "⑩") # temporarily protect \| and \(space) so they
+      gkfull = gkfull.replace(r"\ ", "⑮") # retain their special meaning within [Greek: ...] tags
       return gkfull
 
     def loadFilter():
@@ -2920,6 +3380,20 @@ class Book(object):
     if self.cvgfilter:
       loadFilter()
 
+    # Handle some escaped characters here to avoid issues with \] in Greek processing
+    for i, line in enumerate(self.wb):
+      # some escaped characters
+      # Note: must handle \| and \(space) later as they are significant to [Greek: ...] processing
+      self.wb[i] = self.wb[i].replace(r"\{", "①")
+      self.wb[i] = self.wb[i].replace(r"\}", "②")
+      self.wb[i] = self.wb[i].replace(r"\[", "③")
+      self.wb[i] = self.wb[i].replace(r"\]", "④")
+      self.wb[i] = self.wb[i].replace(r"\<", "⑤")
+      self.wb[i] = self.wb[i].replace(r"\>", "⑳")
+      self.wb[i] = self.wb[i].replace(r"\:", "⑥")
+      self.wb[i] = self.wb[i].replace(r"\-", "⑨")
+      self.wb[i] = self.wb[i].replace(r"\#", "⓪")
+
     # Handle Greek, Diacritics, .sr for filtering, and terminate with cvg-bailout text if filtering or user requested it
     doGreek()
     doDiacritics()
@@ -3148,7 +3622,7 @@ class Book(object):
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # remaps of protected characters and escapes
+    # remaps of protected characters and some escapes (other escapes handled before doGreek is called)
 
     for i, line in enumerate(self.wb):
       # dots not part of dot directive
@@ -3156,16 +3630,6 @@ class Book(object):
       self.wb[i] = self.wb[i].replace("...", "ⓓⓓⓓ") # 3 dot ellipsis
       self.wb[i] = self.wb[i].replace(". . .", "ⓓⓢⓓⓢⓓ") # 3 dot ellipsis, spaced
       self.wb[i] = self.wb[i].replace("\. \. \.", "ⓓⓢⓓⓢⓓ") # 3 dot ellipsis, spaced
-      # escaped characters
-      self.wb[i] = self.wb[i].replace(r"\{", "①")
-      self.wb[i] = self.wb[i].replace(r"\}", "②")
-      self.wb[i] = self.wb[i].replace(r"\[", "③")
-      self.wb[i] = self.wb[i].replace(r"\]", "④")
-      self.wb[i] = self.wb[i].replace(r"\<", "⑤")
-      self.wb[i] = self.wb[i].replace(r"\>", "⑳")
-      self.wb[i] = self.wb[i].replace(r"\:", "⑥")
-      self.wb[i] = self.wb[i].replace(r"\-", "⑨")
-      self.wb[i] = self.wb[i].replace(r"\#", "⓪")
       # spacing
       self.wb[i] = self.wb[i].replace(r'\ ', "ⓢ") # non-breaking space
       self.wb[i] = self.wb[i].replace(r'\_', "ⓢ") # alternate non-breaking space
@@ -4198,7 +4662,12 @@ class Ppt(Book):
           self.eb.insert(i,"")
           count -= 1
       i += 1
-      # restore tokens
+
+    # remove possible final .RS c
+    if self.eb[-1] == ".RS c":
+      del self.eb[-1]
+
+    # restore tokens
     for i, line in enumerate(self.eb):
       self.eb[i] = re.sub("ⓓ|Ⓓ", ".", self.eb[i])  # ellipsis dots
       self.eb[i] = self.eb[i].replace("①", "{")
@@ -5277,7 +5746,9 @@ class Ppt(Book):
       if m:
         u[0] = m.group(2)
         bspec = m.group(1)
-        if bspec == '|':
+        if bspec and self.renc == "l": # ignore borders if Latin-1 output
+          self.warn("Table borders ignored for Latin-1 output.")
+        elif bspec == '|':
           bbefore.append('│' + self.nregs["text-cell-padding-left"]) # box drawings light vertical \u2502
           appended = True
         elif bspec == '||':
@@ -5304,7 +5775,9 @@ class Ppt(Book):
       if m:
         u[1] = m.group(1)
         bspec = m.group(2)
-        if bspec == '|':
+        if bspec and self.renc == "l": # ignore borders if Latin-1 output
+          self.warn("Table borders ignored for Latin-1 output.")
+        elif bspec == '|':
           bafter.append(self.nregs["text-cell-padding-right"] + '│') # box drawings light vertical \u2502
           appended = True
         elif bspec == '||':
@@ -5410,8 +5883,11 @@ class Ppt(Book):
       # horizontal border
       # Signified by _ for a single line or = for a double line
       if len(self.wb[self.cl]) < 3 and self.wb[self.cl] in self.valid_text_hrules:
-        hrules.append(len(self.eb)) # remember this line number for fixup later
-        self.eb.append((rindent * ' ') + (totalwidth * self.valid_text_hrules[self.wb[self.cl]]))
+        if self.renc == "l":
+          self.warn("Table borders ignored for Latin-1 output.")
+        else:
+          hrules.append(len(self.eb)) # remember this line number for fixup later
+          self.eb.append((rindent * ' ') + (totalwidth * self.valid_text_hrules[self.wb[self.cl]]))
         self.cl += 1
         continue
 
@@ -5790,37 +6266,30 @@ class Ppt(Book):
   # options:
   #   style="disc | circle | square | none" (default: disc)
   #   indent="2" (indent is to the marker.)
+  #   hang=n (default) or y
+  #   space=n (default) or y
   #   id=<id-value> (ignored in text)
   #   class=<class-value> (ignored in text)
   #
   def doUl(self):
 
-    prev_itblock_active = self.list_itblock_active
-
-    startUl, active, indent, id, clss = self.doUlCommon()  # id, clss ignored for text
+    (startUl, li_active, indent, id, clss) = self.doUlCommon()  # id, clss ignored for text
 
     if not startUl: # end of unordered list
       pass    # doUlCommon did everything we need
 
     else:     # beginning an unordered list
 
-      if len(self.eb) > 0 and self.eb[-1] == ".RS -3": # are we immediately after a .it directive?
-        self.eb.pop()             # If so, remove the .RS -3 directive
-      elif prev_itblock_active:   # If not, is a list item block active?
-        if len(self.eb) > 0 and self.eb[-1] == ".RS c":  # yes, see if there's an .RS c from prior processing and delete it
-                                                         # PPer is responsibility for spacing within .ul/.ol block
-          self.eb.pop()             # if if found as it's extraneous
+      if indent != -1:
+        self.regIN += int(indent) # indent specified is to marker; regIN is to text, not marker
+        if self.list_item_style != "none":
+          self.regIN += 2
 
-      if indent != "":
-        try:
-          self.regIN += int(indent) + 2 # indent specified is to marker; regIN is to text, not marker
-        except:
-          self.crash_w_context("Invalid indent= value: {}".format(indent), self.cl)
       else:
         if len(self.liststack) > 1: # nested?
           self.regIN += self.list_item_width # indent to new text position
         elif self.list_item_style != "none":
-          self.regIN += 3 # if no indent specified, force an indent of 1 before the marker. 3 specifies indent to text
+          self.regIN += 2 # if no indent specified, indent text by 2 (marker + space)
         else:
           pass # don't adjust indent if no indent specified and style = none
 
@@ -5836,6 +6305,8 @@ class Ppt(Book):
   #   style="decimal | lower-alpha | lower-roman | upper-alpha | upper-roman" (default: decimal)
   #   w="2" (number of digits allowed in the item number)
   #   indent="2" (indent to the item number.)
+  #   hang=n (default) or y
+  #   space=n (default) or y
   #   id=<id-value> (ignored in text)
   #   class=<class-value> (ignored in text)
   #
@@ -5843,291 +6314,274 @@ class Ppt(Book):
   #
   def doOl(self):
 
-    prev_itblock_active = self.list_itblock_active
-
-    startOl, active, indent, id, clss = self.doOlCommon() # id, clss ignored for text
+    (startOl, li_active, indent, id, clss) = self.doOlCommon() # id, clss ignored for text
 
     if not startOl:  # end of ordered list
       pass           # doOlCommon did everything we need
 
     else:            # beginning an ordered list
 
-      if len(self.eb) > 0 and self.eb[-1] == ".RS -3": # are we immediately after a .it directive?
-        self.eb.pop()             # If so, remove the .RS -3 directive
-      elif prev_itblock_active:   # If not, is a list item block active?
-        if len(self.eb) > 0 and self.eb[-1] == ".RS c":  # yes, see if there's an .RS c from prior processing, and delete
-                                                         # PPer is responsibility for spacing within .ul/.ol block
-          self.eb.pop()             # if if found as it's extraneous
+      if indent != -1:
+        self.regIN = int(indent) + self.list_item_width # indent specified is to marker; regIN is to text, not marker
 
-      if indent != "":
-        try:
-          self.regIN = int(indent) + self.list_item_width + 2 # indent specified is to marker; regIN is to text, not marker
-        except:
-          self.crash_w_context("Invalid indent= value: {}".format(indent), self.cl)
       else:
-        if len(self.liststack) > 1: # nested?
+        if len(self.liststack) > 1: # nested? ### need to adjust this
           self.regIN += self.list_item_width # indent to new text position
         else:
-          self.regIN += 1 + self.list_item_width + 2 # if no indent specified, force an indent of 1 before the marker. 3 specifies indent to text
+          self.regIN = self.list_item_width if (self.regIN) else self.list_item_width + 1 # ensure a leading blank
 
     self.cl += 1
 
   # List item (Text)
   def doIt(self):
-    startIt = self.doItCommon()
+    self.doItCommon()
 
-    aaadbg = self.wb[self.cl]
-    if not startIt:   # end of list item
-      self.list_item_active = False
-      self.list_itblock_active = False
-      if len(self.eb) > 0 and self.eb[-1] == ".RS c":
-        self.eb.pop() # Delete the .RS c; PPer is in charge of spacing
+    self.list_item_active = True
+    indent = self.regIN
+    #if self.list_item_style == "none":
+    #  indent += 2
 
-    # starting a list item
+    # Calculate amount of hanging indent. By default, -1 * self.list_item_width means that if an item wraps it
+    # will look like this:
+    #    1. Here is the first part of the item and
+    #       it continues directly under the first part.
+    # However, if hang=y is specified on .ol/.ul then it will look like this:
+    #    1. Here is the first part of the item and
+    #         it continues with a further indent.
+    # Note that this can be more important with .ul with style=none to avoid confusion:
+    #    Here is the first part of the item and
+    #    it continues directly under the first part.
+    #    Here is the second item
+    # vs
+    #    Here is the first part of the item and
+    #      it continues with a further indent
+    #    Here is the second item
+    hang = -1 * self.list_item_width # needed for wrapping marker + text
+    if self.list_hang: # additional needed
+      hang   -= 2
+      indent += 2
+
+    # determine content of marker and build it
+    if self.list_type == "o":
+      value = self.list_item_style[1]()
+      fmt = "{:>" if (self.list_align == "r") else "{:<"
+      fmt += "{}".format(self.list_item_width - 1) + "}"
+      l = fmt.format(str(value) + ".") + " "
     else:
-      self.list_item_active = True
-      indent = self.regIN + self.list_item_width####
-      if self.list_item_style == "none":
-        indent += 2
-      hang = -1 * self.list_item_width if (self.list_item_style != "none") else -2
-      if self.list_type == "o":
-        value = self.list_item_style[1]()
-        fmt = "{:>" + "{}".format(self.list_item_width - 2) + "}" + "." + " "
-        l = fmt.format(value)
-      else:
-        l = (self.list_styles_u[self.list_item_style] + " ") if (self.list_item_style != "none") else ""
-      if self.wb[self.cl] == ".it": # start of a .it block?
-        if self.list_itblock_active: # already immediately inside a .it block?
-          self.crash_w_context("Can't have .it within a .it block", self.cl)
-        self.list_itblock_active = True
-        self.eb.append(".RS -3") # special flag for doul/dool
-        # this one won't be wrapped, so need to apply indent manually
-        l = ((self.regIN + hang) * " ") + l # note: hang is negative, so must add it ### need to squash blanks
-        self.eb.append(l)
-        self.eb.append(".RS -2") # eliminate one blank line and merge lines
-      else:      # single (possibly very long) item line that we'll need to wrap
-        l += self.wb[self.cl][4:].strip() # append item text to line
-        t = self.wrap(l, indent, self.regLL, hang)
-        self.eb += t
+      l = (self.list_styles_u[self.list_item_style] + " ") if (self.list_item_style != "none") else ""
+
+    # layout the text after the marker, wrap if needed, and append to output buffer
+    l += self.wb[self.cl][4:].strip()
+    t = self.wrap(l, indent, self.regLL, hang)
+    self.eb += t
+
+    # add a blank line after the item if we're spacing this list
+    if self.list_space:
+      self.eb.append(".RS 1")
 
     self.cl += 1
 
   # Definition List (Text)
-  # .dl options
-  #    or
-  # .dl-
+  # Note: doDl operates differently from most other dot commands. It creates a definition list object that will
+  #       be in control of processing until the matching .dl- is encountered. All lines up to the .dl will be
+  #       processed either directly by the object or if they are another dot directive
+  #       their processing routine will be invoked indirectly by the object.
   #
-  # options:
-  #   style="float | nofloat | paragraph" (default: float)
-  #   w=<number> max length of term or speaker name
-  #   indent="2" (indents the term by that amount; does not affect self.regIN)
-  #   id=<id-value> (ignored in text)
-  #   class=<class-value> (ignored in text)
-  #
-  # Note: doDl operates differently from most other dot commands. It is in control of processing until
-  #       the matching .dl- is encountered. All lines will either be directly part of its output,
-  #       or indirectly if they are consumed/generated by another dot directive inside the .dl block. That is,
-  #       doDl allows other dot commands within its scope, and actually invokes their associated
-  #       processing routine, until the relevant .dl- is hit.
+  #       doDl will define its own subclass of the definition list object to tailor the processing for what is
+  #       needed in Ppt.
   def doDl(self):
 
-    # Emit a paragraph of definition/dialog for the case where style=paragraph
-    def emit_paragraph():
-      nonlocal paragraph, term
-      # wrap the definition paragraph as needed
-      #
-      wraplen = self.regLL - self.regIN
-      indent_first = indent + self.list_item_width + 1
-      # wrap parameters: s,  indent=0, ll=72, ti=0, optimal_needed=True
-      t = self.wrap(paragraph, 0, wraplen, indent_first)
+    class PptDefList(Book.DefList):
 
-      # layout the term and definition line(s) (term handled already if non-blank)
-      if not term: # handle null term
-        term = definition_padding
-
-      s = []
-      s.append(indent_padding + (indent * " ") + term + t[0].strip()) # start with term and 1st part of definition/dialog
-      for i in range(1, len(t)):
-        s.append(indent_padding + t[i])              # then add in remaining lines
-
-      # append definition line(s) to output
-      ### could simplify this and append directly to self.eb above, instead of appending to s as an intermediate
-      self.eb += s
-      self.eb.append(".RS 1") # add a blank line as a separator
-      paragraph = ""
+      # "Print" debugging info (place it into the output text) if requested
+      def print_debug(self, info): # Ppt and Pph will override this
+        b = self.book
+        b.eb += info
 
 
-    startdl, indent, id, clss = self.doDlCommon()  # id, clss ignored for text
+      # Routine to bump the current line pointer
+      # (Called by code in base DefList class)
+      def bump_cl(self):
+        self.book.cl += 1
 
-    if not startdl: # end of definition list
-      # dodlCommon did everything we need
-      self.cl += 1
-      return
+      # Emit a paragraph of definition/dialog for the case where style=paragraph
+      # (overrides method in DefList)
+      def emit_paragraph(self):
+        b = self.book
 
-
-    # start of definition list
-
-    if indent:
-      indent = int(indent)
-      #self.regIN += indent # indent specified is to definition term
-    elif self.regIN == 0 and self.list_item_style != "p": # don't need to force indent if laying out as paragraphs
-                                                          # as they'll be wrappable.
-      self.regIN = 1
-      indent = 0
-    else:
-      indent = 0 # set to 0 if omitted and .in is already non-zero
-
-    indent_padding = self.regIN * " "
-    definition_padding = " " * (self.list_item_width + 1)
-
-    dlstart = self.cl
-    self.cl += 1
-
-    # Process the block of statements until we find a matching .dl- or end-of-file
-    #
-    # Each definition line has one of these forms:
-    #   a:  term or speaker name |
-    #   b1: term or speaker name | definition or line of dialog
-    #   b2: | definition or line of dialog (implied term/speaker)
-    #   c:  another line of definition or dialog for prior speaker
-    #
-    #   d:  .dt term or speaker name
-    #       .dd optional-parms definition line of form b2 or c
-    #           where optional-parms is class=class-name
-    #
-    #
-    # Notes:
-    #   1. Definition lines may be continued using a backslash as the last character. Such
-    #      lines will be concatenated (the backslash becomes a space) and wrapped.
-    #   2. Blanks preceding the | will be deleted. The | may be followed by
-    #      0 or 1 blank (which will be removed). If followed by more than 1 blank all
-    #      after the first are significant and will be kept. If a line (after processing
-    #      continuation characters) has no | characters, it is treated as a definition/dialog
-    #      line where all leading blanks are significant for style=float or nofloat. For
-    #      style=paragraph leading blanks are not significant on such lines except the first.
-    #   3. Only the first unprotected | within a definition line is significant. Any others will
-    #      be considered part of the text.
-    #   3. Definition entries may contain other blocks, such as .ul, .ol, .nf, etc.
-    #   4. Blank lines are significant, and will be retained
-    #   5. With style=paragraph, definition lines of format c occurring after a definition line of
-    #      format a or b will be wrapped into a paragraph with the text, except for the first line,
-    #      left-aligned to the margin (indent). The first line will start after the speaker name or term.
-
-    paragraph = "" # in case style=p, initialize an empty paragraph
-
-    while self.cl < len(self.wb) and not self.wb[self.cl] == ".dl-":  # process until we hit our .dl-
-
-      # If we hit a dot command, handle it
-      if not self.wb[self.cl].startswith(".dt") and not self.wb[self.cl].startswith(".dd"):
-        if re.match(r"\.[a-z]", self.wb[self.cl]):
-          self.doDot()
-          continue
-
-      # Not a dot command, must be a definition or blank line
-      #
-      self.list_item_active = True
-      i = self.cl
-      while i < (len(self.wb) - 1) and self.wb[i].endswith("\\"):
-        self.wb[i] = self.wb[i][:-1] + " " + self.wb[i+1]
-        del self.wb[i+1]
-      if self.wb[i].endswith("\\"):
-        self.crash_w_context("File ends with continued definition line: {}".format(self.wb[i]), i)
-
-      # check for (and emit) blank lines
-      if self.wb[self.cl] == "":
-        # check for paragraph that we need to emit
-        if self.list_item_style == "p" and paragraph != "":
-          emit_paragraph()
+        # wrap the definition paragraph as needed
+        #
+        indent_first = self.options["tindent"] + b.list_item_width + 1 + self.options["dindent"]
+        indent_chars = "~" * indent_first
+        s = indent_chars + self.paragraph
+        if self.options["hang"]:
+          ti = -2
+          indent = 2
         else:
-          self.eb.append(" ")
-        self.cl += 1
-        continue
+          ti = 0
+          indent = 0
+        wraplen = b.regLL - b.regIN
+        if not self.options["collapse"]:
+          wraplen -= indent_first
+        # wrap parameters: s,  indent=0, ll=72, ti=0, optimal_needed=True
+        t = b.wrap(s, indent, wraplen, ti)
+        t[0] = t[0][indent_first:]
 
-      # check for .dt or .dd (form d of definition line) and handle
-      # Note: text processing is straightforward: turn into form 1 or 2.
-      #       We can ignore the optional parameters on .dd
-      if self.wb[self.cl].startswith(".dt"):
-        self.wb[self.cl] = self.wb[self.cl][4:] + "|"
+        # layout the term and definition line(s)
 
-      elif self.wb[self.cl].startswith(".dd"):
-        m = re.match(r"\.dd( +class=[^ ]*?)? +(.*)", self.wb[self.cl])
-        if m:
-          self.wb[self.cl] = m.group(2)
+        s = []
+        if self.options["float"]:
+          #if self.term:
+          blanks = (len(self.definition_padding) - len(self.term) -
+                    self.options["tindent"] + self.options["dindent"]) * " "
+          s.append(".RS 1")
+          s.append(self.indent_padding + (self.options["tindent"] * " ") + self.term + blanks + t[0].rstrip())
+          #else:
+          #  s.append(self.indent_padding + (self.options["tindent"] * " ") + self.definition_padding + t[0].rstrip())
+
+        else:                 # non-floated style (first line is term, if we have one)
+          #if self.term:
+          s.append(".RS 1")
+          if self.term:
+            s.append(self.indent_padding + (self.options["tindent"] * " ") + self.term)
+            s.append(" ")
+          s.append(self.indent_padding + self.definition_padding + t[0].rstrip())
+
+        if not self.options["collapse"]:
+          for i in range(1, len(t)):    # handle remaining lines
+            s.append(self.indent_padding + (self.options["tindent"] * " ") + self.definition_padding + t[i].rstrip())
         else:
-          self.crash_w_context("Error parsing .dd directive: {} \n".format(self.wb[self.cl]), self.cl)
+          for i in range(1, len(t)):    # handle remaining lines
+            s.append(self.indent_padding + self.dindent_padding + t[i].rstrip())
 
-      # isolate term and definition
-      t = self.wb[self.cl].split("|", maxsplit=1)
-      if len(t) == 2:  # form a or b above
-        # new term/speaker needs to force emission of prior paragraph for style=paragraph
-        if self.list_item_style == "p" and paragraph != "":
-          emit_paragraph()
-        term = t[0].rstrip()
-        if len(term) <= self.list_item_width: # pad term with blanks to width + 1
-          term += " " * (self.list_item_width - len(term) + 1)
+        # append definition line(s) to output
+        ### could simplify this and append directly to self.eb above, instead of appending to s as an intermediate
+        b.eb += s
+        #self.eb.append(".RS 1") # add a blank line as a separator
+        self.term = ""
+        self.paragraph = ""
+
+      # start the definition list
+      # (overrides method in DefList)
+      def begin_dl(self):
+        b = self.book
+
+        # We need to ensure an indent of at least 1 if we're not combining lines, to avoid problems with potential
+        # future rewrapping outside of DP's control (like for .nf, .ta, etc.)
+        if b.regIN == 0 and self.options["style"] != "p":
+          b.regIN = 1 # note: prior value saved on stack by doDlCommon, will be restored when handling .dl-
+
+        self.indent_padding = b.regIN * " "
+        self.definition_padding = (self.options["width"] + 1 + self.options["tindent"]) * " "
+        self.dindent_padding = self.options["dindent"] * " " # additional amount to indent collapsed definition lines
+
+      # Emit a blank line when necessary
+      # (overrides method in DefList)
+      def add_blank(self):
+        self.book.eb.append(" ") # emit any blank lines after the first one in a group
+
+      # Ignore class= on .dd directive
+      def set_dd_class(self, clss):
+        pass
+
+      # wrap a definition line as needed (Note: non-combining mode)
+      # (overrides method in DefList)
+      def wrap_def(self):
+        b = self.book
+        indent_first = self.options["tindent"] + b.list_item_width + 1
+        wraplen = b.regLL - b.regIN
+        if not self.options["collapse"]:
+          wraplen -= indent_first
         else:
-          term += " " # if term is too long, just add 1 blank as a separator
-        definition = t[1]
-        if len(definition) >= 1:   # remove at most 1 leading blank from the definition
-          if definition[0] == " ":
-            definition = definition[1:]
+          wraplen -= self.options["dindent"]
 
-        if self.list_item_style == "p":
-          paragraph += definition + " "
-          self.cl += 1
-          continue
-      else:   # form c above
-        if self.list_item_style != "p":
-          term = ""
-          definition = t[0]  # all leading blanks significant in this form for float/nofloat
+        if self.options["collapse"]:
+          if self.options["hang"]: ### does this need to differ depending on whether term has data?
+            windent = self.options["dindent"] + 2
+            wti = -2
+          else:
+            windent = self.options["dindent"]
+            wti = 0
         else:
-          if not paragraph:
-            term = ""
-          paragraph += t[0].strip() + " " # no leading/trailing blanks significant for paragraph, but a blank after this line
-          self.cl += 1
-          continue
+          if self.options["hang"]:
+            windent = 2
+            wti = -2
+          else:
+            windent = 0
+            wti = 0
 
-      # wrap the definition as needed (Note: only style=float/nofloat get here)
-      #
-      wraplen = self.regLL - self.regIN - self.list_item_width - 1
-      # wrap parameters: s,  indent=0, ll=72, ti=0, optimal_needed=True
-      t = self.wrap(definition, 2, wraplen, -2)
+        # wrap parameters: s,  indent=0, ll=72, ti=0, optimal_needed=True
+        if not self.options["collapse"]:
+          t = b.wrap(self.definition, windent, wraplen, wti) # not collapse, either float or not float
 
-      # layout the term and definition line(s)
-      s = []
-      if self.list_item_style == "f":  # floated style (first line is term + 1st line of definition)
-        if term:
-          s.append(indent_padding + (indent * " ") + term + t[0])
+        elif self.options["float"]: # collapse, float
+          t = b.wrap(self.definition, windent, wraplen, indent_first)
+
+        else: # collapse, not float
+          if self.options["hang"]:
+            t = b.wrap(self.definition, windent, wraplen, wti)
+          else:
+            t = b.wrap(self.definition, windent, wraplen, 0)
+
+        self.definition = t
+
+      # Layout term and definition (non-combining)
+      # (Overrides method in DefList)
+      def layout(self):
+        b = self.book
+        ### screwed up? need to figure out how indents work with wrapping
+        s = []
+        l = b.truelen(self.term)
+        if l <= b.list_item_width: # pad term with blanks to width + 1
+          term = self.term + " " * (b.list_item_width - l + 1)
         else:
-          s.append(indent_padding + (indent * " ") + definition_padding + t[0])
-        start = 1
-      elif self.list_item_style == "n": # non-floated style (first line is term, if we have one)
-        if term:
-          s.append(indent_padding + (indent * " ") + term)
-        start = 0
-      for i in range(start, len(t)):    # handle remaining lines, starting from t[0] (nofloat) or t[1] (float)
-        s.append(indent_padding + (indent * " ") + definition_padding + t[i])
+          term = self.term + " " # if term is too long, just add 1 blank as a separator
+        t = self.definition
+        if self.options["float"]:  # floated style (first line is term + 1st line of definition)
+          if self.term or not self.form_c:
+            s.append(".RS 1")
+            s.append(self.indent_padding + (self.options["tindent"] * " ") + term + t[0].strip())
+          else:
+            if not self.options["collapse"] or not self.form_c:
+              s.append(self.indent_padding + self.definition_padding + t[0].strip())
+            else:
+              s.append(self.indent_padding + self.dindent_padding + t[0].strip())
+          start = 1
 
-      # append definition line(s) to output
-      ### could simplify this and append directly to self.eb above, instead of appending to s as an intermediate
-      self.eb += s
+        else:                 # non-floated style (first line is term, if we have one)
+          if self.term:
+            s.append(".RS 1")
+            if term.strip(): # if term is non-blank
+              s.append(self.indent_padding + (self.options["tindent"] * " ") + term)
+          start = 0
 
-      self.cl += 1 # bump to next input line
+        if not self.options["collapse"]:
+          for i in range(start, len(t)):    # handle remaining lines, starting from t[0] (nofloat) or t[1] (float)
+              s.append(self.indent_padding + (self.options["tindent"] * " ") + self.definition_padding + t[i])
+        else:
+          for i in range(start, len(t)):    # handle remaining lines, starting from t[0] (nofloat) or t[1] (float)
+            s.append(self.indent_padding + t[i])
+        self.defbuffer = s
+        self.definition = ""
 
-    # hit eof or .dl-
-    if self.cl >= len(self.wb): # oops: no .dl- for me
-      self.crash_w_context("Missing .dl- for this .dl block", dlstart)
+      # Emit a term/definition (non-combining)
+      # (Overrides method in DefList)
+      def emit_def(self):
+        # append definition line(s) to output
+        self.book.eb += self.defbuffer
 
-    else:
-      if self.list_item_style == "p" and paragraph != "":
-        emit_paragraph()
+      # Finalize Dl
+      # (Overrides method in DefList)
+      def finalize_dl(self):
+        self.book.eb.append(".RS 1")
+
+    # main processing for doDl (Text):
+
+    dlobj = PptDefList(self) # create the object
+    dlobj.run()              # turn over control
 
 
-    # At this point we have hit the .dl- that matches our .dl, so
-    # we leave self.cl set so we're pointing at the .dl- and return,
-    # allowing normal processing to pick up the .dl-
-
-
+  # Main processing routine for text
   def process(self):
     self.keepFnHere = False
     self.cl = 0
@@ -6191,6 +6645,8 @@ class Pph(Book):
   igc = 1 # illustration geometry counter
   fnlist = [] # list of footnotes
   imagedict = {} # list of css specifications for illustrations, with the number that defined them.
+  dl_class = 0 # used to generate unique class names for .dl with unique characteristics
+  dl_dict = {} # initialize dictionary to track unique .dl characteristics
 
   def __init__(self, args, renc):
     Book.__init__(self, args, renc)
@@ -6911,6 +7367,8 @@ class Pph(Book):
         # old version: m = re.search(r"<sc>([^<]+?)</sc>", stmp)
         if m:
           scstring = self.htmlTokenRestore(m.group(1)) # need to undo our remappings in order to properly check case of string
+          # need to remove any <a> resulting from <target> directives which will confuse the checking
+          scstring = re.sub("<a [^>]*>.*?</a>", "", scstring)
           # warn about all lower case, but not within .nf as
           # we will have replicated the <sc> tags that cross lines
           # of the .nf block, which could leave some all lower-case
@@ -6995,7 +7453,7 @@ class Pph(Book):
 
       m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
       while m:
-        self.wb[i] = re.sub(m.group(0), "<span style='font-size: {}; '>".format(m.group(1)), self.wb[i], 1)
+        self.wb[i] = re.sub(m.group(0), "<span style='font-size⑥ {}; '>".format(m.group(1)), self.wb[i], 1)
         m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
       self.wb[i] = re.sub("<\/fs>", "</span>", self.wb[i])
 
@@ -7098,7 +7556,7 @@ class Pph(Book):
         ptmp = m.group(1)
         if self.pnshow:  # visible page number
           # in a paragraph usually, but can be orphaned (repaired later)
-          if self.nregs["pnstyle"] == "title":
+          if self.nregs["pnstyle"] == "title" or "x" in self.debug:
             self.wb[i] = re.sub(r"⑯(.+)⑰",
                                 "<span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ptmp),
                                 self.wb[i])
@@ -7183,7 +7641,7 @@ class Pph(Book):
       self.css.addcss("[1106]         text-indent: 0em; text-align: right; position: absolute; ")
       self.css.addcss("[1107]         border: thin solid " + self.nregs["pnc"] + "; padding: .1em .2em; font-style: normal; ")
       self.css.addcss("[1108]         font-variant: normal; font-weight: normal; text-decoration: none; }")
-      if self.nregs["pnstyle"] == "title":
+      if self.nregs["pnstyle"] == "title" or "x" in self.debug:
         self.css.addcss("[1109] .pageno:after { color: " + self.nregs["pnc"] + "; content: attr(title); }")  # new 3.24M
       elif self.nregs["pnstyle"] != "content":
         self.warn("Invalid .nr pnstyle value {}; content assumed".format(self.nregs["pnstyle"]))
@@ -7440,7 +7898,7 @@ class Pph(Book):
     t.append("<div>")
     if pnum != "":
       if self.pnshow:
-        if self.nregs["pnstyle"] == "title":
+        if self.nregs["pnstyle"] == "title" or "x" in self.debug:
           t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
         else:
           t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
@@ -7525,7 +7983,7 @@ class Pph(Book):
       t.append("<div>") # always want a div around the h2
     if pnum != "":
       if self.pnshow:
-        if self.nregs["pnstyle"] == "title":
+        if self.nregs["pnstyle"] == "title" or "x" in self.debug:
           t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
         else:
           t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
@@ -7600,7 +8058,7 @@ class Pph(Book):
     if pnum != "":
       t.append("<div>")
       if self.pnshow:
-        if self.nregs["pnstyle"] == "title":
+        if self.nregs["pnstyle"] == "title" or "x" in self.debug:
           t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
         else:
           t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
@@ -7673,7 +8131,7 @@ class Pph(Book):
     if pnum != "":
       t.append("<div>")
       if self.pnshow:
-        if self.nregs["pnstyle"] == "title":
+        if self.nregs["pnstyle"] == "title" or "x" in self.debug:
           t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
         else:
           t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
@@ -7745,7 +8203,7 @@ class Pph(Book):
     if pnum != "":
       t.append("<div>")
       if self.pnshow:
-        if self.nregs["pnstyle"] == "title":
+        if self.nregs["pnstyle"] == "title" or "x" in self.debug:
           t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
         else:
           t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
@@ -7817,7 +8275,7 @@ class Pph(Book):
     if pnum != "":
       t.append("<div>")
       if self.pnshow:
-        if self.nregs["pnstyle"] == "title":
+        if self.nregs["pnstyle"] == "title" or "x" in self.debug:
           t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
         else:
           t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
@@ -8157,10 +8615,10 @@ class Pph(Book):
       u.append("<div {} class='figright {}'>".format(ia["id"], idn))
 
     if ia["pageno"] != "":
-      if self.nregs["pnstyle"] == "title":
-        u.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ia["pageno"])) # new 3.24M
+      if self.nregs["pnstyle"] == "title" or "x" in self.debug:
+        u.append("<span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ia["pageno"])) # new 3.24M
       else:
-        u.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(ia["pageno"]))
+        u.append("<span class='pageno' id='Page_{0}' >{0}</span>".format(ia["pageno"]))
       #u.append("<span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ia["pageno"]))
       ia["pageno"] = ""
 
@@ -9710,18 +10168,18 @@ class Pph(Book):
   # .ul-
   #
   # options:
-  # .ul options
-  #    or
-  # .ul-
-  #
-  # options:
   #   style="disc | circle | square | none" (default: disc)
   #   indent="2" (indent is to the marker. Text is indented a further 2 spaces)
+  #   hang=n (default) or y
+  #   space=n (default) or y
   #   id=<id-value>
   #   class=<class-value>
   #
+  #
+  # HTML notes:
+  # <ul>  ...
   def doUl(self):
-    startul, li_active, indent, id, clss = self.doUlCommon()
+    (startul, li_active, indent, id, clss) = self.doUlCommon()
 
     t = []
     depth = len(self.liststack) - 1
@@ -9734,14 +10192,10 @@ class Pph(Book):
       if li_active:
         t.append((lispaces * " ") + "</li>")
       t.append(((ulspaces + 4) * " ") + "</ul>")
-      #if len(self.liststack) > 1:
-      #  t.append(((prev_lispaces + 4) * " ") + "</li>")
 
     # beginning an unordered list
     else:
 
-      #if active:           # if a list item was active
-      #  t.append(((prev_lispaces + 4) * " ") + "</li>")
       self.list_item_active = False
 
       s = self.fetchStyle()
@@ -9749,7 +10203,7 @@ class Pph(Book):
       if id:
         id = " id=" + id
       if clss:
-        clss = " class=" + clss
+        clss = " class='" + clss + "'"
       if s:
         t.append((ulspaces * " ") + "<ul style='{}'{}{}>".format(s, id, clss))
       else:
@@ -9766,13 +10220,15 @@ class Pph(Book):
   #
   # options: (default values shown)
   #   style="decimal | lower-alpha | lower-roman | upper-alpha | upper-roman" (default: decimal)
-  #   w="2" (number of digits allowed in the item number)
+  #   w="2" (number of digits allowed in the item number) (ignored in HTML)
   #   indent="2" (indent to the item number; text is indented a further width + 1 + 1 spaces)
+  #   hang=n (default) or y
+  #   space=n (default) or y
   #   id=<id-value>
   #   class=<class-value>
   #
   def doOl(self):
-    startol, li_active, indent, id, clss = self.doOlCommon()
+    (startol, li_active, indent, id, clss) = self.doOlCommon()
 
     t = []
     depth = len(self.liststack) - 1
@@ -9785,21 +10241,17 @@ class Pph(Book):
       if li_active:
         t.append((lispaces * " ") + "</li>")
       t.append(((olspaces + 4) * " ") + "</ol>")
-      #if len(self.liststack) > 1:
-      #  t.append(((prev_lispaces + 4) * " ") + "</li>")
 
     # beginning an ordered list
     else:
 
-      #if active:           # if a list item was active
-      #  t.append(((prev_lispaces + 4) * " ") + "</li>")
       self.list_item_active = False
       s = self.fetchStyle()
       s += "list-style-type: " + self.list_item_style[0] + "; "
       if id:
         id = " id=" + id
       if clss:
-        clss = " class=" + clss
+        clss = " class='" + clss + "'"
       if s:
         t.append((olspaces * " ") + "<ol style='{}'{}{}>".format(s, id, clss))
       else:
@@ -9818,42 +10270,28 @@ class Pph(Book):
     ulolspaces = 2 + (depth * 4)
     lispaces = ulolspaces + 2
 
-    if not startIt:   # end of list item;
-      #self.wb[self.cl] = (lispaces * " ") + "</li>" # end the item
-      #self.list_item_active = False
-      self.list_itblock_active = False
-      #self.cl += 1
-      del self.wb[self.cl] # delete .it-
-
-    # starting a list item
+    if self.list_item_active:
+      t.append((lispaces * " ") + "</li>") # insert ending tag for prior item
     else:
-      if self.list_item_active:
-        t.append((lispaces * " ") + "</li>") # insert ending tag for prior item
-      else:
-        self.list_item_active = True
-      if self.wb[self.cl] == ".it":         # start of a .it block?
-        t.append((lispaces * " ") + "<li>")                    # yes, need an item start tag
-        self.list_item_empty = True
-        self.list_itblock_active = True
+      self.list_item_active = True
 
-      else:      # single (possibly very long) item line that we'll need to wrap
-        l = "<li>" + self.wb[self.cl][4:].strip() # append item text to line
-        self.list_item_empty = False
+    l = "<li>" + self.wb[self.cl][4:].strip() # append item text to line
+    self.list_item_empty = False
 
-        # to make editing/viewing the raw HTML easier, try to split the (long) line to a reasonable length
-        while len(l) > 90:
-          splitat = l.rfind(' ', 0, 90)
-          if splitat == -1: # if no blanks found, split at position 90 anyway
-            splitat = 90
-          s = (lispaces * " ") + l[:splitat+1]
-          t.append(s)
-          l = l[splitat+1:]
-        else:
-          t.append((lispaces * " ") + l)
+    # to make editing/viewing the raw HTML easier, try to split the (long) line to a reasonable length
+    while len(l) > 90:
+      splitat = l.rfind(' ', 0, 90)
+      if splitat == -1: # if no blanks found, split at position 90 anyway
+        splitat = 90
+      s = (lispaces * " ") + l[:splitat+1]
+      t.append(s)
+      l = l[splitat+1:]
+    else:
+      t.append((lispaces * " ") + l)
 
-      self.wb[self.cl:self.cl+1] = t      # replace the .it with whatever we generated
+    self.wb[self.cl:self.cl+1] = t      # replace the .it with whatever we generated
 
-      self.cl += len(t)
+    self.cl += len(t)
 
   # Definition List (HTML)
   # .dl options
@@ -9866,6 +10304,9 @@ class Pph(Book):
   #   indent="2"
   #   id=<id-value> (ignored in text)
   #   class=<class-value> (ignored in text)
+  #   align=l (default) or r or c ### needs to be added
+  ### Also, need to make sure .ul/.ol nest properly within .dl, so some more options need to be set/saved on
+  ### the stack.
   #
   # Note: doDl operates differently from most other dot commands. It is in control of processing until
   #       the matching .dl- is encountered. All lines will either be directly part of its output,
@@ -9876,362 +10317,418 @@ class Pph(Book):
   # see CSS and HTML suggestion at http://www.pgdp.net/wiki/Dialogue
   def doDl(self):
 
-    # Split long lines of text for readability when added into the HTML
-    def split_line(l):
-      t = []
-      while self.truelen(l) > 90:
-        splitat = l.rfind(' ', 0, 90)
-        if splitat == -1: # if no blanks, split at 90
-          splitat = 90
-        #s = dtddspaces + l[:splitat+1]
-        s = l[:splitat+1]
-        t.append(s)
-        l = l[splitat+1:]
-      else:
-        t.append(l)
-      return t
+    class PphDefList(Book.DefList):
 
-    # emit HTML for <dl> into the buffer
-    def emit_dl(start=True):
-      nonlocal dd_padding, dl_ptxtindent
+      # "Print" debugging info (place it into the output text) if requested
+      def print_debug(self, info): # Ppt and Pph will override this
+        b = self.book
+        buff = "<p>" + "<br />\n".join(info) + "</p>"
+        #buff = buff.split("\n")
+        #b.wb[b.cl:b.cl] += buf
+        #b.cl += len(buff)
+        self.dlbuffer = buff.split("\n")
+        self.emit()
 
-      # starting a dl
-      if start:
-        if self.list_item_style != "p": # the following only for float/nofloat
-          self.css.addcss("[1241] dl {margin: .5em auto .5em auto;}")
-          if self.list_item_style == "f":
-            self.css.addcss("[1241] .dlfloat dt {float: left; clear: left; text-align: left; padding-top: .5em; }")
-            self.css.addcss("[1241] @media handheld { " +
-                            ".dlfloat dt {float: left; clear: left; text-align: left; padding-top: .5em; } }")
-            self.css.addcss("[1241] .dlfloat dd {text-indent: -2em; text-align: left; padding-top: .5em; }")
-          elif self.list_item_style == "n":
-            self.css.addcss("[1241] .dlnofloat dt {text-align: left; padding-top: .5em; }")
-            self.css.addcss("[1241] .dlnofloat dd {text-indent: -2em; text-align: left; padding-top: .5em; }")
-        else:  # paragraph style
-          self.css.addcss("[1241] .dlpara div {margin: .5em auto .5em auto; text-align: left}")
-          #self.css.addcss("[1241] .dlpara dd {text-align: left; padding-top: .5em;}")
-          self.css.addcss("[1241] .dlpara p {text-align: left; margin-top: .5em; margin-bottom: .5em; }")
+      # Routine to "bump" the current line pointer
+      # (Called by code in base DefList class)
+      # Since we're working in the source buffer (unlike Ppt, which has a separate emit buffer) we will
+      # delete the current line rather than bumping past it. All insertion of HTML code in PphDefList
+      # happens by inserting before the current line pointer and bumping the current line pointer so it is
+      # after the inserted code. This leaves the apparent "next" input line unchanged. When we are done
+      # processing that line of code it must actually be deleted, rather than simply bumping a counter as
+      # happens in Ppt and PptDefList.
+      def bump_cl(self):
+        del self.book.wb[self.book.cl]
 
-        # define an indent class for the <dd> elements
-        divisor = float(self.nregs["nf-spaces-per-em"])
-        iclass = "dd_in{}".format(self.list_item_width)  # create an indent class
-        if self.nregsusage["nf-spaces-per-em"] > 1:
-          iclass += "_{}".format(self.nregsusage["nf-spaces-per-em"])
-          divisor = float(self.nregs["nf-spaces-per-em"])
-        dd_padding = round(self.list_item_width/divisor, 1)
-        iamt = str(dd_padding) # calculate based on "2" (nf-spaces-per-em) spaces per em
-        self.css.addcss("[1241] .{} dd {{ padding-left: {}em; }}".format(iclass, iamt))
+      # Routine to wrap a definition line
+      # Nothing needed for HTML version
+      def wrap_def(self):
+        pass
 
-        # define span/padding CSS for paragraph format
-        if self.list_item_style == "p":
-          self.css.addcss("[1241] .{} .dlpspan {{ padding-left: {}em; }}".format(iclass, dd_padding-2))
-          dl_ptxtindent = dl_pindent + dd_padding # amount to indent a paragraph style dd that has an empty dt
+      # Begin a dl
+      def begin_dl(self):
+        b = self.book
+        self.dlbuffer = []
+        self.dd_class = ""
+        self.dd_indent_class = ""
+        self.dd_active = False
+        self.dd_padding = 0 # set during emit_dl()
+        self.dlnumspaces = len(b.liststack) * 2
+        self.dlspaces = self.dlnumspaces * " "
+        self.dtddnumspaces = self.dlnumspaces + 2
+        self.dtddspaces = self.dtddnumspaces * " "
+
+        self.paragraph = "" # in case combine=y initialize an empty paragraph
+        self.dl_ptxtindent = 0
+        self.dl_pindent = 0
+
+        # Make a new class for this .dl, or reuse a matching existing class, or use PPer-supplied class
+        if self.options["class"]:
+          dl_class = self.options["class"]
+        else:
+          temp = self.options.copy()
+          dl_class = "dl_"
+          del temp["debug"] # debug option is irrelevant
+          for k in b.dl_dict.keys():
+            if temp == b.dl_dict[k]:
+              dl_class += str(k)
+              break
+          else: # no match found; build new class name and create new entry in dictionary to remember it
+            b.dl_class += 1
+            dl_class += str(b.dl_class)
+            b.dl_dict[b.dl_class] = temp
+
+        divisor = float(b.nregs["nf-spaces-per-em"]) # figure out width for term
+        tindent = round(self.options["tindent"]/divisor, 1)
+        dindent = round(self.options["dindent"]/divisor, 1)
+        width = round(self.options["width"]/divisor, 1)
+        dtwidth = width + tindent
+
+        if self.options["style"] == "d": # the following only for <dl> style output
+
+          dlparms = "[1241] dl.{} {{"
+          dtparms = "[1241] .{} dt {{"
+          dtmparms = "" # will hold any generated @media handheld parameters
+          ddparms = "[1241] .{} dd {{"
+
+          if self.options["debug"]:
+            dtparms += " background-color: #FFC0CB;" # set a pink background for the dt if debugging
+
+          dlparms += " margin: .5em auto .5em auto;"
+          if self.options["float"]: # float=y
+            dtwidth += 1 # allow some padding when floating
+            dtparms += " float: left; clear: left; text-align: left; padding-top: .5em; width: {}em;".format(dtwidth)
+            if self.options["tindent"]: # tindent non-zero?
+              dtparms += " text-indent: {}em;".format(tindent)
+            dtmparms += " float: left; clear: left; text-align: left; padding-top: .5em; width: {}em;".format(dtwidth)
+            ddparms += " text-align: left; padding-top: .5em;"
+
+            if self.options["combine"]: # combine=y
+              if self.options["collapse"]: # collapse=y
+                if self.options["dindent"]:
+                  ddparms += " text-indent: {}em;".format(dindent)
+                if self.options["hang"]: # hang=y
+                  ddparms += " margin-left: 1em;"
+                else: # hang=n
+                  ddparms += " margin-left: 0em;"
+
+              else: # collapse=n
+                if self.options["hang"]: # hang=y
+                  ddparms += " margin-left: {}em; text-indent: -1em;".format(dtwidth + 1 + dindent)
+                else: # hang=n
+                  ddparms += " margin-left: {}em;".format(dtwidth + dindent)
+
+            else: # combine=n
+              if self.options["collapse"]: # collapse=y
+                if self.options["hang"]: # hang=y
+                  ddparms += " margin-left: 1em;"
+                else: # hang=n
+                  ddparms += " margin-left: 0em;"
+                #ddparms += " text-indent: {}em;".format(dtwidth + dindent)
+                if self.options["dindent"]:
+                  ddparms += " text-indent: {}em;".format(dindent)
+
+              else: # collapse=n
+                if self.options["hang"]: # hang=y
+                  ddparms += " margin-left: {}em; text-indent: -1em;".format(dtwidth + 1 + dindent)
+                else: # hang=n
+                  ddparms += " margin-left: {}em;".format(dtwidth + dindent)
+
+          else: # float=n
+            dtparms += " text-align: left; padding-top: .5em; width: {}em;".format(dtwidth)
+            ddparms += " text-align: left; padding-top: .5em;"
+            if self.options["tindent"]: # tindent non-zero?
+              dtparms += " text-indent: {}em;".format(tindent)
+
+            if self.options["combine"]: # combine=y
+              if self.options["collapse"]: # collapse=y
+                ddparms += " text-indent: {}em;".format(dtwidth + dindent)
+                if self.options["hang"]: # hang=y
+                  ddparms += " margin-left: 1em;"
+                else: # hang=n
+                  ddparms += " margin-left: 0em;"
+
+              else: # collapse=n
+                if self.options["hang"]: # hang=y
+                  ddparms += " margin-left: {}em; text-indent: -1em;".format(dtwidth + dindent)
+                else: # hang=n
+                  ddparms += " margin-left: {}em;".format(dtwidth + dindent)
+
+            else: # combine=n
+              if self.options["collapse"]: # collapse=y
+                ddparms += " text-indent: {}em;".format(dtwidth + dindent)
+                if self.options["hang"]: # hang=y
+                  ddparms += " margin-left: 1em;"
+                else: # hang=n
+                  ddparms += " margin-left: 0em;"
+
+              else: # collapse=n
+                if self.options["hang"]: # hang=y
+                  ddparms += " margin-left: {}em; text-indent: -1em;".format(dtwidth + 1 + dindent)
+                else: # hang=n
+                  ddparms += " margin-left: {}em;".format(dtwidth + dindent)
+
+          dlparms += " }}"
+          b.css.addcss(dlparms.format(dl_class))
+          dtparms += " }}"
+          b.css.addcss(dtparms.format(dl_class))
+          ddparms += " }}"
+          b.css.addcss(ddparms.format(dl_class))
+          if dtmparms: # if anything added to dtmparms
+            dtmparms = "[1241] @media handheld {{ .{} dt {{" + dtmparms + " }} }}"
+            b.css.addcss(dtmparms.format(dl_class))
+
+        else:  # <p> style output
+          dldivparms = "[1241] div.{}  {{"
+          dlparaparms = "[1241] .{} p {{"
+          dtmparms = "" # will hold any generated @media handheld parameters
+          dlspanparms = "[1241] span.{} {{"
+
+          dldivparms += " margin: .5em auto .5em auto; text-align: left;"
+          dlparaparms += " text-align: left; margin-top: .5em; margin-bottom: .5em;"
+
+          if self.options["debug"]:
+            dlspanparms += " background-color: #FFC0CB;" # set a pink background for the dt if debugging
+
+          dlspanparms += " display: inline-block; width: {}em;".format(dtwidth-.2)
+
+          if self.options["float"]: # float=y
+
+            if self.options["collapse"]: # collapse=y
+              if self.options["hang"]: # hang=y
+                dlparaparms += " padding-left: 1em; text-indent: -1em;"
+              else: # hang=n
+                pass # nothing to do for this case
+
+            else: # collapse=n
+              if self.options["hang"]: # hang=y
+                dlparaparms += " padding-left: {0}em; text-indent: -1em;".format(dtwidth+1)
+              else: # hang=n
+                dlparaparms += " padding-left: {0}em;".format(dtwidth)
+
+          else: #float=n
+
+            if self.options["collapse"]: # collapse=y
+              if self.options["hang"]: # hang=y
+                dlparaparms += " padding-left: 1em; text-indent: {}em;".format(dtwidth-1)
+              else: # hang=n
+                dlparaparms += " padding-left: 0em; text-indent: {}em;".format(dtwidth)
+
+            else: # collapse=n
+              if self.options["hang"]: # hang=y
+                dlparaparms += " padding-left: {0}em; text-indent: -1em;".format(dtwidth+1)
+              else: # hang=n
+                dlparaparms += " padding-left: {}em;".format(dtwidth)
+
+          # define span/padding CSS for paragraph format
+          #dlspanparms += " padding-left: {}em;".format(dd_padding-2))
+          #self.dl_ptxtindent = self.dl_pindent + self.dd_padding # amount to indent a paragraph style dd that has an empty dt
+
+          dldivparms += " }}"
+          b.css.addcss(dldivparms.format(dl_class))
+          dlparaparms += " }}"
+          b.css.addcss(dlparaparms.format(dl_class))
+          dlspanparms += " }}"
+          b.css.addcss(dlspanparms.format(dl_class))
 
         cvs = ""
-        if self.pvs:
-          cvs = " style='margin-top: {}em; '".format(self.pvs)
-          self.pvs = 0
-        if self.list_item_style == "f":
-          sclass = "dlfloat"
-        elif self.list_item_style == "n":
-          sclass = "dlnofloat"
-        if self.list_item_style == "p":
-          sclass = "dlpara"
-          self.dlbuffer.append(dlspaces + "<div class='{} {}'{}>".format(sclass, iclass, cvs))
+        if b.pvs:
+          cvs = " style='margin-top: {}em; '".format(b.pvs)
+          b.pvs = 0
+        if self.options["style"] == "d": # <dl> style
+          self.dlbuffer.append(self.dlspaces + "<dl class='{}'{}>".format(dl_class, cvs))
+
+        else: # <p> style
+          self.dlbuffer.append(self.dlspaces + "<div class='{}'{}>".format(sclass, cvs))
+
+        self.emit()
+
+      # Finalize a dl
+      def finalize_dl(self):
+        b = self.book
+
+        if self.dd_active:
+          self.build_dd("", True)
+
+        if self.options["style"] == "p": # <p> style
+          self.dlbuffer.append(self.dlspaces + "  </div>")
         else:
-          self.dlbuffer.append(dlspaces + "<dl class='{} {}'{}>".format(sclass, iclass, cvs))
+          self.dlbuffer.append(self.dlspaces + "  </dl>")
 
-      # ending a dl
-      else:
+        self.emit()
 
-        if self.list_item_style == "p":
-          self.dlbuffer.append(dlspaces + "  </div>")
+
+      # Split long lines of text for readability when added into the HTML
+      def split_line(self, l):
+        t = []
+        while b.truelen(l) > 90:
+          splitat = l.rfind(' ', 0, 90)
+          if splitat == -1: # if no blanks, split at 90
+            splitat = 90
+          s = l[:splitat+1]
+          t.append(s)
+          l = l[splitat+1:]
         else:
-          self.dlbuffer.append(dlspaces + "  </dl>")
+          t.append(l)
+        return t
 
-      emit()
+      # Layout the term and definition (non-combining mode)
+      def layout(self):
+        self.build_dt()
+        self.build_dd(self.definition)
+        self.definition = "" # needed? Or already done in DefList base class?
+
+      # Emit the laid-out term/definition (non-combining mode)
+      def emit_def(self):
+        self.emit()
+
+      # Build HTML for term into the buffer
+      def build_dt(self):
+
+        b = self.book
+        if self.dd_active:
+          self.build_dd("", True)
+
+        b.list_item_active = True
+        cvs = ""
+        if b.pvs:
+          cvs = " style='margin-top: {}em; '".format(b.pvs)
+          b.pvs = 0
+
+        term = self.term.rstrip()
+        if not term:
+          term = "&nbsp;"
+        if self.options["style"] == "d": # style=d
+          if self.options["float"] or term != "&nbsp;":
+            self.dlbuffer.append(self.dtddspaces + "<dt{}>".format(cvs) + term + "</dt>")
+
+        else: # style=p
+          self.dlbuffer.append(self.dtddspaces + "<p{}>".format(cvs) +
+                               "<span class='{}'>".format(dl_class) + term + "</span>")
 
 
-    # Build HTML for <dt> into the buffer
-    def build_dt():
+      # Build HTML for definition into the buffer (may be a single line of definition, or a paragraph if combine=y)
+      # s: possibly long string (even paragraph length) containing the dd info
+      def build_dd(self, s, endit=False):
 
-      if dd_active:
-        build_dd("", False)
+        b = self.book
 
-      cvs = ""
-      if self.pvs:
-        cvs = " style='margin-top: {}em; '".format(self.pvs)
-        self.pvs = 0
+        clss = ""
+        cvs = ""
+        cstyle = ""
+        ctxt = ""
+        cindent = ""
+        extraspaces = ""
 
-      if self.list_item_style != "p":
-        self.dlbuffer.append(dtddspaces + "<dt{}>".format(cvs) + term + "</dt>")
+        if endit:
+          if self.options["style"] == "d":
+            self.dlbuffer.append(self.dtddspaces + "</dd>")
+          else:
+            self.dlbuffer.append(self.dtddspaces + "</p>")
+          self.dd_active = False
+          b.list_item_active = False
+          return
 
+        b.list_item_active = True
+        self.dd_active = True
 
-    # Build HTML for <dd> into the buffer
-    # s: possibly long string (even paragraph length) containing the dd info
-    def build_dd(s, start=True):
-      nonlocal dd_indent_class, dd_active
+        if not self.options["combine"]:
+          # calculate leading spaces in definition line if needed (non-combining only)
+          tmp = s
+          ss = ""
+          m = re.match(r"^(⑯\w+⑰)", tmp) # remove any leading .bn info before calculating
+          while m:
+            ss += m.group(0)
+            tmp = re.sub(r"^⑯\w+⑰", "", tmp, 1)
+            m = re.match(r"^⑯\w+⑰", tmp)
+          leadsp = len(tmp) - len(tmp.lstrip())
 
-      clss = ""
-      cvs = ""
-      cstyle = ""
-      ctxt = ""
-      cindent = ""
-      extraspaces = ""
-      if start:
-        if self.list_item_style != "p":
-          dd_active = True
-          self.list_item_active = True
-        if dd_indent_class or dd_class:
-          if dd_indent_class and dd_class:
+          # define an indent class if needed
+          if leadsp > 0:
+            dd_indent_class = "dd_in{}".format(leadsp)  # create an indent class
+            if self.nregsusage["nf-spaces-per-em"] > 1:
+              dd_indent_class += "_{}".format(self.nregsusage["nf-spaces-per-em"])
+
+            divisor = float(self.nregs["nf-spaces-per-em"])
+            iamt = str(dd_padding + round(leadsp/divisor, 1)) # calculate based on "2" spaces per em, and
+                                               #  add in the base padding-left calculated from self.list_item_width
+            if self.options["hang"]: # hang=y
+              self.css.addcss("[1241] .{} {{ padding-left: {}em}; text-indent: -1em}".format(dd_indent_class, iamt+1))
+            else: # hang=n
+              self.css.addcss("[1241] .{} {{ padding-left: {}em}}".format(dd_indent_class, iamt))
+
+        if self.dd_indent_class or self.dd_class:
+          if self.dd_indent_class and self.dd_class:
             dd_indent_class += " "
-          clss = " class='{}{}'".format(dd_indent_class, dd_class)
+          clss = " class='{}{}'".format(self.dd_indent_class, self.dd_class)
 
-        if len(s) > 90:
-          t = split_line(s)
+        if b.truelen(s) > 90:
+          t = self.split_line(s)
         else:
           t = [s]
-        if self.pvs:
-          cvs = "margin-top: {}em; ".format(self.pvs)
-          self.pvs = 0
+        if b.pvs:
+          cvs = "margin-top: {}em; ".format(b.pvs)
+          b.pvs = 0
 
-        if self.list_item_style == "p" and not term and dl_ptxtindent != 0:
-          ctxt = "text-indent: {}em; ".format(dl_ptxtindent)
-        elif dl_pindent:
-          ctxt = "text-indent: {}em; ".format(dl_pindent)
+        #if self.options["style"] == "p":####
+        #  if not self.term and self.dl_ptxtindent != 0:
+        #    ctxt = "text-indent: {}em; ".format(self.dl_ptxtindent)
+        #  elif self.dl_pindent:
+        #    ctxt = "text-indent: {}em; ".format(self.dl_pindent)
 
         if cvs or ctxt:
           cstyle = " style='" + cvs + ctxt + "'"
 
-        if self.list_item_style != "p":
-          self.dlbuffer.append(dtddspaces + "<dd{}{}>".format(clss, cstyle) + t[0])
-        else:
-          if term:
-            self.dlbuffer.append(dtddspaces + "<p{}{}>".format(clss, cstyle) + term + " ")
-            extraspaces = "  "
-            self.dlbuffer.append(dtddspaces + extraspaces + "<span class='dlpspan'>" + t[0])
-          else:
-            self.dlbuffer.append(dtddspaces + "<p{}{}>".format(clss, cstyle) + t[0])
-        for i in range(1, len(t)):
-          self.dlbuffer.append(dtddspaces + extraspaces + t[i])
+        if self.options["style"] == "d":
+          self.dlbuffer.append(self.dtddspaces + "<dd{}{}>".format(clss, cstyle) + t[0])
+        else: # style=p
+          #if self.term:
+          #  self.dlbuffer.append(self.dtddspaces + "<p{}{}>".format(clss, cstyle) + self.term + " ")
+          #  extraspaces = "  "
+          #  self.dlbuffer.append(self.dtddspaces + extraspaces + "<span class='dlpspan'>" + t[0])
+          #else:
+          #  self.dlbuffer.append(self.dtddspaces + "<p{}{}>".format(clss, cstyle) + t[0])
+          extraspaces = "  "
+          self.dlbuffer.append(t[0])
 
-        if self.list_item_style == "p":
-          if term:
-            self.dlbuffer.append(dtddspaces + extraspaces + "</span>")
-          self.dlbuffer.append(dtddspaces + "</p>")
+        for i in range(1, len(t)): # handle remaining lines, if any, of this definition
+          self.dlbuffer.append(self.dtddspaces + extraspaces + t[i])
 
-
-      # finish a <dd> element
-      else:
-        if self.list_item_style != "p":
-          dd_active = False
-          self.list_item_active = False
-          self.dlbuffer.append(dtddspaces + "</dd>")
+        self.dd_class = ""
+        self.dd_indent_class = ""
 
 
-    # build HTML for a definition that is a paragraph
-    def build_paragraph():
-      nonlocal paragraph
+      # build HTML for a definition that is a paragraph
+      def emit_paragraph(self):
 
-      build_dt()
-      build_dd(paragraph)
-      paragraph = ""
+        self.build_dt()
+        self.build_dd(self.paragraph)
+        self.emit()
+        self.term = ""
+        self.paragraph = ""
 
+      # Routine to handle blank lines after the first one
+      def add_blank(self):
+        self.book.pvs += 1
 
-    # Actually add the buffer into self.wb
-    def emit(preserve=False):
+      # Handle class= on .dd directive
+      def set_dd_class(self, clss):
+        self.dd_class = clss
 
-      # set to either replace the current line (default) or preserve it by inserting the buffer
-      j = self.cl if (preserve) else self.cl+1
+      # Actually add the buffer into Pph.wb (will insert before Pph.cl)
+      def emit(self):
 
-      if self.dlbuffer:
-        self.wb[self.cl:j] = self.dlbuffer
-        self.cl += len(self.dlbuffer)
-        self.dlbuffer = []
+        b = self.book
 
-    #
-    # begin code to handle .dl
-    startdl, indent, id, clss = self.doDlCommon()
+        if self.dlbuffer:
+          b.wb[b.cl:b.cl] = self.dlbuffer
+          b.cl += len(self.dlbuffer)
+          self.dlbuffer = []
 
-    self.dlbuffer = []
-    dd_class = ""
-    dd_active = False
-    dd_padding = 0 # set during emit_dl()
-    dlnumspaces = len(self.liststack) * 2
-    dlspaces = dlnumspaces * " "
-    dtddnumspaces = dlnumspaces + 2
-    dtddspaces = dtddnumspaces * " "
+    # main processing for doDl (Text):
 
-    # handle an indent request for style=paragraph
-    dl_pindent = 0
-    if indent:
-      indent = int(indent)
-    if indent and self.list_item_style == "p":
-      dl_pindent = indent / 2
-
-    # Handle .dl- that is not ending a .dl block
-    if not startdl:
-      emit_dl(False)
-      return
-
-
-    # starting a definition list
-    paragraph = "" # in case style=p, initialize an empty paragraph
-    dd_indent_class = ""
-    dl_ptxtindent = 0
-    dlstart = self.cl
-    emit_dl()
-
-
-    # Process the block of statements until we find a matching .dl- or end-of-file
-    #
-    # Each definition line has one of these forms:
-    #   a:  term or speaker name |
-    #   b1: term or speaker name | definition or line of dialog
-    #   b2: | definition or line of dialog (implied term/speaker)
-    #   c:  another line of definition or dialog for prior speaker
-    #
-    #   d:  .dt term or speaker name
-    #       .dd optional-parms definition line of form b2 or c
-    #           where optional-parms is class=class-name
-    #
-    #
-    # Notes:
-    #   1. Definition lines may be continued using a backslash as the last character. Such
-    #      lines will be concatenated (the backslash becomes a space) and wrapped.
-    #   2. Blanks preceding the | will be deleted. The | may be followed by
-    #      0 or 1 blank (which will be removed). If followed by more than 1 blank all
-    #      after the first are significant and will be kept. If a line (after processing
-    #      continuation characters) has no | characters, it is treated as a definition/dialog
-    #      line where all leading blanks are significant for style=float or nofloat. For
-    #      style=paragraph leading blanks are not significant on such lines except the first.
-    #   3. Only the first unprotected | within a definition line is significant. Any others will
-    #      be considered part of the text.
-    #   3. Definition entries may contain other blocks, such as .ul, .ol, .nf, etc.
-    #   4. Blank lines are significant, and will be retained
-    #   5. With style=paragraph, definition lines of format c occurring after a definition line of
-    #      format a or b will be wrapped into a paragraph with the text, except for the first line,
-    #      left-aligned to the margin (indent). The first line will start after the speaker name or term.
-
-
-    while self.cl < len(self.wb) and not self.wb[self.cl] == ".dl-":  # process until we hit our .dl-
-
-      # If we hit a dot command, handle it
-      if not self.wb[self.cl].startswith(".dt") and not self.wb[self.cl].startswith(".dd"):
-        if re.match(r"\.[a-z]", self.wb[self.cl]):
-          self.doDot()
-          continue
-
-      # Not a dot command, must be a definition or blank line
-      #
-      i = self.cl
-      while i < (len(self.wb) - 1) and self.wb[i].endswith("\\"):
-        self.wb[i] = self.wb[i][:-1] + " " + self.wb[i+1]
-        del self.wb[i+1]
-      if self.wb[i].endswith("\\"):
-        self.crash_w_context("File ends with continued definition line: {}".format(self.wb[i]), i)
-
-      # check for (and handle) blank lines
-      if self.wb[self.cl] == "":
-        # check for paragraph that we need to emit
-        if self.list_item_style == "p" and paragraph != "":
-          build_paragraph()
-          emit(True)
-        self.pvs += 1
-        del self.wb[self.cl] # remove the blank line
-        continue
-
-      # check for .dt or .dd (form d of definition line) and handle
-      dd_class = ""
-      dd_indent_class = ""
-      calc_leading_spaces = False
-
-      if self.wb[self.cl].startswith(".dt"):
-        self.wb[self.cl] = self.wb[self.cl][4:] + "|" # transform to form a and pass it through
-
-      elif self.wb[self.cl].startswith(".dd"):
-        m = re.match(r"\.dd( +class=[^ ]*?)? +(.*)", self.wb[self.cl])
-        if m:
-          self.wb[self.cl] = m.group(2)
-          if m.group(1):
-            temp = ".dd " + m.group(1)
-            temp, dd_class = self.get_id("class", temp)
-
-        else:
-          self.crash_w_context("Error parsing .dd directive: {} \n".format(self.wb[self.cl]), self.cl)
-
-      # isolate term and definition
-      t = self.wb[self.cl].split("|", maxsplit=1)
-      if len(t) == 2:  # form a or b above
-        # new term/speaker needs to force building of prior paragraph for style=paragraph
-        if self.list_item_style == "p" and paragraph != "":
-          build_paragraph()
-
-        term = t[0].rstrip()
-
-        definition = t[1]
-        if len(definition) >= 1:   # remove at most 1 leading blank from the definition
-          if definition[0] == " ":
-            definition = definition[1:]
-        if self.list_item_style == "p":
-          paragraph += definition + " "
-          del self.wb[self.cl]
-          continue
-
-        calc_leading_spaces = True
-
-      else:   # form c above
-        if self.list_item_style != "p":
-          term = ""
-          definition = t[0]  # all leading blanks significant in this form for float/nofloat
-          calc_leading_spaces = True
-        else:
-          if not paragraph:
-            term = ""
-          paragraph += t[0].strip() + " " # no leading/trailing blanks significant for paragraph
-          del self.wb[self.cl]
-          continue
-
-      # calculate leading spaces in definition line if needed (float/nofloat only; paragraph doesn't get here)
-      if calc_leading_spaces:
-        tmp = definition
-        ss = ""
-        m = re.match(r"^(⑯\w+⑰)", tmp) # remove any leading .bn info before calculating
-        while m:
-          ss += m.group(0)
-          tmp = re.sub(r"^⑯\w+⑰", "", tmp, 1)
-          m = re.match(r"^⑯\w+⑰", tmp)
-        leadsp = len(tmp) - len(tmp.lstrip())
-
-        # define an indent class if needed
-        if leadsp > 0:
-          dd_indent_class = "dd_in{}".format(leadsp)  # create an indent class
-          if self.nregsusage["nf-spaces-per-em"] > 1:
-            dd_indent_class += "_{}".format(self.nregsusage["nf-spaces-per-em"])
-
-          divisor = float(self.nregs["nf-spaces-per-em"])
-          iamt = str(dd_padding + round(leadsp/divisor, 1)) # calculate based on "2" spaces per em, and
-                                             #  add in the base padding-left calculated from self.list_item_width
-          self.css.addcss("[1241] .{} {{ padding-left: {}em}}".format(dd_indent_class, iamt))
-
-
-      # handle the term and definition line(s)
-      build_dt()
-      build_dd(definition)
-      emit()
-
-
-    # hit eof or .dl-
-    if self.cl >= len(self.wb): # oops, hit eof: .dl- missing
-      self.crash_w_context("Missing .dl- for this .dl block", dlstart)
-
-    else:
-      if self.list_item_style == "p" and paragraph != "":
-        build_paragraph()
-      if dd_active:
-        build_dd("", False)
-      emit(True)
-    # the .dl- will be handled by reentering doDl from doDot
+    dlobj = PphDefList(self) # create the object
+    dlobj.run()              # turn over control
 
 
   def doChecks(self):
@@ -10403,7 +10900,8 @@ def main():
   parser.add_argument('-i', '--infile', help='UTF-8 or Latin-1 input file')
   parser.add_argument('-l', '--log', help="display Latin-1, diacritic, and Greek conversion logs",
                       action="store_true")
-  parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r,l)')
+  parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r,l,x)')
+  # debug "x" forces "title" style for page numbering, rather than "content"
   parser.add_argument('-o', '--output_format', default="hu",
                       help='output format (HTML:h, text:t, u or l)')
   parser.add_argument('-a', '--anonymous', action='store_true',
