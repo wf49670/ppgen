@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53ca4" + with_regex   # 8-Jan-2016
+VERSION="3.53ca5" + with_regex   # 10-Jan-2016
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -82,6 +82,10 @@ VERSION="3.53ca4" + with_regex   # 8-Jan-2016
 #    confusing the link handling.
 #  Eliminate possible ".RS c" at end of text output file
 #  Warn about (and then ignore) any specified table borders in Latin-1 output
+#3.53ca5
+#  Detect incorrect column specification (missing colon) for a table and fail with proper error message
+#  When an HTML table cell starts with protected blanks, use text-indent instead of padding-left so only the first
+#    row is indented if the cell content wraps
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -5740,6 +5744,8 @@ class Ppt(Book):
     bafter  = list() # and after cells
     while j <= ncols:
       u = t[j].split(':')
+      if len(u) != 2:
+        self.crash_w_context("Incorrect column specification (missing the colon), {}".format(t[j]), self.cl)
 
       appended = False
       m = re.match(r"([|=]*)(..)", u[0]) # extract border-before character(s)
@@ -9602,10 +9608,10 @@ class Pph(Book):
           t2 = re.sub(r"^ⓢ+","", v[k])
           if len(t1) - len(t2) > 0:
             padleft = round((len(t1) - len(t2))*0.7, 1)
-            padding += 'padding-left: {}em; '.format(padleft)
-          elif borders_present: # if no leading spaces, and borders in use, add left-padding
+            padding += 'text-indent: {}em; '.format(padleft) # was padding-left, but that has problems if cell text wraps
+          if borders_present: # if no leading spaces, and borders in use, add left-padding
             padding += 'padding-left: ' + self.nregs["html-cell-padding-left"] + '; '
-          if borders_present: # if borders in use add right-padding
+            #if borders_present: # if borders in use add right-padding
             padding += 'padding-right: ' + self.nregs["html-cell-padding-right"] + '; '
 
           # inject saved page number if this is first column
