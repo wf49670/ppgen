@@ -93,6 +93,8 @@ VERSION="3.53ca6" + with_regex   # 13-Jan-2016
 #  Allow any kind of input line to be continued with a \ at the end. The \ will be replaced by a blank, and the 
 #    following line will be concatenated after the blank. (Note: .de is handled differently; the lines are not concatenated
 #    but remain separate in the HTML output file.)
+#Experimental branch GreekBracketMatch to allow ] within [Greek: ...] tags without the need for the PPer to escape them
+#  using \]
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3068,6 +3070,39 @@ class Book(object):
         i += 1
 
     def doGreek():
+
+      def findGreek(text, start):
+        found = False
+        i = end = len(text)
+        m = re.search(r"\[Greek: ?", text[start:end], flags=re.DOTALL)
+        if m:
+          found = True
+          newstart = m.start()
+          i = start + m.end() # bump past [Greek:
+          end = len(text)
+          nest = 0
+          done = False
+          while i < end and not done:
+            aaadbg = text[i]
+            if text[i] == "[":
+              nest += 1
+            elif text[i] == "]" and nest == 0:
+              done = True
+              break
+            elif text[i] == "]":
+              nest -= 1
+
+            i += 1
+          if not done:
+            self.fatal("Unterminated [Greek tag?\n{}".format(text[start+newstart:]))
+
+        i += 1
+        more = True if (i < len(text)) else False
+        
+        return found, start, i, more
+          
+          
+
       # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
       # process [Greek: ...] in UTF-8 output if requested to via .gk command
       i = 0
@@ -3114,7 +3149,18 @@ class Book(object):
       if self.renc == "u" or self.renc == "h" or self.cvgfilter:
         text = '\n'.join(self.wb) # form all lines into a blob of lines separated by newline characters
         if self.gk_requested:
-          text = re.sub(r"\[Greek: ?(.*?)]", gkrepl, text, flags=re.DOTALL)
+          more = True
+          start = 0
+          while more:
+            found, start, end, more = findGreek(text, start)
+            if found:
+              front = text[:start]
+              #middle = text[start:end]
+              back = text[end:]
+              middle = re.sub(r"\[Greek: ?(.*)]", gkrepl, text[start:end], flags=re.DOTALL)
+              text = front + middle + back
+              start = len(front) + len(middle)
+          #text = re.sub(r"\[Greek: ?(.*?)]", gkrepl, text, flags=re.DOTALL)
         # even if Greek processing not requested, [Greek: ...] strings could have \| and \(space)
         # characters we need to protect
         count = 1
