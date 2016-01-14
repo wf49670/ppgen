@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53ca5" + with_regex   # 10-Jan-2016
+VERSION="3.53ca6" + with_regex   # 13-Jan-2016
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -86,6 +86,13 @@ VERSION="3.53ca5" + with_regex   # 10-Jan-2016
 #  Detect incorrect column specification (missing colon) for a table and fail with proper error message
 #  When an HTML table cell starts with protected blanks, use text-indent instead of padding-left so only the first
 #    row is indented if the cell content wraps
+#3.53ca6
+#  When centering text output (.ce, .nf c) if a line is too long then center each portion of it, rather than centering the
+#    first part and using a hanging indent for the remaining line(s) of wrapped text. This makes the text and HTML
+#    handling compatible.
+#  Allow any kind of input line to be continued with a \ at the end. The \ will be replaced by a blank, and the 
+#    following line will be concatenated after the blank. (Note: .de is handled differently; the lines are not concatenated
+#    but remain separate in the HTML output file.)
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3584,23 +3591,42 @@ class Book(object):
       # user-defined character mapping complete, now do default mapping to Latin-1
       self.utoLat()
 
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # long caption lines may end with a single backslash (25-Jun-2014)
-    # Also true for .ta directives (note: continuation of contents of tables handled in doTable)
-    # also true for long list item lines (.it)
-    # Note: .de, .pm handled elsewhere
+    ## - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    ## long caption lines may end with a single backslash (25-Jun-2014)
+    ## Also true for .ta directives (note: continuation of contents of tables handled in doTable)
+    ## also true for long list item lines (.it)
+    ## Note: .de, .pm handled elsewhere
+    #
+    #i = 0
+    #while i < len(self.wb):
+    #  if (self.wb[i].startswith(".ca ") or self.wb[i].startswith(".ta ") or # long lines allowed?
+    #      self.wb[i].startswith(".it ")):
+    #    while i < (len(self.wb) - 1) and self.wb[i].endswith("\\"):
+    #      self.wb[i] = self.wb[i][:-1] + " " + self.wb[i+1]
+    #      del self.wb[i+1]
+    #    if self.wb[i].endswith("\\"):
+    #      self.crash_w_context("File ends with continued {}".format(self.wb[i][0:3]), i)
+    #  i += 1
 
+    # long lines of any kind may end with a single backslash. The backslash will be replaced by a blank, and
+    # the next line will be concatenated to it.
+    # Note: .de is exempted here as it needs separate processing.
     i = 0
-    while i < len(self.wb):
-      if (self.wb[i].startswith(".ca ") or self.wb[i].startswith(".ta ") or # long lines allowed?
-          self.wb[i].startswith(".it ")):
-        while i < (len(self.wb) - 1) and self.wb[i].endswith("\\"):
+    inde = False
+    while i < (len(self.wb) - 1):
+      if self.wb[i].startswith(".de") and self.wb[i].endswith("\\"):
+        inde = True
+      elif self.wb[i].endswith("\\"):
+        if not inde:
           self.wb[i] = self.wb[i][:-1] + " " + self.wb[i+1]
           del self.wb[i+1]
-        if self.wb[i].endswith("\\"):
-          self.crash_w_context("File ends with continued {}".format(self.wb[i][0:3]), i)
+          continue
+      else:
+        inde = False
       i += 1
 
+    if self.wb[-1].endswith("\\"):
+      self.crash_w_context("File ends with continued line.", i)
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # courtesy remaps
@@ -5241,15 +5267,20 @@ class Ppt(Book):
         if m:
           wi = len(m.group(1))
           s = m.group(2)
-        u = self.wrap(s, wi+3, xt, -3, optimal_needed=False)
-        line = u[0]
-        u[0] = " " * indent + self.truefmt(xs, line)
-        t.append(u[0]) # output first line
-        bcnt = 0
-        while bcnt < len(u[0]) and u[0][bcnt] == " ": bcnt += 1 # count leading blanks in first line
-        blanks = " " * bcnt
-        for line in u[1:]: # then output other lines, padded with that number of blanks ### does this work?
-          t.append(blanks + line)
+        #u = self.wrap(s, wi+3, xt, -3, optimal_needed=False)
+        u = self.wrap(s, 0, xt, 0, optimal_needed=False)
+        for line in u:
+          t.append(" " * indent + self.truefmt(xs, line))
+        # code below wrapped a long centered line and then used a hanging indent. New code (above) centers each line of
+        # the wrapped text
+        #line = u[0]
+        #u[0] = " " * indent + self.truefmt(xs, line)
+        #t.append(u[0]) # output first line
+        #bcnt = 0
+        #while bcnt < len(u[0]) and u[0][bcnt] == " ": bcnt += 1 # count leading blanks in first line
+        #blanks = " " * bcnt
+        #for line in u[1:]: # then output other lines, padded with that number of blanks ### does this work?
+        #  t.append(blanks + line)
 
       i += 1
     self.cl = i + 1 # skip the closing .nf-
