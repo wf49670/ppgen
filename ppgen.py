@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53ca6" + with_regex   # 13-Jan-2016
+VERSION="3.53ca7" + with_regex   # 14-Jan-2016
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -93,8 +93,10 @@ VERSION="3.53ca6" + with_regex   # 13-Jan-2016
 #  Allow any kind of input line to be continued with a \ at the end. The \ will be replaced by a blank, and the 
 #    following line will be concatenated after the blank. (Note: .de is handled differently; the lines are not concatenated
 #    but remain separate in the HTML output file.)
-#Experimental branch GreekBracketMatch to allow ] within [Greek: ...] tags without the need for the PPer to escape them
-#  using \]
+#3.53ca7:
+#  Merge experimental branch GreekBracketMatch to allow ] within [Greek: ...] tags without the need for the PPer to escape them
+#    using \]
+#  Fix problem using \[ in .sr directives, and possibly some other characters such as \{
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1828,6 +1830,19 @@ class Book(object):
     self.list_item_value += 1
     return self.toRoman(self.list_item_value).upper()
 
+  # routine to restore some of the escaped characters (needed for .sr processing)
+  # Note: restores the backslash character, too.
+  def restore_some_escapes(self, text):
+    text = text.replace("①", "\{")
+    text = text.replace("②", "\}")
+    text = text.replace("③", "\[")
+    text = text.replace("④", "\]")
+    text = text.replace("⑤", "\<")
+    text = text.replace("⑳", "\>")
+    text = text.replace("⑥", "\:")
+    text = text.replace("⑨", "\-")
+    text = text.replace("⓪", "\#")
+    return text
 
   def cvglist(self):
     if self.listcvg:
@@ -2145,6 +2160,7 @@ class Book(object):
       b = self.book # short pointer to Ppt or Pph "self"
 
       dopts = {}
+      dopts["align"] = "l" ### needs to be implemented
       dopts["class"] = ""
       dopts["collapse"] = False
       dopts["combine"] = False
@@ -2165,17 +2181,22 @@ class Book(object):
         if len(b.liststack) > 0:
           if not b.list_item_active:
             b.crash_w_context("Nested list must occur within a list item", b.cl)
-        b.dotcmdstack.append(b.dotcmds)
-        b.dotcmds = b.list_dotcmds   # restrict set of valid dot cmds within a list
+        b.push_list_stack(b.list_dotcmds)
 
-        b.liststack.append((b.list_type, b.list_item_style, b.list_item_value,
-                               b.list_item_width, b.dlbuffer, b.list_item_active,
-                               b.list_itblock_active, b.regIN)) # save important info for nested lists
         b.list_type = "d"
         b.list_item_active = False
         prev_width = b.list_item_width # remember item width for prior level of list, if any
 
         options = b.wb[b.cl][4:].strip()
+
+        if "align=" in options:
+          options, temp = b.get_id("align", options)
+          if temp.lower().startswith("l"):
+            dopts["align"] = "l"
+          elif temp.lower().startswith("r"):
+            dopts["align"] = "r"
+          else:
+            b.crash_w_context("Invalid align value: {}".format(temp), b.cl)
 
         if "class=" in options:
           options, dopts["class"] = b.get_id("class", options)
@@ -2227,7 +2248,7 @@ class Book(object):
           options, dopts["id"] = b.get_id("id", options)
 
         if "style=" in options:
-          options, temp = b.get_id("float", options)
+          options, temp = b.get_id("style", options)
           if temp.lower().startswith("d"):
             dopts["style"] = "d"
           elif temp.lower().startswith("p"):
@@ -2290,16 +2311,7 @@ class Book(object):
     # Routine to handle .dl-
     def end_dl(self):
       b = self.book
-      currlist = b.liststack.pop()
-      b.list_type = currlist[0]
-      b.list_item_style = currlist[1]
-      b.list_item_value = currlist[2]
-      b.list_item_width = currlist[3]
-      b.dlbuffer = currlist[4]
-      b.list_item_active = currlist[5]
-      b.list_itblock_active = currlist[6]
-      b.regIN = currlist[7]
-      b.dotcmds = b.dotcmdstack.pop()
+      b.pop_list_stack()
       self.bump_cl()
 
     # Routine to wrap a definition line that is too long
@@ -2424,7 +2436,7 @@ class Book(object):
         # Note: text processing is straightforward: turn into form a or b2
         #       We can ignore the optional parameters on .dd
         if b.wb[b.cl].startswith(".dt"):
-          b.wb[b.cl] = b.wb[self.cl][4:] + "|"
+          b.wb[b.cl] = b.wb[b.cl][4:] + "|"
 
         elif b.wb[b.cl].startswith(".dd"):
           m = re.match(r"\.dd( +class=[^ ]*?)? +(.*)", b.wb[b.cl])
@@ -2777,6 +2789,7 @@ class Book(object):
   #   hang=n (default) or y
   #   id=<id-value> (ignored in text)
   #   class=<class-value> (ignored in text)
+  #   align=r (default) or l (ignored in HTML)
   #
   def parse_UlOl_options(self, type):
       options = self.wb[self.cl][4:].strip()
@@ -3384,6 +3397,7 @@ class Book(object):
       sr_error = False
       while i < len(self.wb):
         if self.wb[i].startswith(".sr"):
+          self.wb[i] = self.restore_some_escapes(self.wb[i])
           m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
           if m:
             if m.group(5) != "":           # if anything here then the user's expression was wrong, somehow
@@ -3549,6 +3563,7 @@ class Book(object):
     sr_error = False
     while i < len(self.wb):
       if self.wb[i].startswith(".sr"):
+        self.wb[i] = self.restore_some_escapes(self.wb[i])
         m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
         if m:
           if m.group(5) != "":           # if anything here then the user's expression was wrong, somehow
@@ -6369,12 +6384,16 @@ class Ppt(Book):
           self.regIN += 2
 
       else:
-        if len(self.liststack) > 1: # nested?
-          self.regIN += self.list_item_width # indent to new text position
-        elif self.list_item_style != "none":
-          self.regIN += 2 # if no indent specified, indent text by 2 (marker + space)
-        else:
-          pass # don't adjust indent if no indent specified and style = none
+        #if len(self.liststack) > 1: # nested?
+        #  self.regIN += self.list_item_width # indent to new text position
+        #elif self.list_item_style != "none":
+        #  self.regIN += 2 # if no indent specified, indent text by 2 (marker + space)
+        #else:
+        #  pass # don't adjust indent if no indent specified and style = none
+        temp_indent = self.outerwidth if (self.liststack > 1) else 0
+        if self.list_list_item_style != "none":
+          temp_indent += 2
+        self.regIN += temp_indent
 
     self.cl += 1
 
@@ -6405,13 +6424,16 @@ class Ppt(Book):
     else:            # beginning an ordered list
 
       if indent != -1:
-        self.regIN = int(indent) + self.list_item_width # indent specified is to marker; regIN is to text, not marker
+        #self.regIN = int(indent) + self.list_item_width # indent specified is to marker; regIN is to text, not marker
+        self.regIN += int(indent)
 
       else:
-        if len(self.liststack) > 1: # nested? ### need to adjust this
-          self.regIN += self.list_item_width # indent to new text position
-        else:
-          self.regIN = self.list_item_width if (self.regIN) else self.list_item_width + 1 # ensure a leading blank
+        #if len(self.liststack) > 1: # nested? ### need to adjust this
+        #  self.regIN += self.list_item_width # indent to new text position
+        #else:
+        #  self.regIN = self.list_item_width if (self.regIN) else self.list_item_width + 1 # ensure a leading blank
+        temp_indent = self.outerwidth if (self.liststack > 1) else 0
+        self.regIN += temp_indent + self.list_item_width
 
     self.cl += 1
 
