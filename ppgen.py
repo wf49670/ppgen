@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53ca7" + with_regex   # 14-Jan-2016
+VERSION="3.53ca8" + with_regex   # 21-Jan-2016
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -97,6 +97,8 @@ VERSION="3.53ca7" + with_regex   # 14-Jan-2016
 #  Merge experimental branch GreekBracketMatch to allow ] within [Greek: ...] tags without the need for the PPer to escape them
 #    using \]
 #  Fix problem using \[ in .sr directives, and possibly some other characters such as \{
+#3.53ca8:
+#  Fix Python coding error in .ol/.ul handling.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -6390,7 +6392,7 @@ class Ppt(Book):
         #  self.regIN += 2 # if no indent specified, indent text by 2 (marker + space)
         #else:
         #  pass # don't adjust indent if no indent specified and style = none
-        temp_indent = self.outerwidth if (self.liststack > 1) else 0
+        temp_indent = self.outerwidth if (len(self.liststack) > 1) else 0
         if self.list_list_item_style != "none":
           temp_indent += 2
         self.regIN += temp_indent
@@ -6432,7 +6434,7 @@ class Ppt(Book):
         #  self.regIN += self.list_item_width # indent to new text position
         #else:
         #  self.regIN = self.list_item_width if (self.regIN) else self.list_item_width + 1 # ensure a leading blank
-        temp_indent = self.outerwidth if (self.liststack > 1) else 0
+        temp_indent = self.outerwidth if (len(self.liststack) > 1) else 0
         self.regIN += temp_indent + self.list_item_width
 
     self.cl += 1
