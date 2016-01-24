@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53ca9" + with_regex   # 21-Jan-2016
+VERSION="3.53cb" + with_regex   # 24-Jan-2016
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -104,6 +104,12 @@ VERSION="3.53ca9" + with_regex   # 21-Jan-2016
 #  Adjust spacing between elements in .dl
 #  Rework .dl with style=p for HTML. Disallow hang=y for style=p.
 #  Fix padding issue for table cells with borders in HTML and "h" specification (double padding-left specification in CSS)
+#3.53cb:
+#  .dl: Fix Python error reporting missing .dl-
+#  .dl: Adjust line-height of <dt> element to allow collapse=y to work reliably
+#  .dl: Add break=y to tell ppgen to maintain line breaks when using combine=y
+#  .dl: Change handling of blank lines. A single blank line terminates a definition, but additional blank lines are
+#       ignored. To effect additional spacing between items use .sp instead.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2108,6 +2114,7 @@ class Book(object):
     # .dl-
     #
     # options:
+    #   break = n (default) | y (Controls, when combine=y, whether line endings are maintained (y) or not (n)
     #   class=<class-value> (specifies a class for the list in HTML; ignored in text)
     #   collapse = n (default) | y (controls whether metric lines without a term, or successive wrapped paragraph lines,
     #                               appear at left margin or aligned after the end of the term)
@@ -2125,6 +2132,7 @@ class Book(object):
     #   debug = n (default) | y (controls printing of debug information for .dl)
     #
     # Options from the .dl directive are maintained in a dictionary:
+    #   "break": True, False
     #   "class": string
     #   "collapse": True, False
     #   "combine": True, False
@@ -2226,6 +2234,18 @@ class Book(object):
             dopts["combine"] = False
           else:
             b.crash_w_context("Invalid combine value: {}".format(temp), b.cl)
+
+        if "break=" in options:
+          if dopts["combine"]:
+            options, temp = b.get_id("break", options)
+            if temp.lower().startswith("y"):
+              dopts["break"] = True
+            elif temp.lower().startswith("n"):
+              dopts["break"] = False
+            else:
+              b.crash_w_context("Invalid break value: {}".format(temp), b.cl)
+          else:
+            self.warn_w_context(".dl break option applies only when combine=y", b.cl)
 
         if "dindent=" in options:
           options, temp = b.get_id("dindent", options)
@@ -2383,6 +2403,9 @@ class Book(object):
       # Notes:
       #   1. Definition lines may be continued using a backslash as the last character. Such
       #        lines will be concatenated (the backslash becomes a space) and wrapped.
+      #        Alternatively, when using combine=y successive non-blank lines that do NOT contain a |
+      #        (known as format c below) will be combined together. If line breaks are significant then
+      #        break=y should be specified, along with combine=y.
       #   2. Blanks preceding the | will be deleted. The | may be followed by
       #        0 or 1 blank (which will be removed). If followed by more than 1 blank all
       #        after the first are significant and will be kept. If a line (after processing
@@ -2400,15 +2423,17 @@ class Book(object):
       #           Definition lines of format c occurring after a definition line of format a or b will be
       #           wrapped into a paragraph with the prior text. The first line will start after the speaker name or term.
       #           Subsequent lines will appear at the left margin (self.regIN) if collapse=y, but aligned under
-      #           the first line if collapse=n.
+      #           the first line if collapse=n. Exception: if break=y then line breaks will be preserved while wrapping.
       #   7. For combine=n:
       #           Definition lines of format c will not combine with previous lines, and will be
       #           individually left-aligned at the margin (self.regIN) if collapse=y or placed after the implied term if
       #           collapse=n
       #   8. A .dt logically becomes a line of format a. A .dd logically becomes a line of format b2
+      #   9. A blank line will terminate the current definition. By default one blank line will be placed between 
+      #        definitions in text output. If more are desired, use .sp to specify them.
 
 
-      blankfound = False
+      #blankfound = False
 
       while b.cl < len(b.wb) and not b.wb[b.cl] == ".dl-":  # process until we hit our .dl-
 
@@ -2418,7 +2443,7 @@ class Book(object):
             if self.options["combine"] and (self.term or self.paragraph):
               self.emit_paragraph()
             else:
-              assert len(self.dlbuffer) == 0, "Trying to invoke a dot directive from .dl while dlbuffer contains data"
+              assert len(self.dlbuffer) == 0, "Trying to invoke a dot directive from .dl while dlbuffer contains data "
             b.doDot()
             continue
 
@@ -2432,16 +2457,16 @@ class Book(object):
         if b.wb[i].endswith("\\"):
           b.crash_w_context("File ends with continued definition line: {}".format(b.wb[i]), i)
 
-        # check for (and emit) blank lines
+        # check for a blank line, which terminates any combining paragraph
         if b.wb[b.cl] == "":
           # check for paragraph that we need to emit
           if self.options["combine"] and (self.term or self.paragraph):
             self.emit_paragraph()
-          else:
-            if blankfound:
-              self.add_blank() # emit any blank lines after the first one in a group
-            else:
-              blankfound = True
+          #else:
+          #  if blankfound:
+          #    self.add_blank() # emit any blank lines after the first one in a group
+          #  else:
+          #    blankfound = True
           self.bump_cl()
           continue
 
@@ -2479,7 +2504,7 @@ class Book(object):
 
           if self.options["combine"]:
             if self.definition:
-              self.paragraph += self.definition + " "
+              self.paragraph = self.definition
             self.bump_cl()
             continue
 
@@ -2494,7 +2519,11 @@ class Book(object):
               self.term = ""           # nullify the term
               t[0] = t[0].rstrip() # remove only trailing blanks from form c line
 
-            self.paragraph += t[0] + " "
+            tempbr = "<br>" if (b.booktype == "text") else "<br />"
+            separator = tempbr if (self.options["break"]) else " "
+            if self.paragraph:
+              self.paragraph += separator
+            self.paragraph += t[0]
             self.bump_cl()
             continue
 
@@ -2512,7 +2541,7 @@ class Book(object):
 
       # hit eof or .dl-
       if b.cl >= len(b.wb): # oops: no .dl- for me
-        b.crash_w_context("Missing .dl- for this .dl block", dlstart)
+        b.crash_w_context("Missing .dl- for this .dl block", self.dlstart)
 
       else:
         if self.options["combine"] and (self.term or self.paragraph):
@@ -4105,6 +4134,7 @@ class Ppt(Book):
 
   def __init__(self, args, renc):
     Book.__init__(self, args, renc)
+    self.booktype = "text"
     if self.listcvg:
       self.cvglist()
     self.renc = renc.lower() # requested encoding: "l" Latin-1, "u" UTF-8
@@ -6585,6 +6615,8 @@ class Ppt(Book):
       # (overrides method in DefList)
       def begin_dl(self):
         b = self.book
+        self.dlstart = b.cl
+        self.dlbuffer = [] # we don't use this in text processing, but it must be defined
 
         # We need to ensure an indent of at least 1 if we're not combining lines, to avoid problems with potential
         # future rewrapping outside of DP's control (like for .nf, .ta, etc.)
@@ -6775,6 +6807,7 @@ class Pph(Book):
   imagedict = {} # list of css specifications for illustrations, with the number that defined them.
   dl_classnum = 0 # used to generate unique class names for .dl with unique characteristics
   dl_dict = {} # initialize dictionary to track unique .dl characteristics
+  booktype = "html"
 
   def __init__(self, args, renc):
     Book.__init__(self, args, renc)
@@ -10495,6 +10528,7 @@ class Pph(Book):
       # Begin a dl
       def begin_dl(self):
         b = self.book
+        self.dlstart = b.cl
         self.dlbuffer = []
         self.dd_class = ""
         self.dd_indent_class = ""
@@ -10540,11 +10574,15 @@ class Pph(Book):
 
           dlparms = "[1241] dl.{} {{"
           dtparms = "[1241] .{} dt {{"
+          dtplen = len(dtparms)
           dtmparms = "" # will hold any generated @media handheld parameters
           ddparms = "[1241] .{} dd {{"
 
           if self.options["debug"]:
             dtparms += " background-color: #FFC0CB;" # set a pink background for the dt if debugging
+
+          if self.options["collapse"]:
+            dtparms += " line-height: .99;" # make <dt> line-height slightly smaller so collapsing works reliably
 
           dlparms += " margin: .5em auto .5em auto;"
           if self.options["float"]: # float=y
@@ -10552,8 +10590,7 @@ class Pph(Book):
             dtparms += " float: left; clear: left; text-align: {}; padding-top: .5em; width: {}em;".format(dtalign, dtwidth)
             if self.options["tindent"]: # tindent non-zero?
               dtparms += " text-indent: {}em;".format(tindent)
-            dtmparms += " float: left; clear: left; text-align: {}; padding-top: .5em; width: {}em;".format(dtalign, dtwidth)
-            ddparms += " text-align: left; padding-top: .5em; "
+            ddparms += " text-align: left; padding-top: .5em;"
 
             if self.options["combine"]: # combine=y
               if self.options["collapse"]: # collapse=y
@@ -10588,6 +10625,8 @@ class Pph(Book):
                   ddparms += " margin-left: {}em; text-indent: -1em;".format(dtwidth + 1 + dindent)
                 else: # hang=n
                   ddparms += " margin-left: {}em;".format(dtwidth + dindent)
+
+            dtmparms = dtparms[dtplen:] # completely respecify for mobile formats when floating
 
           else: # float=n
             dtparms += " text-align: {}; padding-top: .5em; width: {}em;".format(dtalign, dtwidth)
@@ -10746,9 +10785,9 @@ class Pph(Book):
           self.build_dd("", True)
 
         b.list_item_active = True
-        cvs = ""
+        self.cvs = ""
         if b.pvs:
-          cvs = " style='margin-top: {}em; '".format(b.pvs)
+          self.cvs = " style='margin-top: {}em; '".format(b.pvs)
           b.pvs = 0
 
         term = self.term.rstrip()
@@ -10756,17 +10795,17 @@ class Pph(Book):
           term = "&nbsp;"
         if self.options["style"] == "d": # style=d
           if self.options["float"] or term != "&nbsp;":
-            self.dlbuffer.append(self.dtddspaces + "<dt{}>".format(cvs) + term + "</dt>")
+            self.dlbuffer.append(self.dtddspaces + "<dt{}>".format(self.cvs) + term + "</dt>")
 
         else: # style=p
           if self.options["float"]:
-            self.dlbuffer.append(self.dtddspaces + "<p{}>".format(cvs) +
+            self.dlbuffer.append(self.dtddspaces + "<p{}>".format(self.cvs) +
                                  "<span class='{}'>".format(self.dl_class) + term + "</span>")
 
           else: # float=n
             self.dlbuffer.append(self.dtddspaces +
-                                 "<span class='{}'>".format(self.dl_class) + term + "</span>" +
-                                 "<p{}>".format(cvs))
+                                 "<span class='{}'{}>".format(self.dl_class, self.cvs) + term + "</span>" +
+                                 "<p{}>".format(self.cvs))
 
 
       # Build HTML for definition into the buffer (may be a single line of definition, or a paragraph if combine=y)
@@ -10776,9 +10815,9 @@ class Pph(Book):
         b = self.book
 
         clss = ""
-        cvs = ""
+        #cvs = ""
         cstyle = ""
-        ctxt = ""
+        #ctxt = ""
         cindent = ""
         extraspaces = ""
 
@@ -10828,9 +10867,9 @@ class Pph(Book):
           t = self.split_line(s)
         else:
           t = [s]
-        if b.pvs:
-          cvs = "margin-top: {}em; ".format(b.pvs)
-          b.pvs = 0
+        #if b.pvs:
+        #  cvs = "margin-top: {}em; ".format(b.pvs)
+        #  b.pvs = 0
 
         #if self.options["style"] == "p":####
         #  if not self.term and self.dl_ptxtindent != 0:
@@ -10838,8 +10877,9 @@ class Pph(Book):
         #  elif self.dl_pindent:
         #    ctxt = "text-indent: {}em; ".format(self.dl_pindent)
 
-        if cvs or ctxt:
-          cstyle = " style='" + cvs + ctxt + "'"
+        if self.cvs:
+          cstyle = self.cvs
+          self.cvs = ""
 
         if self.options["style"] == "d":
           self.dlbuffer.append(self.dtddspaces + "<dd{}{}>".format(clss, cstyle) + t[0])
