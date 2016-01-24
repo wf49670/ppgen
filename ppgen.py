@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53ca8" + with_regex   # 21-Jan-2016
+VERSION="3.53ca9" + with_regex   # 21-Jan-2016
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -90,7 +90,7 @@ VERSION="3.53ca8" + with_regex   # 21-Jan-2016
 #  When centering text output (.ce, .nf c) if a line is too long then center each portion of it, rather than centering the
 #    first part and using a hanging indent for the remaining line(s) of wrapped text. This makes the text and HTML
 #    handling compatible.
-#  Allow any kind of input line to be continued with a \ at the end. The \ will be replaced by a blank, and the 
+#  Allow any kind of input line to be continued with a \ at the end. The \ will be replaced by a blank, and the
 #    following line will be concatenated after the blank. (Note: .de is handled differently; the lines are not concatenated
 #    but remain separate in the HTML output file.)
 #3.53ca7:
@@ -99,6 +99,11 @@ VERSION="3.53ca8" + with_regex   # 21-Jan-2016
 #  Fix problem using \[ in .sr directives, and possibly some other characters such as \{
 #3.53ca8:
 #  Fix Python coding error in .ol/.ul handling.
+#3.53ca9:
+#  Implement align=r for .dl
+#  Adjust spacing between elements in .dl
+#  Rework .dl with style=p for HTML. Disallow hang=y for style=p.
+#  Fix padding issue for table cells with borders in HTML and "h" specification (double padding-left specification in CSS)
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2111,6 +2116,7 @@ class Book(object):
     #   dintent=<integer>       (indents the definition by that amount (default: 0))
     #   float = y (default) | n (controls whether definition starts on same line as term or not)
     #   hang = n (default) | y  (controls whether definition lines that must be wrapped will have a hanging indent)
+    #                           Note: hang=y applies only to style=d.
     #   id=<id-value> (specifies an id for the list in HTML; ignored in text)
     #   style = dl (default) | paragraph (controls whether html is generated using <dl> or <p>)
     #   tindent=<integer>       (indents the term by that amount (default: 0))
@@ -2237,10 +2243,24 @@ class Book(object):
           else:
             b.crash_w_context("Invalid float value: {}".format(temp), b.cl)
 
+        if "style=" in options:
+          options, temp = b.get_id("style", options)
+          if temp.lower().startswith("d"):
+            dopts["style"] = "d"
+          elif temp.lower().startswith("p"):
+            dopts["style"] = "p"
+            dopts["hang"] = False
+          else:
+            b.crash_w_context("Invalid style value: {}".format(temp), b.cl)
+        b.list_item_style = dopts["style"]
+
         if "hang=" in options:
           options, temp = b.get_id("hang", options)
           if temp.lower().startswith("y"):
-            dopts["hang"] = True
+            if dopts["style"] == "d":
+              dopts["hang"] = True
+            else:
+              b.warn_w_context("hang=y ignored for .dl with style=p; using hang=n instead.", b.cl)
           elif temp.lower().startswith("n"):
             dopts["hang"] = False
           else:
@@ -2248,16 +2268,6 @@ class Book(object):
 
         if "id=" in options:
           options, dopts["id"] = b.get_id("id", options)
-
-        if "style=" in options:
-          options, temp = b.get_id("style", options)
-          if temp.lower().startswith("d"):
-            dopts["style"] = "d"
-          elif temp.lower().startswith("p"):
-            dopts["style"] = "p"
-          else:
-            b.crash_w_context("Invalid style value: {}".format(temp), b.cl)
-        b.list_item_style = dopts["style"]
 
         if "tindent=" in options:
           options, temp = b.get_id("tindent", options)
@@ -2395,6 +2405,7 @@ class Book(object):
       #           Definition lines of format c will not combine with previous lines, and will be
       #           individually left-aligned at the margin (self.regIN) if collapse=y or placed after the implied term if
       #           collapse=n
+      #   8. A .dt logically becomes a line of format a. A .dd logically becomes a line of format b2
 
 
       blankfound = False
@@ -2467,7 +2478,8 @@ class Book(object):
               self.definition = self.definition[1:]
 
           if self.options["combine"]:
-            self.paragraph += self.definition + " "
+            if self.definition:
+              self.paragraph += self.definition + " "
             self.bump_cl()
             continue
 
@@ -3113,10 +3125,10 @@ class Book(object):
 
         i += 1
         more = True if (i < len(text)) else False
-        
+
         return found, start, i, more
-          
-          
+
+
 
       # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
       # process [Greek: ...] in UTF-8 output if requested to via .gk command
@@ -6393,7 +6405,7 @@ class Ppt(Book):
         #else:
         #  pass # don't adjust indent if no indent specified and style = none
         temp_indent = self.outerwidth if (len(self.liststack) > 1) else 0
-        if self.list_list_item_style != "none":
+        if self.list_item_style != "none":
           temp_indent += 2
         self.regIN += temp_indent
 
@@ -6547,12 +6559,13 @@ class Ppt(Book):
           #  s.append(self.indent_padding + (self.options["tindent"] * " ") + self.definition_padding + t[0].rstrip())
 
         else:                 # non-floated style (first line is term, if we have one)
-          #if self.term:
           s.append(".RS 1")
           if self.term:
             s.append(self.indent_padding + (self.options["tindent"] * " ") + self.term)
-            s.append(" ")
-          s.append(self.indent_padding + self.definition_padding + t[0].rstrip())
+            #s.append(" ") ### do we want this blank line? If so should it be .RS 1?
+          l = t[0].rstrip()
+          if l: # avoid adding another blank line
+            s.append(self.indent_padding + self.definition_padding + t[0].rstrip())
 
         if not self.options["collapse"]:
           for i in range(1, len(t)):    # handle remaining lines
@@ -6639,35 +6652,43 @@ class Ppt(Book):
         ### screwed up? need to figure out how indents work with wrapping
         s = []
         l = b.truelen(self.term)
-        if l <= b.list_item_width: # pad term with blanks to width + 1
-          term = self.term + " " * (b.list_item_width - l + 1)
-        else:
-          term = self.term + " " # if term is too long, just add 1 blank as a separator
+
+        if l >= b.list_item_width:
+          ltrm = self.term + " " # just pad with a blank (as separator) if the term is full-width or longer
+
+        # else term is narrow, so align to the left or right as requested
+        elif self.options["align"] == "l": # if aligning narrow term to the left of its block
+          ltrm = self.term + " " * (b.list_item_width - l + 1)
+        else: # aligning narrow term to the right of its block
+          ltrm = " " * (b.list_item_width - l) + self.term + " "
+
         t = self.definition
         if self.options["float"]:  # floated style (first line is term + 1st line of definition)
+          s.append(".RS 1") # want a blank line between entries
           if self.term or not self.form_c:
-            s.append(".RS 1")
-            s.append(self.indent_padding + (self.options["tindent"] * " ") + term + t[0].strip())
-          else:
-            if not self.options["collapse"] or not self.form_c:
-              s.append(self.indent_padding + self.definition_padding + t[0].strip())
-            else:
-              s.append(self.indent_padding + self.dindent_padding + t[0].strip())
+            s.append(self.indent_padding + (self.options["tindent"] * " ") + ltrm + t[0].strip())
+          else: # not floated; definition (if any) is on next line, but avoid extra blank lines
+            if t[0].strip(): # if we have a definition
+              if not self.options["collapse"]:
+                s.append(self.indent_padding + self.definition_padding + t[0].strip())
+              else: # collapse
+                s.append(self.indent_padding + self.dindent_padding + t[0].strip())
           start = 1
 
         else:                 # non-floated style (first line is term, if we have one)
-          if self.term:
-            s.append(".RS 1")
-            if term.strip(): # if term is non-blank
-              s.append(self.indent_padding + (self.options["tindent"] * " ") + term)
+          s.append(".RS 1")   # want blank line between entries
+          if ltrm.strip(): # if term is non-blank add it (but avoid adding another blank line)
+            s.append(self.indent_padding + (self.options["tindent"] * " ") + ltrm)
           start = 0
 
         if not self.options["collapse"]:
           for i in range(start, len(t)):    # handle remaining lines, starting from t[0] (nofloat) or t[1] (float)
+            if t[i].strip(): # avoid blank lines
               s.append(self.indent_padding + (self.options["tindent"] * " ") + self.definition_padding + t[i])
         else:
           for i in range(start, len(t)):    # handle remaining lines, starting from t[0] (nofloat) or t[1] (float)
-            s.append(self.indent_padding + t[i])
+            if t[i].strip(): # avoid blank lines
+              s.append(self.indent_padding + t[i])
         self.defbuffer = s
         self.definition = ""
 
@@ -6752,7 +6773,7 @@ class Pph(Book):
   igc = 1 # illustration geometry counter
   fnlist = [] # list of footnotes
   imagedict = {} # list of css specifications for illustrations, with the number that defined them.
-  dl_class = 0 # used to generate unique class names for .dl with unique characteristics
+  dl_classnum = 0 # used to generate unique class names for .dl with unique characteristics
   dl_dict = {} # initialize dictionary to track unique .dl characteristics
 
   def __init__(self, args, renc):
@@ -9493,7 +9514,17 @@ class Pph(Book):
       if u[0][0] == 'r':
         haligns.append("text-align: right; ")
       if u[0][0] == 'h': # hanging indent
-        haligns.append("text-align: left; text-indent: -1em; padding-left: 1em; ")
+        if not borders_present:
+          haligns.append("text-align: left; text-indent: -1em; padding-left: 1em; ")
+        else: # borders present, and hanging indent, need to bump the padding-left a bit
+          m = re.match("(.+)em", self.nregs["html-cell-padding-left"])
+          if m:
+            tpadding = round(1 + float(m.group(1)), 1)
+            haligns.append("text-align: left; text-indent: -1em; padding-left: {}em; ".format(tpadding))
+          else:
+            self.warn_w_context("Unable to calculate proper cell padding because self.nregs[\"html-cell-padding-left\"] has unexpected format: {}".format(self.nregs["html-cell-padding-left"]),
+                                self.cl)
+            haligns.append("text-align: left; text-indent: -1em; padding-left: 1em; ")
 
       if not u[0][1] in ['t','m','b']:
         self.fatal("table vertial alignment must be 't', 'm', or 'b'")
@@ -9695,7 +9726,14 @@ class Pph(Book):
             elif m.group(1) == "c":
               caligns[k]= "text-align: center; "
             else: # must be h
-              caligns[k] = "text-align: left; text-indent: -1em; padding-left: 1em; "
+              m = re.match("(.+)em", self.nregs["html-cell-padding-left"])
+              if m:
+                tpadding = round(1 + float(m.group(1)), 1)
+                caligns[k] = "text-align: left; text-indent: -1em; padding-left: {}em; ".format(tpadding)
+              else:
+                self.warn_w_context("Unable to calculate proper cell padding because self.nregs[\"html-cell-padding-left\"] has unexpected format: {}".format(self.nregs["html-cell-padding-left"]),
+                                    self.cl)
+                caligns[k] = "text-align: left; text-indent: -1em; padding-left: 1em; "
             v[k] = v[k][6:] # remove the alignment tag
         valgn = ""
         padding = ""
@@ -9708,10 +9746,15 @@ class Pph(Book):
           t1 = v[k]
           t2 = re.sub(r"^ⓢ+","", v[k])
           if len(t1) - len(t2) > 0:
-            padleft = round((len(t1) - len(t2))*0.7, 1)
-            padding += 'text-indent: {}em; '.format(padleft) # was padding-left, but that has problems if cell text wraps
-          if borders_present: # if no leading spaces, and borders in use, add left-padding
-            padding += 'padding-left: ' + self.nregs["html-cell-padding-left"] + '; '
+            if "text-indent:" in caligns[k]: # can't have protected leading spaces and hanging-indent
+              self.warn_w_context("Protected leading spaces ignored for table cell with hanging indent in column {}".format(k),
+                                  self.cl)
+            else:
+              padleft = round((len(t1) - len(t2))*0.7, 1)
+              padding += 'text-indent: {}em; '.format(padleft) # was padding-left, but that has problems if cell text wraps
+          if borders_present: # if no leading spaces, and borders in use, add padding as needed
+            if "padding-left:" not in caligns[k]: # don't add left padding if already there
+              padding += 'padding-left: ' + self.nregs["html-cell-padding-left"] + '; '
             #if borders_present: # if borders in use add right-padding
             padding += 'padding-right: ' + self.nregs["html-cell-padding-right"] + '; '
 
@@ -10430,9 +10473,6 @@ class Pph(Book):
       def print_debug(self, info): # Ppt and Pph will override this
         b = self.book
         buff = "<p>" + "<br />\n".join(info) + "</p>"
-        #buff = buff.split("\n")
-        #b.wb[b.cl:b.cl] += buf
-        #b.cl += len(buff)
         self.dlbuffer = buff.split("\n")
         self.emit()
 
@@ -10471,25 +10511,30 @@ class Pph(Book):
 
         # Make a new class for this .dl, or reuse a matching existing class, or use PPer-supplied class
         if self.options["class"]:
-          dl_class = self.options["class"]
+          self.dl_class = self.options["class"]
         else:
           temp = self.options.copy()
-          dl_class = "dl_"
           del temp["debug"] # debug option is irrelevant
           for k in b.dl_dict.keys():
             if temp == b.dl_dict[k]:
-              dl_class += str(k)
+              self.dl_class = str(k)
               break
           else: # no match found; build new class name and create new entry in dictionary to remember it
-            b.dl_class += 1
-            dl_class += str(b.dl_class)
-            b.dl_dict[b.dl_class] = temp
+            b.dl_classnum += 1
+            self.dl_class = "dl_" + str(b.dl_classnum)
+            b.dl_dict[self.dl_class] = temp
+
+          if self.options["debug"]:
+            s = []
+            s.append("***Generated class name: " + self.dl_class)
+            self.print_debug(s)
 
         divisor = float(b.nregs["nf-spaces-per-em"]) # figure out width for term
         tindent = round(self.options["tindent"]/divisor, 1)
         dindent = round(self.options["dindent"]/divisor, 1)
         width = round(self.options["width"]/divisor, 1)
         dtwidth = width + tindent
+        dtalign = "left" if (self.options["align"] == "l") else "right"
 
         if self.options["style"] == "d": # the following only for <dl> style output
 
@@ -10503,27 +10548,30 @@ class Pph(Book):
 
           dlparms += " margin: .5em auto .5em auto;"
           if self.options["float"]: # float=y
-            dtwidth += 1 # allow some padding when floating
-            dtparms += " float: left; clear: left; text-align: left; padding-top: .5em; width: {}em;".format(dtwidth)
+            #dtwidth += 1 # allow some padding when floating (handled by padding-left for dd now)
+            dtparms += " float: left; clear: left; text-align: {}; padding-top: .5em; width: {}em;".format(dtalign, dtwidth)
             if self.options["tindent"]: # tindent non-zero?
               dtparms += " text-indent: {}em;".format(tindent)
-            dtmparms += " float: left; clear: left; text-align: left; padding-top: .5em; width: {}em;".format(dtwidth)
-            ddparms += " text-align: left; padding-top: .5em;"
+            dtmparms += " float: left; clear: left; text-align: {}; padding-top: .5em; width: {}em;".format(dtalign, dtwidth)
+            ddparms += " text-align: left; padding-top: .5em; "
 
             if self.options["combine"]: # combine=y
               if self.options["collapse"]: # collapse=y
                 if self.options["dindent"]:
                   ddparms += " text-indent: {}em;".format(dindent)
+                else:
+                  ddparms += " text-indent: .2em;" # allow a bit of padding when floated
                 if self.options["hang"]: # hang=y
                   ddparms += " margin-left: 1em;"
                 else: # hang=n
                   ddparms += " margin-left: 0em;"
 
               else: # collapse=n
+                extra = 0 if (dindent) else .2 # allow a bit of left padding (via margin) if dindent not specified
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: {}em; text-indent: -1em;".format(dtwidth + 1 + dindent)
+                  ddparms += " margin-left: {}em; text-indent: -1em;".format(dtwidth + 1 + dindent + extra)
                 else: # hang=n
-                  ddparms += " margin-left: {}em;".format(dtwidth + dindent)
+                  ddparms += " margin-left: {}em;".format(dtwidth + dindent + extra)
 
             else: # combine=n
               if self.options["collapse"]: # collapse=y
@@ -10542,8 +10590,8 @@ class Pph(Book):
                   ddparms += " margin-left: {}em;".format(dtwidth + dindent)
 
           else: # float=n
-            dtparms += " text-align: left; padding-top: .5em; width: {}em;".format(dtwidth)
-            ddparms += " text-align: left; padding-top: .5em;"
+            dtparms += " text-align: {}; padding-top: .5em; width: {}em;".format(dtalign, dtwidth)
+            ddparms += " text-align: left; padding-top: .5em; padding-left: .5em; "
             if self.options["tindent"]: # tindent non-zero?
               dtparms += " text-indent: {}em;".format(tindent)
 
@@ -10557,7 +10605,7 @@ class Pph(Book):
 
               else: # collapse=n
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: {}em; text-indent: -1em;".format(dtwidth + dindent)
+                  ddparms += " margin-left: {}em; text-indent: -1em;".format(dtwidth + 1 + dindent)
                 else: # hang=n
                   ddparms += " margin-left: {}em;".format(dtwidth + dindent)
 
@@ -10576,14 +10624,14 @@ class Pph(Book):
                   ddparms += " margin-left: {}em;".format(dtwidth + dindent)
 
           dlparms += " }}"
-          b.css.addcss(dlparms.format(dl_class))
+          b.css.addcss(dlparms.format(self.dl_class))
           dtparms += " }}"
-          b.css.addcss(dtparms.format(dl_class))
+          b.css.addcss(dtparms.format(self.dl_class))
           ddparms += " }}"
-          b.css.addcss(ddparms.format(dl_class))
+          b.css.addcss(ddparms.format(self.dl_class))
           if dtmparms: # if anything added to dtmparms
             dtmparms = "[1241] @media handheld {{ .{} dt {{" + dtmparms + " }} }}"
-            b.css.addcss(dtmparms.format(dl_class))
+            b.css.addcss(dtmparms.format(self.dl_class))
 
         else:  # <p> style output
           dldivparms = "[1241] div.{}  {{"
@@ -10597,56 +10645,56 @@ class Pph(Book):
           if self.options["debug"]:
             dlspanparms += " background-color: #FFC0CB;" # set a pink background for the dt if debugging
 
-          dlspanparms += " display: inline-block; width: {}em;".format(dtwidth-.2)
-
           if self.options["float"]: # float=y
 
             if self.options["collapse"]: # collapse=y
-              if self.options["hang"]: # hang=y
-                dlparaparms += " padding-left: 1em; text-indent: -1em;"
-              else: # hang=n
-                pass # nothing to do for this case
+              #if self.options["hang"]: # hang=y
+              #  dlparaparms += " padding-left: 1em; text-indent: -1em;"
+              #else: # hang=n
+              dlspanparms += " display: inline-block; text-align: {}; width: {}em;".format(dtalign, dtwidth-.2)
 
             else: # collapse=n
-              if self.options["hang"]: # hang=y
-                dlparaparms += " padding-left: {0}em; text-indent: -1em;".format(dtwidth+1)
-              else: # hang=n
-                dlparaparms += " padding-left: {0}em;".format(dtwidth)
+              #if self.options["hang"]: # hang=y
+              #  dlparaparms += " padding-left: {0}em; text-indent: -1em;".format(dtwidth+1)
+              #else: # hang=n
+              dlspanparms += " text-indent: 0em; display: inline-block; text-align: {}; width: {}em;".format(dtalign, dtwidth-.2)
+              dlparaparms += " padding-left: {}em; text-indent: -{}em; ".format(dtwidth, dtwidth)
 
           else: #float=n
 
+            dlspanparms += " display: inline-block; text-align: {}; width: {}em;".format(dtalign, dtwidth)
             if self.options["collapse"]: # collapse=y
-              if self.options["hang"]: # hang=y
-                dlparaparms += " padding-left: 1em; text-indent: {}em;".format(dtwidth-1)
-              else: # hang=n
-                dlparaparms += " padding-left: 0em; text-indent: {}em;".format(dtwidth)
+              #if self.options["hang"]: # hang=y
+              #  dlparaparms += " padding-left: 1em; text-indent: {}em;".format(dtwidth-1)
+              #else: # hang=n
+              dlparaparms += " text-indent: {}em;".format(dtwidth)
 
             else: # collapse=n
-              if self.options["hang"]: # hang=y
-                dlparaparms += " padding-left: {0}em; text-indent: -1em;".format(dtwidth+1)
-              else: # hang=n
-                dlparaparms += " padding-left: {}em;".format(dtwidth)
+              #if self.options["hang"]: # hang=y
+              #  dlparaparms += " padding-left: {0}em; text-indent: -1em;".format(dtwidth+1)
+              #else: # hang=n
+              dlparaparms += " padding-left: {}em;".format(dtwidth)
 
           # define span/padding CSS for paragraph format
           #dlspanparms += " padding-left: {}em;".format(dd_padding-2))
           #self.dl_ptxtindent = self.dl_pindent + self.dd_padding # amount to indent a paragraph style dd that has an empty dt
 
           dldivparms += " }}"
-          b.css.addcss(dldivparms.format(dl_class))
+          b.css.addcss(dldivparms.format(self.dl_class))
           dlparaparms += " }}"
-          b.css.addcss(dlparaparms.format(dl_class))
+          b.css.addcss(dlparaparms.format(self.dl_class))
           dlspanparms += " }}"
-          b.css.addcss(dlspanparms.format(dl_class))
+          b.css.addcss(dlspanparms.format(self.dl_class))
 
         cvs = ""
         if b.pvs:
           cvs = " style='margin-top: {}em; '".format(b.pvs)
           b.pvs = 0
         if self.options["style"] == "d": # <dl> style
-          self.dlbuffer.append(self.dlspaces + "<dl class='{}'{}>".format(dl_class, cvs))
+          self.dlbuffer.append(self.dlspaces + "<dl class='{}'{}>".format(self.dl_class, cvs))
 
         else: # <p> style
-          self.dlbuffer.append(self.dlspaces + "<div class='{}'{}>".format(sclass, cvs))
+          self.dlbuffer.append(self.dlspaces + "<div class='{}'{}>".format(self.dl_class, cvs))
 
         self.emit()
 
@@ -10667,6 +10715,7 @@ class Pph(Book):
 
       # Split long lines of text for readability when added into the HTML
       def split_line(self, l):
+        b = self.book
         t = []
         while b.truelen(l) > 90:
           splitat = l.rfind(' ', 0, 90)
@@ -10710,8 +10759,14 @@ class Pph(Book):
             self.dlbuffer.append(self.dtddspaces + "<dt{}>".format(cvs) + term + "</dt>")
 
         else: # style=p
-          self.dlbuffer.append(self.dtddspaces + "<p{}>".format(cvs) +
-                               "<span class='{}'>".format(dl_class) + term + "</span>")
+          if self.options["float"]:
+            self.dlbuffer.append(self.dtddspaces + "<p{}>".format(cvs) +
+                                 "<span class='{}'>".format(self.dl_class) + term + "</span>")
+
+          else: # float=n
+            self.dlbuffer.append(self.dtddspaces +
+                                 "<span class='{}'>".format(self.dl_class) + term + "</span>" +
+                                 "<p{}>".format(cvs))
 
 
       # Build HTML for definition into the buffer (may be a single line of definition, or a paragraph if combine=y)
