@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53cb" + with_regex   # 24-Jan-2016
+VERSION="3.53cc" + with_regex   # 24-Jan-2016
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -110,6 +110,13 @@ VERSION="3.53cb" + with_regex   # 24-Jan-2016
 #  .dl: Add break=y to tell ppgen to maintain line breaks when using combine=y
 #  .dl: Change handling of blank lines. A single blank line terminates a definition, but additional blank lines are
 #       ignored. To effect additional spacing between items use .sp instead.
+#3.53cc:
+#  Enhance error message for dot directives rejected within .ul, .ol, .dl to include ".dl" in the error text
+#  .dl: In text output, with combine=y, float=y, and a long term, ensure at least 1 blank separates the term from the
+#       definition.
+#  .dl: Change CSS definition of <dt> to use min-width rather than width, and when floating add a padding-right of .5em.
+#  .dl: Apply tindent in HTML when style=p
+
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2769,7 +2776,7 @@ class Book(object):
 
   def rejectWithinList(self):
     cmd = self.wb[self.cl][0:3]
-    self.crash_w_context("{} directive not allowed within .ul or .ol block".format(cmd), self.cl)
+    self.crash_w_context("{} directive not allowed within .ul, .ol, or .dl block".format(cmd), self.cl)
 
   # push the list-related settings onto a stack when beginning a new list
   def push_list_stack(self, dotcmds):
@@ -6583,6 +6590,8 @@ class Ppt(Book):
           #if self.term:
           blanks = (len(self.definition_padding) - len(self.term) -
                     self.options["tindent"] + self.options["dindent"]) * " "
+          if len(blanks) == 0:
+            blanks = " "
           s.append(".RS 1")
           s.append(self.indent_padding + (self.options["tindent"] * " ") + self.term + blanks + t[0].rstrip())
           #else:
@@ -10587,7 +10596,8 @@ class Pph(Book):
           dlparms += " margin: .5em auto .5em auto;"
           if self.options["float"]: # float=y
             #dtwidth += 1 # allow some padding when floating (handled by padding-left for dd now)
-            dtparms += " float: left; clear: left; text-align: {}; padding-top: .5em; width: {}em;".format(dtalign, dtwidth)
+            dtparms += " float: left; clear: left; text-align: {}; min-width: {}em;".format(dtalign, dtwidth)
+            dtparms += " padding-top: .5em; padding-right: .5em;"
             if self.options["tindent"]: # tindent non-zero?
               dtparms += " text-indent: {}em;".format(tindent)
             ddparms += " text-align: left; padding-top: .5em;"
@@ -10629,7 +10639,7 @@ class Pph(Book):
             dtmparms = dtparms[dtplen:] # completely respecify for mobile formats when floating
 
           else: # float=n
-            dtparms += " text-align: {}; padding-top: .5em; width: {}em;".format(dtalign, dtwidth)
+            dtparms += " text-align: {}; padding-top: .5em; min-width: {}em;".format(dtalign, dtwidth)
             ddparms += " text-align: left; padding-top: .5em; padding-left: .5em; "
             if self.options["tindent"]: # tindent non-zero?
               dtparms += " text-indent: {}em;".format(tindent)
@@ -10683,6 +10693,9 @@ class Pph(Book):
 
           if self.options["debug"]:
             dlspanparms += " background-color: #FFC0CB;" # set a pink background for the dt if debugging
+
+          if self.options["tindent"] != 0:
+            dlspanparms += " text-indent: {}em;".format(tindent)
 
           if self.options["float"]: # float=y
 
