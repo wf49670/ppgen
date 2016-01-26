@@ -122,7 +122,6 @@ VERSION="3.53ccpm" + with_regex   # 25-Jan-2016
 #  Update to make the python macro variable "var" global so it's available to subroutines in the macro.
 #  Update to make the "re" module (or regex, whichever we're using) available to the macros
 
-
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
 
@@ -3794,6 +3793,7 @@ class Book(object):
           macglobals["var"] = var # make macro variables available
           macglobals["re"] = re # make re module available
           maclocals = {"__builtins__":None}
+
           try: # exec the macro
             exec(self.macro[macroid][1], macglobals, maclocals)
           except:
