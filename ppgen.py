@@ -117,6 +117,8 @@ VERSION="3.53ccpm" + with_regex   # 25-Jan-2016
 #  .dl: Change CSS definition of <dt> to use min-width rather than width, and when floating add a padding-right of .5em.
 #  .dl: Apply tindent in HTML when style=p
 #3.53ccpm: Allow macros to be written in Python
+#  Update to move macro processing a bit earlier, and to restore original text characters (un-escape) before
+#    defining/running the macros
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -164,6 +166,9 @@ def xp(msg):
 # ====== Book, parent of Ppt (text) and Pph (HTML) classes ==========================================
 
 class Book(object):
+
+  python_macros_allowed = None
+
   wb = [] # working buffer
   eb = [] # emit buffer
   bb = [] # GG .bin file buffer
@@ -212,7 +217,6 @@ class Book(object):
   nregs = {} # named registers
   nregsusage = {} # usage counters for selected named registers
   macro = {} # user macro storage
-  python_macros_allowed = None
   caption_model = {} # storage for named caption models for multi-line captions in text output
 
   mau = [] # UTF-8
@@ -3657,173 +3661,23 @@ class Book(object):
     if sr_error: # if any .sr parsing problems noted
       self.fatal("Terminating due to the .sr issues listed previously.")
 
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # process character mappings
-    # character mappings are from the UTF-8 representation to Latin-1
-    i = 0
-    self.mau.append("—")   # maps a dash in UTF-8 to "--" in Latin-1
-    self.mal.append("--")
-    while i < len(self.wb):
-      if self.wb[i].startswith(".ma"):
-
-        m = re.match(r"\.ma ([\"'])(.*?)\1 ([\"'])(.*?)\3", self.wb[i])  # both in quotes
-        if m:
-          self.mau.append(m.group(2))
-          self.mal.append(m.group(4))
-          del self.wb[i]
-          continue
-
-        m = re.match(r"\.ma ([\"'])(.*?)\1 (.*?)$", self.wb[i])  # only first in quotes
-        if m:
-          self.mau.append(m.group(2))
-          self.mal.append(m.group(3))
-          del self.wb[i]
-          continue
-
-        m = re.match(r"\.ma (.*?) ([\"'])(.*?)\2", self.wb[i])  # only second in quotes
-        if m:
-          self.mau.append(m.group(1))
-          self.mal.append(m.group(3))
-          del self.wb[i]
-          continue
-
-        m = re.match(r"\.ma (.*?) (.*?)$", self.wb[i])  # neither in quotes
-        if m:
-          self.mau.append(m.group(1))
-          self.mal.append(m.group(2))
-          del self.wb[i]
-          continue
-
-      i += 1
-
-    # Now that we've gathered mappings, apply them to down-convert
-    # if source file is UTF-8 and requested encoding is Latin-1
-    if self.encoding == "utf_8" and self.renc == "l":
-      for j,ch in enumerate(self.mau):
-        for i in range(len(self.wb)): # O=n^2
-          self.wb[i] = re.sub(ch, self.mal[j], self.wb[i])
-      # user-defined character mapping complete, now do default mapping to Latin-1
-      self.utoLat()
-
-    ## - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    ## long caption lines may end with a single backslash (25-Jun-2014)
-    ## Also true for .ta directives (note: continuation of contents of tables handled in doTable)
-    ## also true for long list item lines (.it)
-    ## Note: .de, .pm handled elsewhere
-    #
-    #i = 0
-    #while i < len(self.wb):
-    #  if (self.wb[i].startswith(".ca ") or self.wb[i].startswith(".ta ") or # long lines allowed?
-    #      self.wb[i].startswith(".it ")):
-    #    while i < (len(self.wb) - 1) and self.wb[i].endswith("\\"):
-    #      self.wb[i] = self.wb[i][:-1] + " " + self.wb[i+1]
-    #      del self.wb[i+1]
-    #    if self.wb[i].endswith("\\"):
-    #      self.crash_w_context("File ends with continued {}".format(self.wb[i][0:3]), i)
-    #  i += 1
-
-    # long lines of any kind may end with a single backslash. The backslash will be replaced by a blank, and
-    # the next line will be concatenated to it.
-    # Note: .de is exempted here as it needs separate processing.
-    i = 0
-    inde = False
-    while i < (len(self.wb) - 1):
-      if self.wb[i].startswith(".de") and self.wb[i].endswith("\\"):
-        inde = True
-      elif self.wb[i].endswith("\\"):
-        if not inde:
-          self.wb[i] = self.wb[i][:-1] + " " + self.wb[i+1]
-          del self.wb[i+1]
-          continue
-      else:
-        inde = False
-      i += 1
-
-    if self.wb[-1].endswith("\\"):
-      self.crash_w_context("File ends with continued line.", i)
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # courtesy remaps
-    #
-    i = 0
-    while i < len(self.wb):
-      if not self.wb[i].startswith("."):
-        i += 1
-        continue
-      # courtesy maps
-      if ".nf" == self.wb[i]:
-        self.wb[i] = ".nf l"
-      if ".sp" == self.wb[i]:
-        self.wb[i] = ".sp 1"
-      if ".hr" == self.wb[i]:
-        self.wb[i] = ".hr 100%"
-      if ".ti" == self.wb[i]:
-        self.wb[i] = ".ti 2"
-      if ".ce" == self.wb[i]:
-        self.wb[i] = ".ce 1"
-      if ".rj" == self.wb[i]:
-        self.wb[i] = ".rj 1"
-      i += 1
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # remaps of protected characters and some escapes (other escapes handled before doGreek is called)
-
+    # restore escaped characters before processing macros
     for i, line in enumerate(self.wb):
-      # dots not part of dot directive
-      self.wb[i] = self.wb[i].replace("....", "ⓓⓓⓓⓓ") # four dot ellipsis
-      self.wb[i] = self.wb[i].replace("...", "ⓓⓓⓓ") # 3 dot ellipsis
-      self.wb[i] = self.wb[i].replace(". . .", "ⓓⓢⓓⓢⓓ") # 3 dot ellipsis, spaced
-      self.wb[i] = self.wb[i].replace("\. \. \.", "ⓓⓢⓓⓢⓓ") # 3 dot ellipsis, spaced
-      # spacing
-      self.wb[i] = self.wb[i].replace(r'\ ', "ⓢ") # non-breaking space
-      self.wb[i] = self.wb[i].replace(r'\_', "ⓢ") # alternate non-breaking space
-      self.wb[i] = self.wb[i].replace(r"\&", "ⓣ") # zero space
-      self.wb[i] = self.wb[i].replace(r"\^", "ⓤ") # thin space (after italics)
-      self.wb[i] = self.wb[i].replace(r"\|", "ⓥ") # thick space (between ellipsis dots)
-
+      self.wb[i] = self.wb[i].replace("①", "\{")
+      self.wb[i] = self.wb[i].replace("②", "\}")
+      self.wb[i] = self.wb[i].replace("③", "\[")
+      self.wb[i] = self.wb[i].replace("④", "\]")
+      self.wb[i] = self.wb[i].replace("⑤", "\<")
+      self.wb[i] = self.wb[i].replace("⑳", "\>")
+      self.wb[i] = self.wb[i].replace("⑥", "\:")
+      self.wb[i] = self.wb[i].replace("⑨", "\-")
+      self.wb[i] = self.wb[i].replace("⓪", "\#")
       # unprotect temporarily protected characters from Greek strings
       self.wb[i] = self.wb[i].replace("⑩", r"\|") # restore temporarily protected \| and \(space)
       self.wb[i] = self.wb[i].replace("⑮", r"\ ")
 
-      # special characters
-      # leave alone if in literal block (correct way, not yet implemented)
-      # map &nbsp; to non-breaking space
-      # 10-Sep-2014: I don't fully understand why I did this mapping
-      self.wb[i] = self.wb[i].replace("&nbsp;", "ⓢ") # ampersand
-      self.wb[i] = self.wb[i].replace("&", "Ⓩ") # ampersand
-
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # define caption models for multi-line captions in the text output
-    # .cm name
-    # first line
-    # second line
-    # ...
-    # .cm-
-
-    i = 0
-    while i < len(self.wb):
-      if self.wb[i].startswith(".cm"):
-        m = re.match(r"\.cm (.*)", self.wb[i])
-        if m:
-          model_name = m.group(1)
-        else:
-          self.crash_w_context("incorrect .cm command: model name missing.", i)
-        del self.wb[i]
-        t = []
-        while i < len(self.wb) and not self.wb[i].startswith(".cm"):  # accumulate statements into the model until we hit another .cm or a .cm-
-          t.append(self.wb[i])
-          del self.wb[i]
-        if i < len(self.wb) and self.wb[i] == ".cm-":       # if we hit a .cm- then delete it and finalize the model
-          del self.wb[i] # the closing .cm-
-        else:                                               # quit if we hit end-of-file or a .cm before finding the .cm-
-          self.fatal("missing .cm- for model: " + model_name)
-        # model is stored in t[]
-        self.caption_model[model_name] = t
-        i -= 1
-      i += 1
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # macros processed before handling line continuation via trailing \ character
     # define macro
     # .dm name
     # .dm name $1 $2 (optionally: lang=python)
@@ -3832,7 +3686,14 @@ class Book(object):
     # .dm-
     i = 0
     while i < len(self.wb):
-      if self.wb[i].startswith(".dm"):
+      if self.wb[i].startswith(".dm "):
+
+        while (i < len(self.wb) - 1) and self.wb[i].endswith("\\"):   # allow continuation via ending \ for .dm
+          self.wb[i] = re.sub(r"\\$", "", self.wb[i]) + self.wb[i+1]
+          del self.wb[i+1]
+        if self.wb[i].endswith("\\"):
+          self.fatal("file ends with continued .dm")
+
         self.wb[i], count = re.subn(" lang=python", "", self.wb[i]) # determine if regular or Python macro
         python = True if count else False
         tlex = shlex.split(self.wb[i])
@@ -3843,6 +3704,8 @@ class Book(object):
         del self.wb[i]
         t = []
         while i < len(self.wb) and not self.wb[i].startswith(".dm"):  # accumulate statements into the macro until we hit another .dm or a .dm-
+          # Note: statements within a macro definition cannot be continued using \ as the final character, as macros
+          #       must be able to generate statements ending with \          
           t.append(self.wb[i])
           del self.wb[i]
         if i < len(self.wb) and self.wb[i] == ".dm-":       # if we hit a .dm- then delete it and finalize the macro
@@ -3941,6 +3804,164 @@ class Book(object):
         i -= 1
         
       i += 1
+
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # process character mappings
+    # character mappings are from the UTF-8 representation to Latin-1
+    i = 0
+    self.mau.append("—")   # maps a dash in UTF-8 to "--" in Latin-1
+    self.mal.append("--")
+    while i < len(self.wb):
+      if self.wb[i].startswith(".ma"):
+
+        m = re.match(r"\.ma ([\"'])(.*?)\1 ([\"'])(.*?)\3", self.wb[i])  # both in quotes
+        if m:
+          self.mau.append(m.group(2))
+          self.mal.append(m.group(4))
+          del self.wb[i]
+          continue
+
+        m = re.match(r"\.ma ([\"'])(.*?)\1 (.*?)$", self.wb[i])  # only first in quotes
+        if m:
+          self.mau.append(m.group(2))
+          self.mal.append(m.group(3))
+          del self.wb[i]
+          continue
+
+        m = re.match(r"\.ma (.*?) ([\"'])(.*?)\2", self.wb[i])  # only second in quotes
+        if m:
+          self.mau.append(m.group(1))
+          self.mal.append(m.group(3))
+          del self.wb[i]
+          continue
+
+        m = re.match(r"\.ma (.*?) (.*?)$", self.wb[i])  # neither in quotes
+        if m:
+          self.mau.append(m.group(1))
+          self.mal.append(m.group(2))
+          del self.wb[i]
+          continue
+
+      i += 1
+
+    # Now that we've gathered mappings, apply them to down-convert
+    # if source file is UTF-8 and requested encoding is Latin-1
+    if self.encoding == "utf_8" and self.renc == "l":
+      for j,ch in enumerate(self.mau):
+        for i in range(len(self.wb)): # O=n^2
+          self.wb[i] = re.sub(ch, self.mal[j], self.wb[i])
+      # user-defined character mapping complete, now do default mapping to Latin-1
+      self.utoLat()
+
+
+    # long lines of any kind may end with a single backslash. The backslash will be replaced by a blank, and
+    # the next line will be concatenated to it.
+    # Note: .de is exempted here as it needs separate processing.
+    ### Code to allow continuations could be deleted from later code (except .de) now that it's done here
+    i = 0
+    inde = False
+    while i < (len(self.wb) - 1):
+      if self.wb[i].startswith(".de") and self.wb[i].endswith("\\"):
+        inde = True
+      elif self.wb[i].endswith("\\"):
+        if not inde:
+          self.wb[i] = self.wb[i][:-1] + " " + self.wb[i+1]
+          del self.wb[i+1]
+          continue
+      else:
+        inde = False
+      i += 1
+
+    if self.wb[-1].endswith("\\"):
+      self.crash_w_context("File ends with continued line.", i)
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # courtesy remaps
+    #
+    i = 0
+    while i < len(self.wb):
+      if not self.wb[i].startswith("."):
+        i += 1
+        continue
+      # courtesy maps
+      if ".nf" == self.wb[i]:
+        self.wb[i] = ".nf l"
+      if ".sp" == self.wb[i]:
+        self.wb[i] = ".sp 1"
+      if ".hr" == self.wb[i]:
+        self.wb[i] = ".hr 100%"
+      if ".ti" == self.wb[i]:
+        self.wb[i] = ".ti 2"
+      if ".ce" == self.wb[i]:
+        self.wb[i] = ".ce 1"
+      if ".rj" == self.wb[i]:
+        self.wb[i] = ".rj 1"
+      i += 1
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # remaps of protected characters and some escapes
+
+    for i, line in enumerate(self.wb):
+      # dots not part of dot directive
+      self.wb[i] = self.wb[i].replace("....", "ⓓⓓⓓⓓ") # four dot ellipsis
+      self.wb[i] = self.wb[i].replace("...", "ⓓⓓⓓ") # 3 dot ellipsis
+      self.wb[i] = self.wb[i].replace(". . .", "ⓓⓢⓓⓢⓓ") # 3 dot ellipsis, spaced
+      self.wb[i] = self.wb[i].replace("\. \. \.", "ⓓⓢⓓⓢⓓ") # 3 dot ellipsis, spaced
+      # spacing
+      self.wb[i] = self.wb[i].replace(r'\ ', "ⓢ") # non-breaking space
+      self.wb[i] = self.wb[i].replace(r'\_', "ⓢ") # alternate non-breaking space
+      self.wb[i] = self.wb[i].replace(r"\&", "ⓣ") # zero space
+      self.wb[i] = self.wb[i].replace(r"\^", "ⓤ") # thin space (after italics)
+      self.wb[i] = self.wb[i].replace(r"\|", "ⓥ") # thick space (between ellipsis dots)
+
+      self.wb[i] = self.wb[i].replace(r"\{", "①")
+      self.wb[i] = self.wb[i].replace(r"\}", "②")
+      self.wb[i] = self.wb[i].replace(r"\[", "③")
+      self.wb[i] = self.wb[i].replace(r"\]", "④")
+      self.wb[i] = self.wb[i].replace(r"\<", "⑤")
+      self.wb[i] = self.wb[i].replace(r"\>", "⑳")
+      self.wb[i] = self.wb[i].replace(r"\:", "⑥")
+      self.wb[i] = self.wb[i].replace(r"\-", "⑨")
+      self.wb[i] = self.wb[i].replace(r"\#", "⓪")
+
+      # special characters
+      # leave alone if in literal block (correct way, not yet implemented)
+      # map &nbsp; to non-breaking space
+      # 10-Sep-2014: I don't fully understand why I did this mapping
+      self.wb[i] = self.wb[i].replace("&nbsp;", "ⓢ") # ampersand
+      self.wb[i] = self.wb[i].replace("&", "Ⓩ") # ampersand
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # define caption models for multi-line captions in the text output
+    # .cm name
+    # first line
+    # second line
+    # ...
+    # .cm-
+
+    i = 0
+    while i < len(self.wb):
+      if self.wb[i].startswith(".cm"):
+        m = re.match(r"\.cm (.*)", self.wb[i])
+        if m:
+          model_name = m.group(1)
+        else:
+          self.crash_w_context("incorrect .cm command: model name missing.", i)
+        del self.wb[i]
+        t = []
+        while i < len(self.wb) and not self.wb[i].startswith(".cm"):  # accumulate statements into the model until we hit another .cm or a .cm-
+          t.append(self.wb[i])
+          del self.wb[i]
+        if i < len(self.wb) and self.wb[i] == ".cm-":       # if we hit a .cm- then delete it and finalize the model
+          del self.wb[i] # the closing .cm-
+        else:                                               # quit if we hit end-of-file or a .cm before finding the .cm-
+          self.fatal("missing .cm- for model: " + model_name)
+        # model is stored in t[]
+        self.caption_model[model_name] = t
+        i -= 1
+      i += 1
+
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # map .ce into equivalent .nf c (02-Aug-2014 3.13)
@@ -4195,6 +4216,8 @@ class Ppt(Book):
 
   def __init__(self, args, renc):
     Book.__init__(self, args, renc)
+    if args.pythonmacrosok:
+      Book.python_macros_allowed = True
     self.booktype = "text"
     if self.listcvg:
       self.cvglist()
@@ -11153,10 +11176,10 @@ class Pph(Book):
 
 # ====== ppgen ==========================================================================
 
-# python3 ppgen.py -i secret-src.txt       generates secret.txt, secret.html
-# python3 ppgen.py -i secret-src.txt -o t  generates secret.txt only
+# python3 ppgen.py -i secret-src.txt       generates secret-utf8.txt, secret.html
+# python3 ppgen.py -i secret-src.txt -o t  generates secret-utf8.txt only
 # python3 ppgen.py -i secret-src.txt -o h  generates secret.html only
-# source file must be filename-src.txt, UTF-8.
+# source file must be filename-src.txt, UTF-8 is detected.
 #
 # debug options:
 # 'd' enables dprint, 's' retains runtime-generated styles,
@@ -11185,6 +11208,8 @@ def main():
                       help="create -src.txt.bin file and terminate")
   parser.add_argument("-ppqt2", "--ppqt2", action="store_true",
                       help="create .ppqt file in addition to any .bin file")
+  parser.add_argument("-pmok", "--pythonmacrosok", action="store_true",
+                      help="allow macros written in Python without prompting user for permission")
   args = parser.parse_args()
 
   # version request. print and exit
