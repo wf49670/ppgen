@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53cc" + with_regex   # 24-Jan-2016
+VERSION="3.53ccpm" + with_regex   # 25-Jan-2016
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -116,9 +116,11 @@ VERSION="3.53cc" + with_regex   # 24-Jan-2016
 #       definition.
 #  .dl: Change CSS definition of <dt> to use min-width rather than width, and when floating add a padding-right of .5em.
 #  .dl: Apply tindent in HTML when style=p
+#3.53ccpm: Allow macros to be written in Python
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
+
 
 """
   ppgen.py
@@ -210,6 +212,7 @@ class Book(object):
   nregs = {} # named registers
   nregsusage = {} # usage counters for selected named registers
   macro = {} # user macro storage
+  python_macros_allowed = None
   caption_model = {} # storage for named caption models for multi-line captions in text output
 
   mau = [] # UTF-8
@@ -1581,6 +1584,7 @@ class Book(object):
   #                    '\u03A8\u03A9')
 
   def __init__(self, args, renc):
+
     del self.wb[:]
     del self.eb[:]
     del self.bb[:]
@@ -3822,13 +3826,15 @@ class Book(object):
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # define macro
     # .dm name
-    # .dm name $1 $2
+    # .dm name $1 $2 (optionally: lang=python)
     # macro line 1
     # macro line 2
     # .dm-
     i = 0
     while i < len(self.wb):
       if self.wb[i].startswith(".dm"):
+        self.wb[i], count = re.subn(" lang=python", "", self.wb[i]) # determine if regular or Python macro
+        python = True if count else False
         tlex = shlex.split(self.wb[i])
         if len(tlex) > 1:
           macroid = tlex[1] # string
@@ -3843,8 +3849,32 @@ class Book(object):
           del self.wb[i] # the closing .dm-
         else:                                               # quit if we hit end-of-file or a .dm before finding the .dm-
           self.fatal("missing .dm- for macro: " + macroid)
-        # macro is stored in t[]
-        self.macro[macroid] = t
+        if not python: # native macro
+          # macro is stored in t[]
+          self.macro[macroid] = ["n", t, len(tlex)-2] # store as a "native" macro
+        else: # python macro
+          if not Book.python_macros_allowed: # has user authorized use of Python macros?
+            print("Warning: Macro(s) contain Python code.")
+            good_warn_reply = False
+            while not good_warn_reply:
+              try:
+                answer = input("Allow? (y/n)")
+              except EOFError:
+                print("EOF received on prompt; assuming n")
+                answer = "n"
+              if answer == "y":
+                good_warn_reply = True
+                Book.python_macros_allowed = True
+              elif answer == "n":
+                print("Python macros not allowed; quitting")
+                exit(1)
+          try: # compile the macro
+            s = "\n".join(t) 
+            c = compile(s, "<macro {}>".format(macroid), "exec")
+            self.macro[macroid] = ["p", c, len(tlex)-2] # store as a compiled python macro
+          except:
+            traceback.print_exc()
+            self.fatal("Above error occurred trying to compile Python code for macro {}".format(macroid))
         i -= 1
       i += 1
 
@@ -3867,25 +3897,49 @@ class Book(object):
             self.fatal("Above error occurred while processing line: {}".format(self.wb[i]))
           else:
             self.fatal("Error occurred parsing .pm arguments for: {}".format(self.wb[i]))
+
         macroid = tlex[1]  # "tnote"
-        # t = self.macro[macroid].copy() # after 3.3 only
-        # t = self.macro[macroid][:] # another way
         if not macroid in self.macro:
           self.fatal("undefined macro {}: ".format(macroid, self.wb[i]))
-        t = list(self.macro[macroid]) # all the lines in this macro as previously defined
-        for j,line in enumerate(t): # for each line
-          m = re.search(r'\$(\d{1,2})', t[j]) # is there a substitution?
-          while m:
-            pnum = int(m.group(1))
-            subst = r"\${}".format(pnum)
-            if pnum < len(tlex) - 1:
-              t[j] = re.sub(subst, tlex[pnum+1], t[j], 1)
-            else:
-              self.warn("Incorrect macro invocation (argument ${} missing): {}".format(pnum, self.wb[i]))
-              t[j] = re.sub(subst, "***missing***", t[j], 1)
-            m = re.search(r'\$(\d{1,2})', t[j]) # another substitution on same line
-        self.wb[i:i+1] = t
+
+        if self.macro[macroid][0] == "n": # "native" ppgen macro?
+          t = list(self.macro[macroid][1]) # all the lines in this macro as previously defined
+          for j,line in enumerate(t): # for each line
+            m = re.search(r'\$(\d{1,2})', t[j]) # is there a substitution?
+            while m:
+              pnum = int(m.group(1))
+              subst = r"\${}".format(pnum)
+              if pnum < len(tlex) - 1:
+                t[j] = re.sub(subst, tlex[pnum+1], t[j], 1)
+              else:
+                self.warn("Incorrect macro invocation (argument ${} missing): {}".format(pnum, self.wb[i]))
+                t[j] = re.sub(subst, "***missing***", t[j], 1)
+              m = re.search(r'\$(\d{1,2})', t[j]) # another substitution on same line
+          self.wb[i:i+1] = t
+
+        else: # python format macro
+          var = {}
+          var["count"] = len(tlex) - 2 # count of input variables
+          for j in range(2, len(tlex)):
+            var[j-2] = tlex[j]
+          var["out"] = [] # place for macro to put its output
+          var["type"] = self.booktype # text or html
+          macglobals = __builtins__.__dict__
+          maclocals = {"var": var}
+          try: # exec the macro
+            exec(self.macro[macroid][1], macglobals, maclocals)
+          except:
+            traceback.print_exc()
+            self.crash_w_context("Above error occurred trying to execute Python code for macro {}".format(macroid), i)
+          try: # try to grab its output
+            self.wb[i:i+1] = var["out"][:]
+          except:
+            traceback.print_exc()
+            self.crash_w_context("Above error occurred trying to copy output from Python macro {}".format(macroid), i)
+
+          var = {}
         i -= 1
+        
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
