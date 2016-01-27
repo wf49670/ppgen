@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.53ccpm" + with_regex   # 25-Jan-2016
+VERSION="3.54" + with_regex   # 27-Jan-2016
 #3.53a:
 # Table issues:
 #   <th> sometimes appearing in table headers
@@ -121,6 +121,11 @@ VERSION="3.53ccpm" + with_regex   # 25-Jan-2016
 #    defining/running the macros
 #  Update to make the python macro variable "var" global so it's available to subroutines in the macro.
 #  Update to make the "re" module (or regex, whichever we're using) available to the macros
+#3.54:
+#  Update to make the HTML generated for .dl style=p a bit prettier.
+#  Renumber to 3.54 before rolling into production.
+#  Revise python macro support to provide more complete error messages
+#  Add a python macro's name to var in case the macro wants to know it
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -128,11 +133,12 @@ NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 """
   ppgen.py
 
-  Copyright 2014, Asylum Computer Services LLC
+  Copyright 2014, 2016 Asylum Computer Services LLC
   Licensed under the MIT license:
   http://www.opensource.org/licenses/mit-license.php
 
   Roger Frank (rfrank@rfrank.net)
+  Walt Farrell (walt.farrell@gmail.com)
 
   Permission is hereby granted, free of charge, to any person obtaining
   a copy of this software and associated documentation files (the
@@ -2445,7 +2451,7 @@ class Book(object):
       #           individually left-aligned at the margin (self.regIN) if collapse=y or placed after the implied term if
       #           collapse=n
       #   8. A .dt logically becomes a line of format a. A .dd logically becomes a line of format b2
-      #   9. A blank line will terminate the current definition. By default one blank line will be placed between 
+      #   9. A blank line will terminate the current definition. By default one blank line will be placed between
       #        definitions in text output. If more are desired, use .sp to specify them.
 
 
@@ -3706,7 +3712,7 @@ class Book(object):
         t = []
         while i < len(self.wb) and not self.wb[i].startswith(".dm"):  # accumulate statements into the macro until we hit another .dm or a .dm-
           # Note: statements within a macro definition cannot be continued using \ as the final character, as macros
-          #       must be able to generate statements ending with \          
+          #       must be able to generate statements ending with \
           t.append(self.wb[i])
           del self.wb[i]
         if i < len(self.wb) and self.wb[i] == ".dm-":       # if we hit a .dm- then delete it and finalize the macro
@@ -3733,9 +3739,9 @@ class Book(object):
                 print("Python macros not allowed; quitting")
                 exit(1)
           try: # compile the macro
-            s = "\n".join(t) 
+            s = "\n".join(t)
             c = compile(s, "<macro {}>".format(macroid), "exec")
-            self.macro[macroid] = ["p", c, len(tlex)-2] # store as a compiled python macro
+            self.macro[macroid] = ["p", c, len(tlex)-2, t] # store as a compiled python macro
           except:
             traceback.print_exc()
             self.fatal("Above error occurred trying to compile Python code for macro {}".format(macroid))
@@ -3746,6 +3752,7 @@ class Book(object):
     # play macro
     # .pm name
     i = 0
+    pmcount = 0 # number of python macros executed in this phase
     while i < len(self.wb):
       if self.wb[i].startswith(".pm"):
         while (i < len(self.wb) - 1) and self.wb[i].endswith("\\"):   # allow continuation via ending \ for .pm
@@ -3782,23 +3789,34 @@ class Book(object):
           self.wb[i:i+1] = t
 
         else: # python format macro
+          if not pmcount: # if first python macro this pass, initialize a dictionary
+            savevar = {}  # to allow macros to communicate
+          pmcount += 1
           var = {}
           var["count"] = len(tlex) - 2 # count of input variables
           for j in range(2, len(tlex)):
             var[j-2] = tlex[j]
-          var["name"] = macroid
+          var["name"] = macroid # the name of the macro, in case the macro cares for some reason
           var["out"] = [] # place for macro to put its output
           var["type"] = self.booktype # text or html
           macglobals = __builtins__.__dict__
           macglobals["var"] = var # make macro variables available
           macglobals["re"] = re # make re module available
+          macglobals["savevar"] = savevar # make communication dictionary available
           maclocals = {"__builtins__":None}
 
           try: # exec the macro
             exec(self.macro[macroid][1], macglobals, maclocals)
           except:
-            traceback.print_exc()
-            self.crash_w_context("Above error occurred trying to execute Python code for macro {}".format(macroid), i)
+            where = traceback.extract_tb(sys.exc_info()[2])[-1]
+            if where[0] == "<macro {}>".format(macroid):
+              macro_line = "{}:".format(where[1]-1) + self.macro[macroid][3][where[1]-1]
+            else:
+              macro_line = "not available"
+            mac_info = "Exception occurred running Python macro {} at\n       Source line {}\n".format(macroid, self.umap(macro_line))
+            trace_info = traceback.format_exception(*sys.exc_info())
+            self.crash_w_context(mac_info + "\n".join(trace_info), i)
+
           try: # try to grab its output
             self.wb[i:i+1] = var["out"][:]
           except:
@@ -3807,7 +3825,7 @@ class Book(object):
 
           var = {}
         i -= 1
-        
+
       i += 1
 
 
@@ -10986,7 +11004,7 @@ class Pph(Book):
           #else:
           #  self.dlbuffer.append(self.dtddspaces + "<p{}{}>".format(clss, cstyle) + t[0])
           extraspaces = "  "
-          self.dlbuffer.append(t[0])
+          self.dlbuffer.append(self.dtddspaces + extraspaces + t[0])
 
         for i in range(1, len(t)): # handle remaining lines, if any, of this definition
           self.dlbuffer.append(self.dtddspaces + extraspaces + t[i])
