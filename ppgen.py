@@ -29,103 +29,14 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54" + with_regex   # 27-Jan-2016
-#3.53a:
-# Table issues:
-#   <th> sometimes appearing in table headers
-#   Irrelevant error message about a column being too narrow to hold the word <span>
-#   Performance enhancement by not wrapping cell text that is already narrow enough
-# Preserve leading blanks when stripping multiple consecutive blanks from a string.
-#3.53b (was 3.52bLists)
-# Implement .ul (unordered list) and .ol (ordered list) and .it (item)
-#3.53c:
-#  Implement .dl (definition list) and .dl-
-#3.53c1:
-#  Forgot the @media handheld CSS for .dl with style=float
-#3.53c2:
-#  Fix error recognizing .dt and .dd directives
-#3.53c3:
-#  Revise .dt handling to avoid conflict with original .dt directive.
-#3.53c4:
-#  Fix loop with blank lines inside .dl block when generating HTML
-#3.53c5:
-#  Fix error in wrapping a paragraph that contains a .bn directive (text version only)
-#3.53c6:
-#  Fix .sr error resulting in no changes when processing search strings containing \n
-#3.53c7:
-#  Change px specifications on borders to "thin".
-#  Change padding on .pageno to use "em" rather than "px".
-#  Implement new named register, pnstyle, with values of title or content, to control
-#    how the page numbers are generated and provide workaround for CSS validator bug.
-#    Default: content, which avoids the bug.
-#3.53c8:
-#  Fix dotcmds table so it accepts the .ix directive
-#3.53c9:
-#  (HTML) Allow .nf blocks to have only centered (.ce) and right-aligned (.rj) lines of text
-#  (txt)  Fix problem of <span> appearing in text tables with multi-line cells and valign = b or m
-#3.53ca:
-#  (txt) Fix error of long .it lines not being generated with proper hanging indent.
-#3.53ca1
-#  Fix several nesting issues for .ol, .ul
-#3.53ca2
-#  Fix more nesting issues for .ol, .ul
-#  Fix alignment for .ul items when style=none
-#3.53ca3
-#  Remove support for .it blocks (.it, .it-) leaving only the form ".it some text" as .it blocks aren't really needed.
-#3.53ca4
-#  move some escape processing before doGreek to allow \[ and \] within [Greek: ...] tagging
-#  use the regex package instead of re if available on the user's system, but set default as VERSION0 (compatible with re)
-#  .dl improvements
-#  Fix for <target> inside <sc> string using wrong small-cap class name.
-#  Fix for incorrect HTML on <ul> and <ol> when a class name is specified.
-#  Fix for <fs=..> within page link markup (#...:...#) in HTML. We now use the protected : instead of normal : to avoid
-#    confusing the link handling.
-#  Eliminate possible ".RS c" at end of text output file
-#  Warn about (and then ignore) any specified table borders in Latin-1 output
-#3.53ca5
-#  Detect incorrect column specification (missing colon) for a table and fail with proper error message
-#  When an HTML table cell starts with protected blanks, use text-indent instead of padding-left so only the first
-#    row is indented if the cell content wraps
-#3.53ca6
-#  When centering text output (.ce, .nf c) if a line is too long then center each portion of it, rather than centering the
-#    first part and using a hanging indent for the remaining line(s) of wrapped text. This makes the text and HTML
-#    handling compatible.
-#  Allow any kind of input line to be continued with a \ at the end. The \ will be replaced by a blank, and the
-#    following line will be concatenated after the blank. (Note: .de is handled differently; the lines are not concatenated
-#    but remain separate in the HTML output file.)
-#3.53ca7:
-#  Merge experimental branch GreekBracketMatch to allow ] within [Greek: ...] tags without the need for the PPer to escape them
-#    using \]
-#  Fix problem using \[ in .sr directives, and possibly some other characters such as \{
-#3.53ca8:
-#  Fix Python coding error in .ol/.ul handling.
-#3.53ca9:
-#  Implement align=r for .dl
-#  Adjust spacing between elements in .dl
-#  Rework .dl with style=p for HTML. Disallow hang=y for style=p.
-#  Fix padding issue for table cells with borders in HTML and "h" specification (double padding-left specification in CSS)
-#3.53cb:
-#  .dl: Fix Python error reporting missing .dl-
-#  .dl: Adjust line-height of <dt> element to allow collapse=y to work reliably
-#  .dl: Add break=y to tell ppgen to maintain line breaks when using combine=y
-#  .dl: Change handling of blank lines. A single blank line terminates a definition, but additional blank lines are
-#       ignored. To effect additional spacing between items use .sp instead.
-#3.53cc:
-#  Enhance error message for dot directives rejected within .ul, .ol, .dl to include ".dl" in the error text
-#  .dl: In text output, with combine=y, float=y, and a long term, ensure at least 1 blank separates the term from the
-#       definition.
-#  .dl: Change CSS definition of <dt> to use min-width rather than width, and when floating add a padding-right of .5em.
-#  .dl: Apply tindent in HTML when style=p
-#3.53ccpm: Allow macros to be written in Python
-#  Update to move macro processing a bit earlier, and to restore original text characters (un-escape) before
-#    defining/running the macros
-#  Update to make the python macro variable "var" global so it's available to subroutines in the macro.
-#  Update to make the "re" module (or regex, whichever we're using) available to the macros
-#3.54:
-#  Update to make the HTML generated for .dl style=p a bit prettier.
-#  Renumber to 3.54 before rolling into production.
-#  Revise python macro support to provide more complete error messages
-#  Add a python macro's name to var in case the macro wants to know it
+VERSION="3.54a" + with_regex   # 29-Jan-2016
+#3.54a:
+#  Finish implementing .dl break option
+#  Text: Detect <br> in short table cells and wrap them anyway
+#  HTML: Force blank table cells to &nbsp; so the horizontal borders don't collapse if all cells are blank.
+#        (Note: ppgen used to work this way, but at some point we stopped using &nbsp; for table cells, though
+#               I'm not sure why.)
+
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2198,7 +2109,8 @@ class Book(object):
       b = self.book # short pointer to Ppt or Pph "self"
 
       dopts = {}
-      dopts["align"] = "l" ### needs to be implemented
+      dopts["align"] = "l"
+      dopts["break"] = False
       dopts["class"] = ""
       dopts["collapse"] = False
       dopts["combine"] = False
@@ -2235,6 +2147,15 @@ class Book(object):
             dopts["align"] = "r"
           else:
             b.crash_w_context("Invalid align value: {}".format(temp), b.cl)
+
+        if "break=" in options:
+          options, temp = b.get_id("break", options)
+          if temp.lower().startswith("y"):
+            dopts["break"] = True
+          elif temp.lower().startswith("n"):
+            dopts["break"] = False
+          else:
+            b.crash_w_context("Invalid break value: {}".format(temp), b.cl)
 
         if "class=" in options:
           options, dopts["class"] = b.get_id("class", options)
@@ -6209,8 +6130,9 @@ class Ppt(Book):
             w1 += widths[j] + len(bafter[j-1]) + len(bbefore[j]) # account for space between columns
           else:
             break
-         # don't bother wrapping a <span> column or one whose naive length is short enough to fit
-        if cell_text == "<span>" or len(cell_text) < w1:
+         # don't bother wrapping a <span> column or one whose naive length is short enough to fit, unless
+         # if contains a <br>
+        if (cell_text == "<span>" or len(cell_text) < w1) and (cell_text.find("<br>") == -1):
           w[i] = [cell_text]
         elif caligns[i] != 'h': # if not hanging indent, wrap normally
           w[i] = self.wrap_para(cell_text, 0, w1, 0, warn=True) # should handle combining characters properly
@@ -9848,8 +9770,11 @@ class Pph(Book):
       for k,data in enumerate(v):
         # adjust alignment if override given
         v[k] = v[k].strip(' ')
-        #if not v[k]:
-        #  v[k] = '&nbsp;' # force blank cells to nbsp
+        # the below 2 lines were commented out, but that caused an issue with row borders when all
+        # cells on a line are blank. I'm not sure whether setting the blank cells to &nbsp; is the
+        # proper fix, but it seems to work.
+        if not v[k]:
+          v[k] = '&nbsp;' # force blank cells to nbsp
         if k == 0: # for first cell, check for <th> flag to indicate a header row
           if len(v[k]) >= 4 and v[k][0:4] == "<th>": # header row?
             cell_type1 = "<th"
