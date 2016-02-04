@@ -29,8 +29,13 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54" + with_regex   # 27-Jan-2016
+VERSION="3.54a" + with_regex   # 29-Jan-2016
 #3.54a:
+#  Finish implementing .dl break option
+#  Text: Detect <br> in short table cells and wrap them anyway
+#  HTML: Force blank table cells to &nbsp; so the horizontal borders don't collapse if all cells are blank.
+#        (Note: ppgen used to work this way, but at some point we stopped using &nbsp; for table cells, though
+#               I'm not sure why.)
 #  Text: Fix indentation of items in .ol and .ul, ensuring at least a 1 space indent from the left margin and
 #        calculating the indentation correctly. This also addressed an issue with not honoring hang=y.
 #  Text: fix hanging indentation
@@ -2106,7 +2111,8 @@ class Book(object):
       b = self.book # short pointer to Ppt or Pph "self"
 
       dopts = {}
-      dopts["align"] = "l" ### needs to be implemented
+      dopts["align"] = "l"
+      dopts["break"] = False
       dopts["class"] = ""
       dopts["collapse"] = False
       dopts["combine"] = False
@@ -2143,6 +2149,15 @@ class Book(object):
             dopts["align"] = "r"
           else:
             b.crash_w_context("Invalid align value: {}".format(temp), b.cl)
+
+        if "break=" in options:
+          options, temp = b.get_id("break", options)
+          if temp.lower().startswith("y"):
+            dopts["break"] = True
+          elif temp.lower().startswith("n"):
+            dopts["break"] = False
+          else:
+            b.crash_w_context("Invalid break value: {}".format(temp), b.cl)
 
         if "class=" in options:
           options, dopts["class"] = b.get_id("class", options)
@@ -6117,8 +6132,9 @@ class Ppt(Book):
             w1 += widths[j] + len(bafter[j-1]) + len(bbefore[j]) # account for space between columns
           else:
             break
-         # don't bother wrapping a <span> column or one whose naive length is short enough to fit
-        if cell_text == "<span>" or len(cell_text) < w1:
+         # don't bother wrapping a <span> column or one whose naive length is short enough to fit, unless
+         # if contains a <br>
+        if (cell_text == "<span>" or len(cell_text) < w1) and (cell_text.find("<br>") == -1):
           w[i] = [cell_text]
         elif caligns[i] != 'h': # if not hanging indent, wrap normally
           w[i] = self.wrap_para(cell_text, 0, w1, 0, warn=True) # should handle combining characters properly
@@ -9764,8 +9780,11 @@ class Pph(Book):
       for k,data in enumerate(v):
         # adjust alignment if override given
         v[k] = v[k].strip(' ')
-        #if not v[k]:
-        #  v[k] = '&nbsp;' # force blank cells to nbsp
+        # the below 2 lines were commented out, but that caused an issue with row borders when all
+        # cells on a line are blank. I'm not sure whether setting the blank cells to &nbsp; is the
+        # proper fix, but it seems to work.
+        if not v[k]:
+          v[k] = '&nbsp;' # force blank cells to nbsp
         if k == 0: # for first cell, check for <th> flag to indicate a header row
           if len(v[k]) >= 4 and v[k][0:4] == "<th>": # header row?
             cell_type1 = "<th"
