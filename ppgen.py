@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54b" + with_regex   # 29-Jan-2016
+VERSION="3.54b" + with_regex   # 3-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
@@ -53,6 +53,13 @@ VERSION="3.54b" + with_regex   # 29-Jan-2016
 #    recognizing .h1/2/3).
 #  Properly display the first few characters of the Greek table when doing -cvglist processing. Also, clarify meaning of
 #    columns and of those first few non-preferred characters.
+#  Text: Added additional validation point for a table row having the correct number of columns to avoid a Python trap.
+#  Greek: When keeping the original transliteration, properly handle <something>\ just before the ending ] so the \ is
+#    not lost in the final output. E.g., [Greek: i\] with keep= specified must remain [Greek: i\] and not become
+#    [Greek: i] in the final output. Also, when protecting "\|" and "\ " within the [Greek: ] tags make sure to handle
+#    them in the complete tag (even if there is [] within the tag) and make sure they survive into the final output.
+#  Greek: When printing the error message about an unterminated Greek string, limit the amount of the file printed to 100
+#    characters at most. Also, initialize newstart in findGreek to prevent error after last Greek tag is found.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1588,7 +1595,7 @@ class Book(object):
     self.nregsusage["nf-spaces-per-em"] = 1 # number of times we've specified this value
 
     self.encoding = "" # input file encoding
-    self.pageno = "" # page number stored as string
+    self.pageno = "" # page number stored as string (null is the same as a Roman numeral 0)
     self.bnmatch = re.compile("^⑱.*?⑱$")
 
     self.list_styles_u = {
@@ -1794,19 +1801,20 @@ class Book(object):
     self.list_item_value += 1
     return self.toRoman(self.list_item_value).upper()
 
-  # routine to restore some of the escaped characters (needed for .sr processing)
-  # Note: restores the backslash character, too.
-  def restore_some_escapes(self, text):
-    text = text.replace("①", "\{")
-    text = text.replace("②", "\}")
-    text = text.replace("③", "\[")
-    text = text.replace("④", "\]")
-    text = text.replace("⑤", "\<")
-    text = text.replace("⑳", "\>")
-    text = text.replace("⑥", "\:")
-    text = text.replace("⑨", "\-")
-    text = text.replace("⓪", "\#")
-    return text
+  # not needed any more
+  ## routine to restore some of the escaped characters (needed for .sr processing)
+  ## Note: restores the backslash character, too.
+  #def restore_some_escapes(self, text):
+  #  text = text.replace("①", "\{")
+  #  text = text.replace("②", "\}")
+  #  text = text.replace("③", "\[")
+  #  text = text.replace("④", "\]")
+  #  text = text.replace("⑤", "\<")
+  #  text = text.replace("⑳", "\>")
+  #  text = text.replace("⑥", "\:")
+  #  text = text.replace("⑨", "\-")
+  #  text = text.replace("⓪", "\#")
+  #  return text
 
   def cvglist(self):
     if self.listcvg:
@@ -3047,6 +3055,7 @@ class Book(object):
       gkfull = gkorigb + self.gkpre + gkstring + self.gksuf + gkoriga
       gkfull = gkfull.replace(r"\|", "⑩") # temporarily protect \| and \(space) so they
       gkfull = gkfull.replace(r"\ ", "⑮") # retain their special meaning within [Greek: ...] tags
+      gkfull = gkfull.replace(r"\]", "\④") # also \] needs to become protected here, but with an added \
       return gkfull
 
     def loadFilter():
@@ -3109,7 +3118,7 @@ class Book(object):
 
       def findGreek(text, start):
         found = False
-        i = end = len(text)
+        i = end = newstart = len(text)
         m = re.search(r"\[Greek: ?", text[start:end], flags=re.DOTALL)
         if m:
           found = True
@@ -3119,7 +3128,6 @@ class Book(object):
           nest = 0
           done = False
           while i < end and not done:
-            aaadbg = text[i]
             if text[i] == "[":
               nest += 1
             elif text[i] == "]" and nest == 0:
@@ -3129,13 +3137,13 @@ class Book(object):
               nest -= 1
 
             i += 1
-          if not done:
-            self.fatal("Unterminated [Greek tag?\n{}".format(text[start+newstart:]))
+          if not done: # error; print up to 100 characters of the unterminated Greek tag
+            self.fatal("Unterminated [Greek tag?\n{}".format(text[start+newstart:start+newstart+100]))
 
         i += 1
         more = True if (i < len(text)) else False
 
-        return found, start, i, more
+        return found, newstart, i, more
 
 
 
@@ -3191,20 +3199,22 @@ class Book(object):
             found, start, end, more = findGreek(text, start)
             if found:
               front = text[:start]
-              #middle = text[start:end]
               back = text[end:]
               middle = re.sub(r"\[Greek: ?(.*)]", gkrepl, text[start:end], flags=re.DOTALL)
+              #middle = re.sub(r"\\\|", "⑩", middle) # temporarily protect "\|" and "\ " within a Greek tag if any remain
+              #middle = re.sub(r"\\ ", "⑮", middle)
               text = front + middle + back
               start = len(front) + len(middle)
           #text = re.sub(r"\[Greek: ?(.*?)]", gkrepl, text, flags=re.DOTALL)
+        # the following is no longer needed (see 2nd/3rd lines of middle= stuff above)
         # even if Greek processing not requested, [Greek: ...] strings could have \| and \(space)
         # characters we need to protect
-        count = 1
-        while count:
-          text, count = re.subn(r"(\[Greek:[^]]*?)\\\|([^]]*?\])", r"\1⑩\2", text, flags=re.DOTALL)
-        count = 1
-        while count:
-          text, count = re.subn(r"(\[Greek:[^]]*?)\\ ([^]]*?\])", r"\1⑮\2", text, flags=re.DOTALL)
+        #count = 1
+        #while count:
+        #  text, count = re.subn(r"(\[Greek:[^]]*?)\\\|([^]]*?\])", r"\1⑩\2", text, flags=re.DOTALL)
+        #count = 1
+        #while count:
+        #  text, count = re.subn(r"(\[Greek:[^]]*?)\\ ([^]]*?\])", r"\1⑮\2", text, flags=re.DOTALL)
 
         self.wb = text.splitlines()
         text = ""
@@ -3420,7 +3430,7 @@ class Book(object):
       sr_error = False
       while i < len(self.wb):
         if self.wb[i].startswith(".sr"):
-          self.wb[i] = self.restore_some_escapes(self.wb[i])
+          #self.wb[i] = self.restore_some_escapes(self.wb[i])
           m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
           if m:
             if m.group(5) != "":           # if anything here then the user's expression was wrong, somehow
@@ -3474,19 +3484,21 @@ class Book(object):
     if self.cvgfilter:
       loadFilter()
 
-    # Handle some escaped characters here to avoid issues with \] in Greek processing
-    for i, line in enumerate(self.wb):
-      # some escaped characters
-      # Note: must handle \| and \(space) later as they are significant to [Greek: ...] processing
-      self.wb[i] = self.wb[i].replace(r"\{", "①")
-      self.wb[i] = self.wb[i].replace(r"\}", "②")
-      self.wb[i] = self.wb[i].replace(r"\[", "③")
-      self.wb[i] = self.wb[i].replace(r"\]", "④")
-      self.wb[i] = self.wb[i].replace(r"\<", "⑤")
-      self.wb[i] = self.wb[i].replace(r"\>", "⑳")
-      self.wb[i] = self.wb[i].replace(r"\:", "⑥")
-      self.wb[i] = self.wb[i].replace(r"\-", "⑨")
-      self.wb[i] = self.wb[i].replace(r"\#", "⓪")
+    # This ends up causing problems for Greek with \], and now that Greek processing properly finds the end
+    # of the [GreekL ...] tag we don't need to have this done early any more.
+    ## Handle some escaped characters
+    #for i, line in enumerate(self.wb):
+    #  # some escaped characters
+    #  # Note: must handle \| and \(space) and \] later as they are significant to [Greek: ...] processing
+    #  self.wb[i] = self.wb[i].replace(r"\{", "①")
+    #  self.wb[i] = self.wb[i].replace(r"\}", "②")
+    #  self.wb[i] = self.wb[i].replace(r"\[", "③")
+    #  self.wb[i] = self.wb[i].replace(r"\]", "④")
+    #  self.wb[i] = self.wb[i].replace(r"\<", "⑤")
+    #  self.wb[i] = self.wb[i].replace(r"\>", "⑳")
+    #  self.wb[i] = self.wb[i].replace(r"\:", "⑥")
+    #  self.wb[i] = self.wb[i].replace(r"\-", "⑨")
+    #  self.wb[i] = self.wb[i].replace(r"\#", "⓪")
 
     # Handle Greek, Diacritics, .sr for filtering, and terminate with cvg-bailout text if filtering or user requested it
     doGreek()
@@ -3586,7 +3598,7 @@ class Book(object):
     sr_error = False
     while i < len(self.wb):
       if self.wb[i].startswith(".sr"):
-        self.wb[i] = self.restore_some_escapes(self.wb[i])
+        #self.wb[i] = self.restore_some_escapes(self.wb[i])
         m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
         if m:
           if m.group(5) != "":           # if anything here then the user's expression was wrong, somehow
@@ -3626,20 +3638,22 @@ class Book(object):
     if sr_error: # if any .sr parsing problems noted
       self.fatal("Terminating due to the .sr issues listed previously.")
 
-    # restore escaped characters before processing macros
-    for i, line in enumerate(self.wb):
-      self.wb[i] = self.wb[i].replace("①", "\{")
-      self.wb[i] = self.wb[i].replace("②", "\}")
-      self.wb[i] = self.wb[i].replace("③", "\[")
-      self.wb[i] = self.wb[i].replace("④", "\]")
-      self.wb[i] = self.wb[i].replace("⑤", "\<")
-      self.wb[i] = self.wb[i].replace("⑳", "\>")
-      self.wb[i] = self.wb[i].replace("⑥", "\:")
-      self.wb[i] = self.wb[i].replace("⑨", "\-")
-      self.wb[i] = self.wb[i].replace("⓪", "\#")
-      # unprotect temporarily protected characters from Greek strings
-      self.wb[i] = self.wb[i].replace("⑩", r"\|") # restore temporarily protected \| and \(space)
-      self.wb[i] = self.wb[i].replace("⑮", r"\ ")
+    # not needed any more
+    ## restore escaped characters before processing macros
+    #for i, line in enumerate(self.wb):
+    #  self.wb[i] = self.wb[i].replace("①", "\{")
+    #  self.wb[i] = self.wb[i].replace("②", "\}")
+    #  self.wb[i] = self.wb[i].replace("③", "\[")
+    #  self.wb[i] = self.wb[i].replace("④", "\]")
+    #  self.wb[i] = self.wb[i].replace("⑤", "\<")
+    #  self.wb[i] = self.wb[i].replace("⑳", "\>")
+    #  self.wb[i] = self.wb[i].replace("⑥", "\:")
+    #  self.wb[i] = self.wb[i].replace("⑨", "\-")
+    #  self.wb[i] = self.wb[i].replace("⓪", "\#")
+    #  # The below was a bug, I think. They should not be unprotected until nearer the end
+    #  # unprotect temporarily protected characters from Greek strings
+    #  self.wb[i] = self.wb[i].replace("⑩", r"\|") # restore temporarily protected \| and \(space)
+    #  self.wb[i] = self.wb[i].replace("⑮", r"\ ")
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # macros processed before handling line continuation via trailing \ character
@@ -4879,7 +4893,8 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("⑥", ":")
       self.eb[i] = self.eb[i].replace("⑨", "-")
       self.eb[i] = self.eb[i].replace("⓪", "#")
-      # text space replacement
+      self.eb[i] = self.eb[i].replace("⑩", r"\|") # restore temporarily protected \| and \(space)
+      self.eb[i] = self.eb[i].replace("⑮", r"\ ")
       self.eb[i] = re.sub("ⓢ|Ⓢ", " ", self.eb[i]) # non-breaking space
       self.eb[i] = re.sub("ⓣ|Ⓣ", " ", self.eb[i]) # zero space
       self.eb[i] = re.sub("ⓤ|Ⓤ", " ", self.eb[i]) # thin space
@@ -6140,6 +6155,8 @@ class Ppt(Book):
 
       # split the text into columns
       t = self.wb[self.cl].split("|")
+      if len(t) != ncols:
+        self.crash_w_context("table has wrong number of columns:{}".format(self.wb[self.cl]), self.cl)
 
       maxheight = 0
       w = [None] * ncols  # a list of lists for this row
@@ -7114,14 +7131,14 @@ class Pph(Book):
           self.crash_w_context("Invalid .pn increment amount, +0", i)
         if (self.pageno).isnumeric():
           self.pageno = "{}".format(int(self.pageno) + increment_amount)
-        else: # Roman, possibly
-          m = re.match(r"[iIvVxXlLcCdDmM]+$", self.pageno)
+        else: # Roman, possibly (or maybe null, the default initial value)
+          m = re.match(r"^([iIvVxXlLcCdDmM]+|)$", self.pageno)
           if not m:
             self.crash_w_context("Cannot increment non-numeric, non-Roman page number {}".format(self.pageno), i)
           else: 
             ucRoman = False
             if not (self.pageno).islower():
-              ucRoman = True # page number has at least 1 upper-case Roman numeral
+              ucRoman = True # page number has at least 1 upper-case Roman numeral (or is null)
               self.pageno = (self.pageno).lower()
             n = self.fromRoman(self.pageno)
             n += increment_amount
@@ -7750,7 +7767,8 @@ class Pph(Book):
     text = re.sub("⑳", "&gt;", text)
     text = re.sub("⓪", "#", text)
     text = re.sub("⓫", "|", text)
-    # text space replacement
+    text = re.sub("⑩", r"\|", text) # restore temporarily protected \| and \(space)
+    text = re.sub("⑮", r"\ ", text)
     text = re.sub("ⓢ", "&nbsp;", text) # non-breaking space
     text = re.sub("ⓣ", "&#8203;", text) # zero space
     text = re.sub("ⓤ", "&thinsp;", text) # thin space
@@ -10833,7 +10851,7 @@ class Pph(Book):
 
           if self.options["float"]: # float=y
             #dtwidth += 1 # allow some padding when floating (handled by padding-left for dd now)
-            dtparms += " float: left; clear: left; text-align: {}; max-width: {}em;".format(dtalign, dtwidth)
+            dtparms += " float: left; clear: left; text-align: {}; width: {}em;".format(dtalign, dtwidth)
             dtparms += " padding-top: .5em; padding-right: .5em;"
             if self.options["tindent"]: # tindent non-zero?
               dtparms += " text-indent: {}em;".format(tindent)
@@ -10876,7 +10894,7 @@ class Pph(Book):
             dtmparms = dtparms[dtplen:] # completely respecify for mobile formats when floating
 
           else: # float=n
-            dtparms += " text-align: {}; padding-top: .5em; max-width: {}em;".format(dtalign, dtwidth)
+            dtparms += " text-align: {}; padding-top: .5em; width: {}em;".format(dtalign, dtwidth)
             ddparms += " text-align: left; padding-top: .5em; padding-left: .5em; "
             if self.options["tindent"]: # tindent non-zero?
               dtparms += " text-indent: {}em;".format(tindent)
