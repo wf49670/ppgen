@@ -29,16 +29,38 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54a" + with_regex   # 29-Jan-2016
+VERSION="3.54b" + with_regex   # 3-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
 #  HTML: Force blank table cells to &nbsp; so the horizontal borders don't collapse if all cells are blank.
 #        (Note: ppgen used to work this way, but at some point we stopped using &nbsp; for table cells, though
 #               I'm not sure why.)
+#3.54b:
 #  Text: Fix indentation of items in .ol and .ul, ensuring at least a 1 space indent from the left margin and
-#        calculating the indentation correctly. This also addressed an issue with not honoring hang=y.
-#  Text: fix hanging indentation
+#        calculating the indentation correctly. This also addressed an issue with not honoring hang=y. This also
+#        fixed an issue with hang=y.
+#  HTML: Implement indent, space=y, and hang=y for .ol and .ul and properly handle left/right/top margins. Prevent
+#        improper reuse of CSS class names for .ol and .ul (and potentially .dl).
+#  Revise try/except in dodot() to cover only the lookup of the directive, not its processing, which will avoid surprises.
+#  Revise processing for pn= on .il directive:
+#    (1) Allow the form pn=+<increment> in addition to the pn=<value> that was previously allowed
+#    (2) When pn= is specified, ensure that self.pageno is set so future uses of .pn +<increment> or pn=+<increment) will
+#        work properly.
+#  Revise page number incrementing to fail with an appropriate error message if the current page number is neither
+#    numeric nor Roman.
+#  When moving page numbers (from .pn) down to a suitable line, recognize .h4/5/6 as suitable header lines (was only
+#    recognizing .h1/2/3).
+#  Properly display the first few characters of the Greek table when doing -cvglist processing. Also, clarify meaning of
+#    columns and of those first few non-preferred characters.
+#  Text: Added additional validation point for a table row having the correct number of columns to avoid a Python trap.
+#  Greek: When keeping the original transliteration, properly handle <something>\ just before the ending ] so the \ is
+#    not lost in the final output. E.g., [Greek: i\] with keep= specified must remain [Greek: i\] and not become
+#    [Greek: i] in the final output. Also, when protecting "\|" and "\ " within the [Greek: ] tags make sure to handle
+#    them in the complete tag (even if there is [] within the tag) and make sure they survive into the final output.
+#  Greek: When printing the error message about an unterminated Greek string, limit the amount of the file printed to 100
+#    characters at most. Also, initialize newstart in findGreek to prevent error after last Greek tag is found.
+
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -334,15 +356,16 @@ class Book(object):
   # 2. character(s) ppgen outputs
   # 3. printable form for .cvglist output listing
   gk = [                              # builtin Greek transliterations
-     ('ï/', 'i/\+', 'ï/'),            # i/u/y alternatives using dieresis
-     ('ü/', 'y/\+', 'ü/'),            # standardize to doubly marked form and fall into normal processing
-     ('ÿ/', 'y/\+', 'ÿ/'),
-     ('ï~', 'i~\+', 'ï~'),
-     ('ü~', 'y~\+', 'ü~'),
-     ('ÿ~', 'y~\+', 'ÿ~'),
-     (r'ï\\', 'i\\\+', 'ï\\'),
-     (r'ü\\', 'y\\\+', 'ü\\'),
-     (r'ÿ\\', 'y\\\+', 'ÿ\\'),
+  
+     ('ï/', 'i/+', 'ï/', None, 'ΐ (i/+ is the preferred form)'), # i/u/y alternatives using dieresis
+     ('ü/', 'y/+', 'ü/', None, 'ΰ (y/+ is preferred)'), # standardize to doubly marked form and fall into normal processing
+     ('ÿ/', 'y/+', 'ÿ/', None, 'ΰ (y/+ is preferred)'),
+     ('ï~', 'i~+', 'ï~', None, 'ῗ (i~+ is preferred)'),
+     ('ü~', 'y~+', 'ü~', None, 'ῧ (y~+ is preferred)'),
+     ('ÿ~', 'y~+', 'ÿ~', None, 'ῧ (y~+ is preferred)'),
+     (r'ï\\', 'i\+', 'ï\\', None, 'ῒ (i\+ is preferred)'),
+     (r'ü\\', 'y\+', 'ü\\', None, 'ῢ (y\+ is preferred)'),
+     (r'ÿ\\', 'y\+', 'ÿ\\', None, 'ῢ (y\+ is preferred)'),
      ('Ï', '\u03AA', 'Ï'),           # just put these directly to the character (because that's the way Tony did it for GG)
      ('ï', '\u03CA', 'ï'),
      ('Ü', '\u03AB', 'Ü'),
@@ -1572,7 +1595,7 @@ class Book(object):
     self.nregsusage["nf-spaces-per-em"] = 1 # number of times we've specified this value
 
     self.encoding = "" # input file encoding
-    self.pageno = "" # page number stored as string
+    self.pageno = "" # page number stored as string (null is the same as a Roman numeral 0)
     self.bnmatch = re.compile("^⑱.*?⑱$")
 
     self.list_styles_u = {
@@ -1778,31 +1801,36 @@ class Book(object):
     self.list_item_value += 1
     return self.toRoman(self.list_item_value).upper()
 
-  # routine to restore some of the escaped characters (needed for .sr processing)
-  # Note: restores the backslash character, too.
-  def restore_some_escapes(self, text):
-    text = text.replace("①", "\{")
-    text = text.replace("②", "\}")
-    text = text.replace("③", "\[")
-    text = text.replace("④", "\]")
-    text = text.replace("⑤", "\<")
-    text = text.replace("⑳", "\>")
-    text = text.replace("⑥", "\:")
-    text = text.replace("⑨", "\-")
-    text = text.replace("⓪", "\#")
-    return text
+  # not needed any more
+  ## routine to restore some of the escaped characters (needed for .sr processing)
+  ## Note: restores the backslash character, too.
+  #def restore_some_escapes(self, text):
+  #  text = text.replace("①", "\{")
+  #  text = text.replace("②", "\}")
+  #  text = text.replace("③", "\[")
+  #  text = text.replace("④", "\]")
+  #  text = text.replace("⑤", "\<")
+  #  text = text.replace("⑳", "\>")
+  #  text = text.replace("⑥", "\:")
+  #  text = text.replace("⑨", "\-")
+  #  text = text.replace("⓪", "\#")
+  #  return text
 
   def cvglist(self):
     if self.listcvg:
       f1 = codecs.open("ppgen-cvglist.txt", "w", encoding="UTF-8")
       f1.write("\r\n\r\nppgen {}\r\n".format(VERSION))
-      f1.write("\r\nBuilt-in Greek Characters:\r\n\r\n")
+      f1.write("\r\nBuilt-in Greek Characters:\r\n")
+      f1.write("User enters:  ppgen generates:\r\n\r\n")
       for s in self.gk:
-        if len(s) == 4:
+        if len(s) == 5:
+          f1.write("{:<17} {}\r\n".format(s[2], s[4]))
+        elif len(s) == 4:
           f1.write("{:<17} {}\r\n".format(s[2], s[3]))
         else:
           f1.write("{:<17} {}\r\n".format(s[2], s[1]))
       f1.write("\r\n\r\nBuilt-in diacritics:\r\n\r\n")
+      f1.write("User enters:  ppgen generates:\r\n\r\n")
       for s in self.diacritics:
         #f1.write("{:<14}{:<5} {:<5}  {}\r\n".format(s[0], s[1], s[2], s[4]))
         ns = "**Non-standard markup; will produce warning" if s[3] else ""
@@ -2506,12 +2534,14 @@ class Book(object):
     dotcmd = self.wb[self.cl][0:3]
     try:
       switch = self.dotcmds[dotcmd]
-      if not switch[1]:
-        switch[0]()
-      elif switch[1] == "cl": # this is the only value for now
-        switch[0](self.cl)
     except KeyError:
       self.crash_w_context("unknown dot command: {}".format(self.wb[self.cl]), self.cl)
+
+    if not switch[1]:
+      switch[0]()
+    elif switch[1] == "cl": # this is the only value for now
+      switch[0](self.cl)
+
 
   # Issue error message, show context, and terminate
   def crash_w_context(self, msg, i, r=5):
@@ -2786,6 +2816,8 @@ class Book(object):
       clss   = ""
       indent = -1
 
+      self.ulolopt = {}
+
       if "indent=" in options:
         options, indent = self.get_id("indent", options)
         if indent:
@@ -2795,6 +2827,7 @@ class Book(object):
             self.crash_w_context("Invalid indent= value: {}".format(indent), self.cl)
           else:
             indent = temp
+            self.ulolopt["indent"] = indent
 
       if "style=" in options:
         options, style = self.get_id("style", options)
@@ -2822,6 +2855,8 @@ class Book(object):
         else:
           self.list_item_style = self.list_styles_o.get('decimal')
 
+      self.ulolopt["style"] = self.list_item_style
+
       if type == "o": # handle width for .ol
         if "w=" in options:
           options, w = self.get_id("w", options)
@@ -2838,6 +2873,8 @@ class Book(object):
         else:
           self.list_item_width = 0 # no room needed for marker for .ul style=none
 
+      self.ulolopt["indent"] = self.list_item_width
+
       if "align=" in options:
         options, align = self.get_id("align", options)
         temp = align.lower()[0]
@@ -2848,6 +2885,8 @@ class Book(object):
           self.list_align = temp
       else:
         self.list_align = "r"
+
+      self.ulolopt["align"] = self.list_align
 
       if "id=" in options:
         options, id = self.get_id("id", options)
@@ -2867,6 +2906,8 @@ class Book(object):
       else:
         self.list_hang = False
 
+      self.ulolopt["hang"] = self.list_hang
+
       if "space=" in options:
         options, space = self.get_id("space", options)
         if space.lower().startswith("y"):
@@ -2878,6 +2919,8 @@ class Book(object):
           self.list_space = False
       else:
         self.list_space = False
+
+      self.ulolopt["space"] = self.list_space
 
       if options.strip() != "":
         self.warn_w_context("Unknown options on .ul directive: {}".format(options), self.cl)
@@ -3012,6 +3055,7 @@ class Book(object):
       gkfull = gkorigb + self.gkpre + gkstring + self.gksuf + gkoriga
       gkfull = gkfull.replace(r"\|", "⑩") # temporarily protect \| and \(space) so they
       gkfull = gkfull.replace(r"\ ", "⑮") # retain their special meaning within [Greek: ...] tags
+      gkfull = gkfull.replace(r"\]", "\④") # also \] needs to become protected here, but with an added \
       return gkfull
 
     def loadFilter():
@@ -3074,7 +3118,7 @@ class Book(object):
 
       def findGreek(text, start):
         found = False
-        i = end = len(text)
+        i = end = newstart = len(text)
         m = re.search(r"\[Greek: ?", text[start:end], flags=re.DOTALL)
         if m:
           found = True
@@ -3084,7 +3128,6 @@ class Book(object):
           nest = 0
           done = False
           while i < end and not done:
-            aaadbg = text[i]
             if text[i] == "[":
               nest += 1
             elif text[i] == "]" and nest == 0:
@@ -3094,13 +3137,13 @@ class Book(object):
               nest -= 1
 
             i += 1
-          if not done:
-            self.fatal("Unterminated [Greek tag?\n{}".format(text[start+newstart:]))
+          if not done: # error; print up to 100 characters of the unterminated Greek tag
+            self.fatal("Unterminated [Greek tag?\n{}".format(text[start+newstart:start+newstart+100]))
 
         i += 1
         more = True if (i < len(text)) else False
 
-        return found, start, i, more
+        return found, newstart, i, more
 
 
 
@@ -3156,7 +3199,6 @@ class Book(object):
             found, start, end, more = findGreek(text, start)
             if found:
               front = text[:start]
-              #middle = text[start:end]
               back = text[end:]
               middle = re.sub(r"\[Greek: ?(.*)]", gkrepl, text[start:end], flags=re.DOTALL)
               text = front + middle + back
@@ -3164,12 +3206,12 @@ class Book(object):
           #text = re.sub(r"\[Greek: ?(.*?)]", gkrepl, text, flags=re.DOTALL)
         # even if Greek processing not requested, [Greek: ...] strings could have \| and \(space)
         # characters we need to protect
-        count = 1
-        while count:
-          text, count = re.subn(r"(\[Greek:[^]]*?)\\\|([^]]*?\])", r"\1⑩\2", text, flags=re.DOTALL)
-        count = 1
-        while count:
-          text, count = re.subn(r"(\[Greek:[^]]*?)\\ ([^]]*?\])", r"\1⑮\2", text, flags=re.DOTALL)
+        #count = 1
+        #while count:
+        #  text, count = re.subn(r"(\[Greek:[^]]*?)\\\|([^]]*?\])", r"\1⑩\2", text, flags=re.DOTALL)
+        #count = 1
+        #while count:
+        #  text, count = re.subn(r"(\[Greek:[^]]*?)\\ ([^]]*?\])", r"\1⑮\2", text, flags=re.DOTALL)
 
         self.wb = text.splitlines()
         text = ""
@@ -3385,7 +3427,7 @@ class Book(object):
       sr_error = False
       while i < len(self.wb):
         if self.wb[i].startswith(".sr"):
-          self.wb[i] = self.restore_some_escapes(self.wb[i])
+          #self.wb[i] = self.restore_some_escapes(self.wb[i])
           m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
           if m:
             if m.group(5) != "":           # if anything here then the user's expression was wrong, somehow
@@ -3439,19 +3481,21 @@ class Book(object):
     if self.cvgfilter:
       loadFilter()
 
-    # Handle some escaped characters here to avoid issues with \] in Greek processing
-    for i, line in enumerate(self.wb):
-      # some escaped characters
-      # Note: must handle \| and \(space) later as they are significant to [Greek: ...] processing
-      self.wb[i] = self.wb[i].replace(r"\{", "①")
-      self.wb[i] = self.wb[i].replace(r"\}", "②")
-      self.wb[i] = self.wb[i].replace(r"\[", "③")
-      self.wb[i] = self.wb[i].replace(r"\]", "④")
-      self.wb[i] = self.wb[i].replace(r"\<", "⑤")
-      self.wb[i] = self.wb[i].replace(r"\>", "⑳")
-      self.wb[i] = self.wb[i].replace(r"\:", "⑥")
-      self.wb[i] = self.wb[i].replace(r"\-", "⑨")
-      self.wb[i] = self.wb[i].replace(r"\#", "⓪")
+    # This ends up causing problems for Greek with \], and now that Greek processing properly finds the end
+    # of the [GreekL ...] tag we don't need to have this done early any more.
+    ## Handle some escaped characters
+    #for i, line in enumerate(self.wb):
+    #  # some escaped characters
+    #  # Note: must handle \| and \(space) and \] later as they are significant to [Greek: ...] processing
+    #  self.wb[i] = self.wb[i].replace(r"\{", "①")
+    #  self.wb[i] = self.wb[i].replace(r"\}", "②")
+    #  self.wb[i] = self.wb[i].replace(r"\[", "③")
+    #  self.wb[i] = self.wb[i].replace(r"\]", "④")
+    #  self.wb[i] = self.wb[i].replace(r"\<", "⑤")
+    #  self.wb[i] = self.wb[i].replace(r"\>", "⑳")
+    #  self.wb[i] = self.wb[i].replace(r"\:", "⑥")
+    #  self.wb[i] = self.wb[i].replace(r"\-", "⑨")
+    #  self.wb[i] = self.wb[i].replace(r"\#", "⓪")
 
     # Handle Greek, Diacritics, .sr for filtering, and terminate with cvg-bailout text if filtering or user requested it
     doGreek()
@@ -3551,7 +3595,7 @@ class Book(object):
     sr_error = False
     while i < len(self.wb):
       if self.wb[i].startswith(".sr"):
-        self.wb[i] = self.restore_some_escapes(self.wb[i])
+        #self.wb[i] = self.restore_some_escapes(self.wb[i])
         m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
         if m:
           if m.group(5) != "":           # if anything here then the user's expression was wrong, somehow
@@ -3591,20 +3635,22 @@ class Book(object):
     if sr_error: # if any .sr parsing problems noted
       self.fatal("Terminating due to the .sr issues listed previously.")
 
-    # restore escaped characters before processing macros
-    for i, line in enumerate(self.wb):
-      self.wb[i] = self.wb[i].replace("①", "\{")
-      self.wb[i] = self.wb[i].replace("②", "\}")
-      self.wb[i] = self.wb[i].replace("③", "\[")
-      self.wb[i] = self.wb[i].replace("④", "\]")
-      self.wb[i] = self.wb[i].replace("⑤", "\<")
-      self.wb[i] = self.wb[i].replace("⑳", "\>")
-      self.wb[i] = self.wb[i].replace("⑥", "\:")
-      self.wb[i] = self.wb[i].replace("⑨", "\-")
-      self.wb[i] = self.wb[i].replace("⓪", "\#")
-      # unprotect temporarily protected characters from Greek strings
-      self.wb[i] = self.wb[i].replace("⑩", r"\|") # restore temporarily protected \| and \(space)
-      self.wb[i] = self.wb[i].replace("⑮", r"\ ")
+    # not needed any more
+    ## restore escaped characters before processing macros
+    #for i, line in enumerate(self.wb):
+    #  self.wb[i] = self.wb[i].replace("①", "\{")
+    #  self.wb[i] = self.wb[i].replace("②", "\}")
+    #  self.wb[i] = self.wb[i].replace("③", "\[")
+    #  self.wb[i] = self.wb[i].replace("④", "\]")
+    #  self.wb[i] = self.wb[i].replace("⑤", "\<")
+    #  self.wb[i] = self.wb[i].replace("⑳", "\>")
+    #  self.wb[i] = self.wb[i].replace("⑥", "\:")
+    #  self.wb[i] = self.wb[i].replace("⑨", "\-")
+    #  self.wb[i] = self.wb[i].replace("⓪", "\#")
+    #  # The below was a bug, I think. They should not be unprotected until nearer the end
+    #  # unprotect temporarily protected characters from Greek strings
+    #  self.wb[i] = self.wb[i].replace("⑩", r"\|") # restore temporarily protected \| and \(space)
+    #  self.wb[i] = self.wb[i].replace("⑮", r"\ ")
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # macros processed before handling line continuation via trailing \ character
@@ -4844,7 +4890,8 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("⑥", ":")
       self.eb[i] = self.eb[i].replace("⑨", "-")
       self.eb[i] = self.eb[i].replace("⓪", "#")
-      # text space replacement
+      self.eb[i] = self.eb[i].replace("⑩", r"\|") # restore temporarily protected \| and \(space)
+      self.eb[i] = self.eb[i].replace("⑮", r"\ ")
       self.eb[i] = re.sub("ⓢ|Ⓢ", " ", self.eb[i]) # non-breaking space
       self.eb[i] = re.sub("ⓣ|Ⓣ", " ", self.eb[i]) # zero space
       self.eb[i] = re.sub("ⓤ|Ⓤ", " ", self.eb[i]) # thin space
@@ -6105,6 +6152,8 @@ class Ppt(Book):
 
       # split the text into columns
       t = self.wb[self.cl].split("|")
+      if len(t) != ncols:
+        self.crash_w_context("table has wrong number of columns:{}".format(self.wb[self.cl]), self.cl)
 
       maxheight = 0
       w = [None] * ncols  # a list of lists for this row
@@ -6848,6 +6897,11 @@ class Pph(Book):
   imagedict = {} # list of css specifications for illustrations, with the number that defined them.
   dl_classnum = 0 # used to generate unique class names for .dl with unique characteristics
   dl_dict = {} # initialize dictionary to track unique .dl characteristics
+  ul_classnum = 0 # same for ul and ol
+  ul_dict = {}
+  ol_classnum = 0
+  ol_dict = {}
+  
   booktype = "html"
 
   def __init__(self, args, renc):
@@ -7074,16 +7128,20 @@ class Pph(Book):
           self.crash_w_context("Invalid .pn increment amount, +0", i)
         if (self.pageno).isnumeric():
           self.pageno = "{}".format(int(self.pageno) + increment_amount)
-        else: # Roman
-          ucRoman = False
-          if not (self.pageno).islower():
-            ucRoman = True # page number has at least 1 upper-case Roman numeral
-            self.pageno = (self.pageno).lower()
-          n = self.fromRoman(self.pageno)
-          n += increment_amount
-          self.pageno = self.toRoman(n)
-          if ucRoman:
-            self.pageno = (self.pageno).upper()
+        else: # Roman, possibly (or maybe null, the default initial value)
+          m = re.match(r"^([iIvVxXlLcCdDmM]+|)$", self.pageno)
+          if not m:
+            self.crash_w_context("Cannot increment non-numeric, non-Roman page number {}".format(self.pageno), i)
+          else: 
+            ucRoman = False
+            if not (self.pageno).islower():
+              ucRoman = True # page number has at least 1 upper-case Roman numeral (or is null)
+              self.pageno = (self.pageno).lower()
+            n = self.fromRoman(self.pageno)
+            n += increment_amount
+            self.pageno = self.toRoman(n)
+            if ucRoman:
+              self.pageno = (self.pageno).upper()
         if self.pnshow or self.pnlink:
           self.wb[i] = "⑯{}⑰".format(self.pageno)
         else:
@@ -7096,31 +7154,35 @@ class Pph(Book):
         self.pageno = m.group(1)
         m = re.match(r"\d+|[iIvVxXlLcCdDmM]+$", self.pageno)
         if not m:
-          self.warn("Non-numeric, non-Roman page number {} specified: {}".format(self.pageno, self.wb[i]))
+          self.warn_w_context("Non-numeric, non-Roman page number {} specified: {}".format(self.pageno, self.wb[i]), i)
         if self.pnshow or self.pnlink:
           self.wb[i] = "⑯{}⑰".format(self.pageno)
         else:
           del self.wb[i]
         continue
 
-      # a numeric page number incremented in a heading
-      m = re.match(r"\.h.*?pn=\+(\d+)", self.wb[i])
+      # a numeric page number incremented in a heading or .il directive
+      m = re.match(r"\.((h[1-6])|il).*?pn=\+(\d+)($|\s)", self.wb[i])
       if m:
-        increment_amount = int(m.group(1))
+        increment_amount = int(m.group(3))
         if increment_amount == 0: # can't have duplicate page numbers
-          self.crash_w_context("Invalid pn increment amount, +0", i)
+          self.crash_w_context("Invalid pn= increment amount, +0", i)
         if (self.pageno).isnumeric():
           self.pageno = "{}".format(int(self.pageno) + increment_amount)
-        else: # Roman
-          ucRoman = False
-          if not (self.pageno).islower():
-            ucRoman = True # page number has at least 1 upper-case Roman numeral
-            self.pageno = (self.pageno).lower()
-          n = self.fromRoman(self.pageno)
-          n += increment_amount
-          self.pageno = self.toRoman(n)
-          if ucRoman:
-            self.pageno = (self.pageno).upper()
+        else: # Roman, possibly
+          m = re.match(r"[iIvVxXlLcCdDmM]+$", self.pageno)
+          if not m:
+            self.crash_w_context("Cannot increment non-numeric, non-Roman page number {}".format(self.pageno), i)
+          else:
+            ucRoman = False
+            if not (self.pageno).islower():
+              ucRoman = True # page number has at least 1 upper-case Roman numeral
+              self.pageno = (self.pageno).lower()
+            n = self.fromRoman(self.pageno)
+            n += increment_amount
+            self.pageno = self.toRoman(n)
+            if ucRoman:
+              self.pageno = (self.pageno).upper()
         if self.pnshow or self.pnlink:
           self.wb[i] = re.sub(r"pn=\+\d+", "pn={}".format(self.pageno), self.wb[i])
         else:
@@ -7128,13 +7190,13 @@ class Pph(Book):
         i += 1
         continue
 
-      # an arbitrary page "number" set in a heading
-      m = re.match(r"\.h.*?pn=[\"']?(.+?)[\"']?($|/s)", self.wb[i])
+      # an arbitrary page "number" set in a heading or .il directive
+      m = re.match(r"\.((h[1-6])|il).*?pn=[\"']?(.+?)[\"']?($|\s)", self.wb[i])
       if m:
-        self.pageno = m.group(1)
+        self.pageno = m.group(3)
         m = re.match(r"\d+|[iIvVxXlLcCdDmM]+$", self.pageno)
         if not m:
-          self.warn("Non-numeric, non-Roman page number {} specified: {}".format(self.pageno, self.wb[i]))
+          self.warn_w_context("Non-numeric, non-Roman page number {} specified: {}".format(self.pageno, self.wb[i]), i)
         if not self.pnshow and not self.pnlink:
           self.wb[i] = re.sub(r"pn=[\"']?(.+?)[\"']?($|/s)", "", self.wb[i])
         i += 1
@@ -7184,7 +7246,7 @@ class Pph(Book):
           # placing the page number
           #  if we see a heading, place it there
           #  if not, look for any line of plain text and insert it
-          if re.match(r"\.h[123]", self.wb[i]):
+          if re.match(r"\.h[1-6]", self.wb[i]):
             self.wb[i] += " pn={}".format(pnum)
             found = True
           if self.wb[i].startswith(".il"):
@@ -7702,7 +7764,8 @@ class Pph(Book):
     text = re.sub("⑳", "&gt;", text)
     text = re.sub("⓪", "#", text)
     text = re.sub("⓫", "|", text)
-    # text space replacement
+    text = re.sub("⑩", r"\|", text) # restore temporarily protected \| and \(space)
+    text = re.sub("⑮", r"\ ", text)
     text = re.sub("ⓢ", "&nbsp;", text) # non-breaking space
     text = re.sub("ⓣ", "&#8203;", text) # zero space
     text = re.sub("ⓤ", "&thinsp;", text) # thin space
@@ -10089,7 +10152,7 @@ class Pph(Book):
     if self.regIN != 0 and not self.list_item_active:
       inpct = (self.regIN * 100)/72
       s += "margin-left: {:3.2f}%; ".format(inpct)
-    if self.regLL != 72:
+    if self.regLL != 72 and not self.list_item_active:
       llpct = ((72 - self.regLL) * 100)/72
       s += "margin-right: {:3.2f}%; ".format(llpct)
     if self.regTI == -1000: # special force of ti=0
@@ -10107,6 +10170,25 @@ class Pph(Book):
     if not nfc and not rj and self.regAD == 0:
       s += "text-align: left; "
     return s
+
+  # Called to retrieve a style string representing current display parameters
+  #   for a .ul, .ol, or .dl
+  # Unlike the other version this one ignores self.regTI, self.fsz, and self.pvs (which
+  #   must be handled separately) and has no support for .nf or .rj
+  def list_fetchStyle(self):
+    marginlr = ""
+    margintop = ""
+    if self.regIN != 0 and not self.list_item_active:
+      inpct = (self.regIN * 100)/72
+      marginlr += " margin-left: {:3.2f}%;".format(inpct)
+    if self.regLL != 72:
+      llpct = ((72 - self.regLL) * 100)/72
+      marginlr += " margin-right: {:3.2f}%;".format(llpct)
+
+    if self.pvs > 0: # there may be a pending vertical space
+      margintop += " margin-top: {}em;".format(self.pvs)
+      self.pvs = 0
+    return margintop, marginlr
 
   def doPi(self):
     self.pindent = True
@@ -10406,6 +10488,32 @@ class Pph(Book):
   # HTML notes:
   # <ul>  ...
   def doUl(self):
+
+
+    def ulGetClass(clss, csstuple):
+      # Make a new class for this .ul, or reuse a matching existing class, or use PPer-supplied class
+      if clss:
+        try:
+          if csstuple != self.ul_dict[clss]:
+            self.warn_w_context("Conflicting .ul CSS characteristics for PPer-supplied class {}".format(clss), self.cl)
+            if 'd' in self.debug:
+              print("Older definition requires: {}".format(self.ul_dict[clss]))
+              print("New definition requires: {}".format(csstuple))
+        except KeyError: # if key doesn't exist, save it
+          self.ul_dict[clss] = csstuple
+      else:
+        for k in self.ul_dict.keys():
+          if csstuple == self.ul_dict[k]:
+            clss = str(k)
+            break
+        else: # no match found; build new class name and create new entry in dictionary to remember it
+          self.ul_classnum += 1
+          clss = "ul_" + str(self.ul_classnum)
+          self.ul_dict[clss] = csstuple
+
+      return clss
+
+
     (startul, li_active, indent, id, clss) = self.doUlCommon()
 
     t = []
@@ -10425,16 +10533,48 @@ class Pph(Book):
 
       self.list_item_active = False
 
-      s = self.fetchStyle()
+      if indent != -1: # indent specified
+        self.regIN += int(indent) 
+        if self.list_item_style != "none":
+          self.regIN += 2
+
+      else: # indent not specified
+        temp_indent = self.outerwidth if (len(self.liststack) > 1) else 0
+        if self.list_item_style != "none":
+          temp_indent += 2
+        self.regIN += temp_indent
+
+      ulparms = "[1241] ul.{} {{"
+      liparms = "[1241] .{} li {{"
+      saveliparmlen = len(liparms) # remember original length to know if we've added anything
+
+      ulparms += "padding-left: 0; "
+
+      if self.list_hang:
+        liparms += "padding-left: 1em; text-indent: -1em; "
+
+      margintop, marginlr = self.list_fetchStyle()
+
+      s = marginlr + "margin-top: .5em; margin-bottom: .5em; " # margin-top may be overriden in HTML later
       s += "list-style-type: " + self.list_item_style + "; "
+
+      ulparms += s
+      ulparms += " }}"
+      clss = ulGetClass(clss, (ulparms, liparms)) # determine and/or validate class name for this .ul
+      self.css.addcss(ulparms.format(clss))
+      if len(liparms) > saveliparmlen:
+        liparms += " }}"
+        self.css.addcss(liparms.format(clss))
+
       if id:
         id = " id=" + id
-      if clss:
-        clss = " class='" + clss + "'"
-      if s:
-        t.append((ulspaces * " ") + "<ul style='{}'{}{}>".format(s, id, clss))
-      else:
-        t.append((ulspaces * " ") + "<ul {}{}>".format(id, clss))
+      clss = " class='{}'".format(clss)
+
+      cvs = ""
+      if margintop:
+        cvs = " style='{}'".format(margintop)
+
+      t.append((ulspaces * " ") + "<ul {}{}{}>".format(id, clss, cvs))
 
     self.wb[self.cl:self.cl+1] = t
     self.cl += len(t)
@@ -10455,6 +10595,32 @@ class Pph(Book):
   #   class=<class-value>
   #
   def doOl(self):
+
+
+    def olGetClass(clss, csstuple):
+      # Make a new class for this .ol, or reuse a matching existing class, or use PPer-supplied class
+      if clss:
+        try:
+          if csstuple != self.ol_dict[clss]:
+            self.warn_w_context("Conflicting .ol CSS characteristics for PPer-supplied class {}".format(clss), self.cl)
+            if 'd' in self.debug:
+              print("Older definition requires: {}".format(self.ul_dict[clss]))
+              print("New definition requires: {}".format(csstuple))
+        except KeyError: # if key doesn't exist, save it
+          self.ol_dict[clss] = csstuple
+      else:
+        for k in self.ol_dict.keys():
+          if csstuple == self.ol_dict[k]:
+            clss = str(k)
+            break
+        else: # no match found; build new class name and create new entry in dictionary to remember it
+          self.ol_classnum += 1
+          clss = "ol_" + str(self.ol_classnum)
+          self.ol_dict[clss] = csstuple
+
+      return clss
+
+
     (startol, li_active, indent, id, clss) = self.doOlCommon()
 
     t = []
@@ -10473,16 +10639,49 @@ class Pph(Book):
     else:
 
       self.list_item_active = False
-      s = self.fetchStyle()
+
+      if indent != -1: # indent specified
+        self.regIN += int(indent) 
+        if self.list_item_style != "none":
+          self.regIN += 2
+
+      else: # indent not specified
+        temp_indent = self.outerwidth if (len(self.liststack) > 1) else 0
+        if self.list_item_style != "none":
+          temp_indent += 2
+        self.regIN += temp_indent
+
+      olparms = "[1241] ol.{} {{"
+      liparms = "[1241] .{} li {{"
+      saveliparmlen = len(liparms) # remember original length to know if we've added anything
+
+      olparms += "padding-left: 0; "
+
+      if self.list_hang:
+        liparms += "padding-left: 1em; text-indent: -1em; "
+
+      margintop, marginlr = self.list_fetchStyle()
+
+      s = marginlr + "margin-top: .5em; margin-bottom: .5em; " # margin-top may be overriden in HTML later
       s += "list-style-type: " + self.list_item_style[0] + "; "
+
+      olparms += s
+      olparms += " }}"
+      clss = olGetClass(clss, (olparms, liparms)) # determine and/or validate class name for this .ol
+      self.css.addcss(olparms.format(clss))
+      if len(liparms) > saveliparmlen:
+        liparms += " }}"
+        self.css.addcss(liparms.format(clss))
+
       if id:
         id = " id=" + id
-      if clss:
-        clss = " class='" + clss + "'"
-      if s:
-        t.append((olspaces * " ") + "<ol style='{}'{}{}>".format(s, id, clss))
-      else:
-        t.append((olspaces * " ") + "<ol {}{}>".format(id, clss))
+      clss = " class='{}'".format(clss)
+
+      cvs = ""
+      if margintop:
+        cvs = " style='{}'".format(margintop)
+
+      t.append((olspaces * " ") + "<ol {}{}{}>".format(id, clss, cvs))
 
     self.wb[self.cl:self.cl+1] = t
     self.cl += len(t)
@@ -10502,7 +10701,11 @@ class Pph(Book):
     else:
       self.list_item_active = True
 
-    l = "<li>" + self.wb[self.cl][4:].strip() # append item text to line
+    margintop, marginlr = self.list_fetchStyle()
+    cvs = ""
+    if margintop:
+      cvs = " style='{}'".format(cvs)
+    l = "<li{}>".format(cvs) + self.wb[self.cl][4:].strip() # append item text to line
     self.list_item_empty = False
 
     # to make editing/viewing the raw HTML easier, try to split the (long) line to a reasonable length
@@ -10517,8 +10720,10 @@ class Pph(Book):
       t.append((lispaces * " ") + l)
 
     self.wb[self.cl:self.cl+1] = t      # replace the .it with whatever we generated
-
     self.cl += len(t)
+
+    if self.list_space: # add a blank line after this one if we're spacing the list
+      self.pvs += 1
 
   # Definition List (HTML)
   # .dl options
@@ -10547,7 +10752,7 @@ class Pph(Book):
     class PphDefList(Book.DefList):
 
       # "Print" debugging info (place it into the output text) if requested
-      def print_debug(self, info): # Ppt and Pph will override this
+      def print_debug(self, info):
         b = self.book
         buff = "<p>" + "<br />\n".join(info) + "</p>"
         self.dlbuffer = buff.split("\n")
@@ -10571,6 +10776,34 @@ class Pph(Book):
 
       # Begin a dl
       def begin_dl(self):
+
+        def dlGetClass(csstuple):
+          # Make a new class for this .dl, or reuse a matching existing class, or use PPer-supplied class
+          if self.options["class"]:
+            self.dl_class = self.options["class"]
+            try:
+              if csstuple != b.dl_dict[self.dl_class]:
+                self.warn_w_context("Conflicting .dl CSS characteristics required for PPer-supplied class {}".format(self.dl_class), b.cl)
+                if 'd' in self.debug:
+                  print("Older definition requires: {}".format(b.dl_dict[self.dl_class]))
+                  print("New definition requires: {}".format(csstuple))
+            except KeyError: # if key doesn't exist, save it
+              b.dl_dict[self.dl_class] = csstuple
+          else:
+            for k in b.dl_dict.keys():
+              if csstuple == b.dl_dict[k]:
+                self.dl_class = str(k)
+                break
+            else: # no match found; build new class name and create new entry in dictionary to remember it
+              b.dl_classnum += 1
+              self.dl_class = "dl_" + str(b.dl_classnum)
+              b.dl_dict[self.dl_class] = csstuple
+          
+            if self.options["debug"]:
+              s = []
+              s.append("***Generated class name: " + self.dl_class)
+              self.print_debug(s)
+
         b = self.book
         self.dlstart = b.cl
         self.dlbuffer = []
@@ -10587,32 +10820,14 @@ class Pph(Book):
         self.dl_ptxtindent = 0
         self.dl_pindent = 0
 
-        # Make a new class for this .dl, or reuse a matching existing class, or use PPer-supplied class
-        if self.options["class"]:
-          self.dl_class = self.options["class"]
-        else:
-          temp = self.options.copy()
-          del temp["debug"] # debug option is irrelevant
-          for k in b.dl_dict.keys():
-            if temp == b.dl_dict[k]:
-              self.dl_class = str(k)
-              break
-          else: # no match found; build new class name and create new entry in dictionary to remember it
-            b.dl_classnum += 1
-            self.dl_class = "dl_" + str(b.dl_classnum)
-            b.dl_dict[self.dl_class] = temp
-
-          if self.options["debug"]:
-            s = []
-            s.append("***Generated class name: " + self.dl_class)
-            self.print_debug(s)
-
         divisor = float(b.nregs["nf-spaces-per-em"]) # figure out width for term
         tindent = round(self.options["tindent"]/divisor, 1)
         dindent = round(self.options["dindent"]/divisor, 1)
         width = round(self.options["width"]/divisor, 1)
         dtwidth = width + tindent
         dtalign = "left" if (self.options["align"] == "l") else "right"
+
+        margintop, marginlr = b.list_fetchStyle()
 
         if self.options["style"] == "d": # the following only for <dl> style output
 
@@ -10628,10 +10843,12 @@ class Pph(Book):
           if self.options["collapse"]:
             dtparms += " line-height: .99;" # make <dt> line-height slightly smaller so collapsing works reliably
 
-          dlparms += " margin: .5em auto .5em auto;"
+          dlparms += marginlr # set left/right margins
+          dlparms += " margin-top: .5em; margin-bottom: .5em;" # CSS assumes .5em top margin; HTML will override if needed
+
           if self.options["float"]: # float=y
             #dtwidth += 1 # allow some padding when floating (handled by padding-left for dd now)
-            dtparms += " float: left; clear: left; text-align: {}; min-width: {}em;".format(dtalign, dtwidth)
+            dtparms += " float: left; clear: left; text-align: {}; width: {}em;".format(dtalign, dtwidth)
             dtparms += " padding-top: .5em; padding-right: .5em;"
             if self.options["tindent"]: # tindent non-zero?
               dtparms += " text-indent: {}em;".format(tindent)
@@ -10674,7 +10891,7 @@ class Pph(Book):
             dtmparms = dtparms[dtplen:] # completely respecify for mobile formats when floating
 
           else: # float=n
-            dtparms += " text-align: {}; padding-top: .5em; min-width: {}em;".format(dtalign, dtwidth)
+            dtparms += " text-align: {}; padding-top: .5em; width: {}em;".format(dtalign, dtwidth)
             ddparms += " text-align: left; padding-top: .5em; padding-left: .5em; "
             if self.options["tindent"]: # tindent non-zero?
               dtparms += " text-indent: {}em;".format(tindent)
@@ -10708,10 +10925,11 @@ class Pph(Book):
                   ddparms += " margin-left: {}em;".format(dtwidth + dindent)
 
           dlparms += " }}"
-          b.css.addcss(dlparms.format(self.dl_class))
           dtparms += " }}"
-          b.css.addcss(dtparms.format(self.dl_class))
           ddparms += " }}"
+          dlGetClass((dlparms, dtparms, ddparms)) # determine and/or validate consistency of class name
+          b.css.addcss(dlparms.format(self.dl_class))
+          b.css.addcss(dtparms.format(self.dl_class))
           b.css.addcss(ddparms.format(self.dl_class))
           if dtmparms: # if anything added to dtmparms
             dtmparms = "[1241] @media handheld {{ .{} dt {{" + dtmparms + " }} }}"
@@ -10720,10 +10938,12 @@ class Pph(Book):
         else:  # <p> style output
           dldivparms = "[1241] div.{}  {{"
           dlparaparms = "[1241] .{} p {{"
-          dtmparms = "" # will hold any generated @media handheld parameters
           dlspanparms = "[1241] span.{} {{"
 
-          dldivparms += " margin: .5em auto .5em auto; text-align: left;"
+          dldivparms += marginlr # set left/right margins
+          dldivparms += " margin-top: .5em; margin-bottom: .5em;" # assume top margin of .5em; HTML will override if needed
+
+          dldivparms += " text-align: left;"
           dlparaparms += " text-align: left; margin-top: .5em; margin-bottom: .5em;"
 
           if self.options["debug"]:
@@ -10767,16 +10987,17 @@ class Pph(Book):
           #self.dl_ptxtindent = self.dl_pindent + self.dd_padding # amount to indent a paragraph style dd that has an empty dt
 
           dldivparms += " }}"
-          b.css.addcss(dldivparms.format(self.dl_class))
           dlparaparms += " }}"
-          b.css.addcss(dlparaparms.format(self.dl_class))
           dlspanparms += " }}"
+          dlGetClass((dldivparms, dlparaparms, dlspanparms)) # determine and/or validate consistency of class name
+          b.css.addcss(dldivparms.format(self.dl_class))
+          b.css.addcss(dlparaparms.format(self.dl_class))
           b.css.addcss(dlspanparms.format(self.dl_class))
 
         cvs = ""
-        if b.pvs:
-          cvs = " style='margin-top: {}em; '".format(b.pvs)
-          b.pvs = 0
+        if margintop:
+          cvs = " style='{}'".format(margintop)
+
         if self.options["style"] == "d": # <dl> style
           self.dlbuffer.append(self.dlspaces + "<dl class='{}'{}>".format(self.dl_class, cvs))
 
