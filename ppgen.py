@@ -60,6 +60,10 @@ VERSION="3.54b" + with_regex   # 3-Feb-2016
 #    them in the complete tag (even if there is [] within the tag) and make sure they survive into the final output.
 #  Greek: When printing the error message about an unterminated Greek string, limit the amount of the file printed to 100
 #    characters at most. Also, initialize newstart in findGreek to prevent error after last Greek tag is found.
+#  HTML: For .dl with style=d, if the "definition" is empty, insert &nbsp; to prevent it from collapsing vertically.
+#  .dl: When using .dt and .dd, if the .dd immediately follows the .dt and the definition text does not start with a |
+#    character, then combine the term from the .dt and the definition from the .dd as though they were a line of format a.
+#    Otherwise, there would always be a blank "definition" associated with the .dt.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -2401,7 +2405,9 @@ class Book(object):
       #           Definition lines of format c will not combine with previous lines, and will be
       #           individually left-aligned at the margin (self.regIN) if collapse=y or placed after the implied term if
       #           collapse=n
-      #   8. A .dt logically becomes a line of format a. A .dd logically becomes a line of format b2
+      #   8. A .dt logically becomes a line of format a. A .dd logically becomes a line of format b2. However, as that
+      #        would always result in a blank line between them, they will be combined as though they were a line of
+      #        format b1 if the .dd immediately follows the .dt and if the .dd text does not begin with a | character.
       #   9. A blank line will terminate the current definition. By default one blank line will be placed between
       #        definitions in text output. If more are desired, use .sp to specify them.
 
@@ -2446,16 +2452,25 @@ class Book(object):
         # check for .dt or .dd (form d of definition line) and handle
         # Note: text processing is straightforward: turn into form a or b2
         #       We can ignore the optional parameters on .dd
+        combine_dtdd = False
         if b.wb[b.cl].startswith(".dt"):
           b.wb[b.cl] = b.wb[b.cl][4:] + "|"
+          if (b.cl < len(b.wb) - 1) and b.wb[b.cl+1].startswith(".dd"):
+            m = re.match(r"\.dd( +class=[^ ]*?)? +(.*)", b.wb[b.cl+1])
+            if m and not m.group(2).startswith("|"):
+              combine_dtdd = True
+              saveline = b.wb[b.cl]
+              self.bump_cl()
 
-        elif b.wb[b.cl].startswith(".dd"):
+        if b.wb[b.cl].startswith(".dd"):
           m = re.match(r"\.dd( +class=[^ ]*?)? +(.*)", b.wb[b.cl])
           if m:
             if m.group(1):
               self.set_dd_class(m.group(1))
             if m.group(2).startswith("|"):   # don't add a | if it's already there as the first character
               b.wb[b.cl] = m.group(2)
+            elif combine_dtdd:
+              b.wb[b.cl] = saveline + m.group(2)
             else:
               b.wb[b.cl] = "|" + m.group(2)
           else:
@@ -7170,7 +7185,7 @@ class Pph(Book):
         if (self.pageno).isnumeric():
           self.pageno = "{}".format(int(self.pageno) + increment_amount)
         else: # Roman, possibly
-          m = re.match(r"[iIvVxXlLcCdDmM]+$", self.pageno)
+          m = re.match(r"^([iIvVxXlLcCdDmM]+|)$", self.pageno)
           if not m:
             self.crash_w_context("Cannot increment non-numeric, non-Roman page number {}".format(self.pageno), i)
           else:
@@ -8710,10 +8725,11 @@ class Pph(Book):
       if "pn=" in s:
         s, pageno = self.get_id("pn",s)
       ia["pageno"] = pageno
-      if pageno:
-        m = re.match(r"\d+|[iIvVxXlLcCdDmM]+$", pageno)
-        if not m:
-          self.warn("Non-numeric, non-Roman page number {} specified: {}".format(pageno, s0))
+      # below not needed; all validation happens in separate pass
+      #if pageno:
+      #  m = re.match(r"\d+|[iIvVxXlLcCdDmM]+$", pageno)
+      #  if not m:
+      #    self.warn("Non-numeric, non-Roman page number {} specified: {}".format(pageno, s0))
 
       # caption model (ignored in HTML)
       if "cm=" in s:
@@ -10180,13 +10196,13 @@ class Pph(Book):
     margintop = ""
     if self.regIN != 0 and not self.list_item_active:
       inpct = (self.regIN * 100)/72
-      marginlr += " margin-left: {:3.2f}%;".format(inpct)
-    if self.regLL != 72:
+      marginlr += "margin-left: {:3.2f}%; ".format(inpct)
+    if self.regLL != 72 and not self.list_item_active:
       llpct = ((72 - self.regLL) * 100)/72
-      marginlr += " margin-right: {:3.2f}%;".format(llpct)
+      marginlr += "margin-right: {:3.2f}%; ".format(llpct)
 
     if self.pvs > 0: # there may be a pending vertical space
-      margintop += " margin-top: {}em;".format(self.pvs)
+      margintop += "margin-top: {}em; ".format(self.pvs)
       self.pvs = 0
     return margintop, marginlr
 
@@ -11101,6 +11117,9 @@ class Pph(Book):
 
         b.list_item_active = True
         self.dd_active = True
+
+        if self.options["style"] == "d" and not s:
+          s = "&nbsp;"
 
         if not self.options["combine"]:
           # calculate leading spaces in definition line if needed (non-combining only)
