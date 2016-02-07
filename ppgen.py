@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54b" + with_regex   # 3-Feb-2016
+VERSION="3.54c" + with_regex   # 4-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
@@ -64,6 +64,12 @@ VERSION="3.54b" + with_regex   # 3-Feb-2016
 #  .dl: When using .dt and .dd, if the .dd immediately follows the .dt and the definition text does not start with a |
 #    character, then combine the term from the .dt and the definition from the .dd as though they were a line of format a.
 #    Otherwise, there would always be a blank "definition" associated with the .dt.
+#3.54c:
+#  Revise .hr syntax to allow optional w= (e.g.,  ".hr w=nn%") in addition to the current ".hr nn%". Also, allow more than
+#    one space after the .hr tag. Also warn if there are any unrecognized options.
+#  Fix failure when using -sbin option but not using the -ppqt2 option.
+#  Properly handle .pn and .bn that happen within a .dl/.dl- block.
+#  Add some padding between <dt> and <dd> when using .dt with style=d, align=r, float=y so the text doesn't run together.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1624,7 +1630,7 @@ class Book(object):
     # 2. the processing routine for the directive
     # 3. None: no parameters passed to routine
     #    "cl": self.cl passed to routine
-    self.fulldotcmds = {          # switches dot directives to processing routines####
+    self.fulldotcmds = {          # switches dot directives to processing routines
       ".ad" :  (self.doAd, None),
       # .bn handled separately
       # .ca handled separately
@@ -1909,7 +1915,7 @@ class Book(object):
           if self.ppqt2:
             self.ppqtpage(m.group(1), ccount)
       ccount += len(line) + 1
-    if len(self.ppqt): # finish ppqt file if needed, and write it out
+    if self.ppqt2 and len(self.ppqt): # finish ppqt file if needed, and write it out
       self.ppqtpage("", 0, fn=self.srcfile)
     if len(bb) > 1: # Create .bin file if any .bn commands present
       temp = self.srcfile
@@ -2351,6 +2357,10 @@ class Book(object):
     def set_dd_class(self):
       self.book.crash_w_context("Internal error; class method set_dd_class not overridden", self.book.cl)
 
+    # Routine to handle special lines (page numbers, .bn info)
+    def emit_special(self, pageinfo, bninfo):
+      self.book.crash_w_context("Internal error; class method handle_special_line not overridden", self.book.cl)
+
     # main processing
     def run(self):
 
@@ -2376,6 +2386,7 @@ class Book(object):
       #   d:  .dt term or speaker name
       #       .dd optional-parms definition line of form b2 or c
       #           where optional-parms is class=class-name
+      # However, we may also find a page number line, or a .bn info line, which we need to handle specially
       #
       # Notes:
       #   1. Definition lines may be continued using a backslash as the last character. Such
@@ -2412,7 +2423,7 @@ class Book(object):
       #        definitions in text output. If more are desired, use .sp to specify them.
 
 
-      #blankfound = False
+      pageinfo = bninfo = ""
 
       while b.cl < len(b.wb) and not b.wb[b.cl] == ".dl-":  # process until we hit our .dl-
 
@@ -2422,11 +2433,14 @@ class Book(object):
             if self.options["combine"] and (self.term or self.paragraph):
               self.emit_paragraph()
             else:
-              assert len(self.dlbuffer) == 0, "Trying to invoke a dot directive from .dl while dlbuffer contains data "
+              assert len(self.dlbuffer) == 0, "Trying to invoke a dot directive from .dl while dlbuffer contains data"
+            if pageinfo or bninfo:
+              self.emit_special(pageinfo, bninfo) # handle any page or bn info before doing the next dot command
+              pageinfo = bninfo = ""
             b.doDot()
             continue
 
-        # Not a dot command, must be a definition or blank line
+        # Not a dot command, must be a definition or blank line or page number or .bn info
         #
         b.list_item_active = True
         i = b.cl
@@ -2454,6 +2468,11 @@ class Book(object):
         #       We can ignore the optional parameters on .dd
         combine_dtdd = False
         if b.wb[b.cl].startswith(".dt"):
+
+          if pageinfo or bninfo: # if we have page or bninfo saved emit it now, as we're between entries.
+            self.emit_special(pageinfo, bninfo) # handle any page or bn info before doing the next do
+            pageinfo = bninfo = ""
+
           b.wb[b.cl] = b.wb[b.cl][4:] + "|"
           if (b.cl < len(b.wb) - 1) and b.wb[b.cl+1].startswith(".dd"):
             m = re.match(r"\.dd( +class=[^ ]*?)? +(.*)", b.wb[b.cl+1])
@@ -2463,6 +2482,11 @@ class Book(object):
               self.bump_cl()
 
         if b.wb[b.cl].startswith(".dd"):
+
+          if pageinfo or bninfo: # if we have page or bninfo saved emit it now, as we're between entries.
+            self.emit_special(pageinfo, bninfo) # handle any page or bn info before doing the next do
+            pageinfo = bninfo = ""
+
           m = re.match(r"\.dd( +class=[^ ]*?)? +(.*)", b.wb[b.cl])
           if m:
             if m.group(1):
@@ -2476,6 +2500,26 @@ class Book(object):
           else:
             b.crash_w_context("Error parsing .dd directive: {} \n".format(b.wb[b.cl]), b.cl)
 
+        # check for a line beginning with a page number, or a .bn info line,
+        # and handle. Page numbers will be present only in the HTML pass.
+        if b.wb[b.cl].startswith("⑯"): # page number, possibly?
+          m = re.match(r"(⑯.+⑰)(.*)", b.wb[b.cl])
+          if m: # yes
+            if m.group(2): # more on the line?
+              l = len(m.group(1))  # yes; get length of page number
+              pageinfo = b.wb[b.cl][:l]   # grab it
+              b.wb[b.cl] = b.wb[b.cl][l:] # and remove it from the line (rest of line is normal data)
+            else:                  # no; entire line is special
+              pageinfo = m.group(1)
+              self.bump_cl()                          # and we're done with this line
+              continue
+
+        elif b.bnPresent and b.is_bn_line(b.wb[b.cl]): # not a page number; possibly .bn info?
+          bninfo = b.wb[b.cl] # bninfo is always standalone
+          self.bump_cl()                         # and we're done with this line
+          continue
+
+        # Must be format a, b1, b2, or c line at this point
         # isolate term and definition
         blankfound = False
         t = b.wb[b.cl].split("|", maxsplit=1) # split term and definition
@@ -2484,6 +2528,11 @@ class Book(object):
           # new term/speaker needs to force emission of prior paragraph for combine=y
           if self.options["combine"] and (self.term or self.paragraph):
             self.emit_paragraph()
+
+          if pageinfo or bninfo: # if we have page or bninfo saved emit it now, as we're between entries.
+            self.emit_special(pageinfo, bninfo) # handle any page or bn info before doing the next do
+            pageinfo = bninfo = ""
+
           self.term = t[0].rstrip()
           self.definition = t[1]
           if len(self.definition) >= 1:   # remove at most 1 leading blank from the definition
@@ -2496,7 +2545,10 @@ class Book(object):
             self.bump_cl()
             continue
 
-        else:   # form c above
+        # form c above (no | present in line)
+        # bninfo or page number info may precede the data but that's OK, it will be part of
+        # the definition but will be found and handled by later processing
+        else:
           self.form_c = True
           if not self.options["combine"]: # if not combining,
             self.term = ""
@@ -5135,9 +5187,11 @@ class Ppt(Book):
   # .hr horizontal rule
   def doHr(self):
     hrpct = 100
-    m = re.match(r"\.hr (\d+)%", self.wb[self.cl])
+    m = re.match(r"\.hr +(w=)?(\d+)%$", self.wb[self.cl])
     if m:
-      hrpct = int(m.group(1))
+      hrpct = int(m.group(2))
+    elif self.wb[self.cl] != ".hr":
+      self.warn_w_context("Unrecognized .hr options: {}".format(self.wb[self.cl][3:]), self.cl)
     hrcnt = int(72 * hrpct / 100)
     self.eb.append("{:^72}".format('-'*hrcnt))
     self.cl += 1
@@ -6656,6 +6710,18 @@ class Ppt(Book):
       def bump_cl(self):
         self.book.cl += 1
 
+      # Routine to handle special lines (page number, .bn info)
+      # (called by code in base DefList class)
+      def emit_special(self, pageinfo, bninfo):
+
+        b = self.book
+
+        assert not pageinfo, "Internal error: Unexpected page info found during .dl processing in text phase."
+
+        # bninfo, if any, is purely passthrough for the text phase
+        if bninfo:
+          b.eb.append(bninfo)
+
       # Emit a paragraph of definition/dialog for the case where style=paragraph
       # (overrides method in DefList)
       def emit_paragraph(self):
@@ -7167,9 +7233,9 @@ class Pph(Book):
       m = re.match(r"\.pn [\"']?(.+?)($|[\"'])", self.wb[i])
       if m:
         self.pageno = m.group(1)
-        m = re.match(r"\d+|[iIvVxXlLcCdDmM]+$", self.pageno)
-        if not m:
-          self.warn_w_context("Non-numeric, non-Roman page number {} specified: {}".format(self.pageno, self.wb[i]), i)
+        #m = re.match(r"(\d+$)|([iIvVxXlLcCdDmM]+$)", self.pageno)
+        #if not m:
+        #  self.warn("Non-numeric, non-Roman page number {} specified: {}".format(self.pageno, self.wb[i]))
         if self.pnshow or self.pnlink:
           self.wb[i] = "⑯{}⑰".format(self.pageno)
         else:
@@ -7270,6 +7336,13 @@ class Pph(Book):
           # don't place on a .bn info line
           if self.bnPresent and self.is_bn_line(self.wb[i]):
             i += 1
+            continue
+          if (self.wb[i].startswith(".it") or # we can't put it on .it or .dt or .dl but we can't let
+              self.wb[i].startswith(".dt") or # it slide beyond, either, so insert it before
+              self.wb[i].startswith(".dd")):
+            self.wb.insert(i,"⑯{}⑰".format(pnum)) # insert page number before current line
+            i += 2 # bump past the new page number line and old current line
+            found = True
             continue
           # plain text
           if self.wb[i] and not self.wb[i].startswith("."):
@@ -8064,9 +8137,11 @@ class Pph(Book):
       hcss = "margin-top: {}em; ".format(self.pvs)
       self.pvs = 0
     hrpct = 100
-    m = re.match(r"\.hr (\d+)%", self.wb[self.cl])
+    m = re.match(r"\.hr +(w=)?(\d+)%$", self.wb[self.cl])
     if m:
-      hrpct = int(m.group(1))
+      hrpct = int(m.group(2))
+    elif self.wb[self.cl] != ".hr":
+      self.warn_w_context("Unrecognized .hr options: {}".format(self.wb[self.cl][3:]), self.cl)
     if hrpct == 100:
       self.wb[self.cl] = "<hr style='border: none; border-bottom: thin solid; margin: 1em auto; {}' />".format(hcss)
     else:
@@ -10785,6 +10860,23 @@ class Pph(Book):
       def bump_cl(self):
         del self.book.wb[self.book.cl]
 
+      # Routine to handle special lines (page number, .bn info)
+      # (called by code in base DefList class)
+      def emit_special(self, pageinfo, bninfo):
+
+        b = self.book
+
+        if self.dd_active: # if a dd is active, end it
+          self.build_dd("", True)
+
+        if pageinfo: # if pageinfo passed, insert it into the output buffer before the current line pointer
+          b.wb[b.cl:b.cl] = [pageinfo]
+          b.cl += 1
+
+        if bninfo: # if bninfo passed, insert it into the output buffer before the current line pointer
+          b.wb[b.cl:b.cl] = [bninfo]
+          b.cl += 1
+
       # Routine to wrap a definition line
       # Nothing needed for HTML version
       def wrap_def(self):
@@ -10863,12 +10955,13 @@ class Pph(Book):
           dlparms += " margin-top: .5em; margin-bottom: .5em;" # CSS assumes .5em top margin; HTML will override if needed
 
           if self.options["float"]: # float=y
-            #dtwidth += 1 # allow some padding when floating (handled by padding-left for dd now)
             dtparms += " float: left; clear: left; text-align: {}; width: {}em;".format(dtalign, dtwidth)
             dtparms += " padding-top: .5em; padding-right: .5em;"
             if self.options["tindent"]: # tindent non-zero?
               dtparms += " text-indent: {}em;".format(tindent)
             ddparms += " text-align: left; padding-top: .5em;"
+            if dtalign == "right":
+              ddparms += " padding-left: .5em;"
 
             if self.options["combine"]: # combine=y
               if self.options["collapse"]: # collapse=y
@@ -11135,16 +11228,16 @@ class Pph(Book):
           # define an indent class if needed
           if leadsp > 0:
             dd_indent_class = "dd_in{}".format(leadsp)  # create an indent class
-            if self.nregsusage["nf-spaces-per-em"] > 1:
+            if b.nregsusage["nf-spaces-per-em"] > 1:
               dd_indent_class += "_{}".format(self.nregsusage["nf-spaces-per-em"])
 
-            divisor = float(self.nregs["nf-spaces-per-em"])
-            iamt = str(dd_padding + round(leadsp/divisor, 1)) # calculate based on "2" spaces per em, and
+            divisor = float(b.nregs["nf-spaces-per-em"])
+            iamt = round(leadsp/divisor, 1) # calculate based on "2" spaces per em, and
                                                #  add in the base padding-left calculated from self.list_item_width
             if self.options["hang"]: # hang=y
-              self.css.addcss("[1241] .{} {{ padding-left: {}em}; text-indent: -1em}".format(dd_indent_class, iamt+1))
+              b.css.addcss("[1241] .{} {{ padding-left: {}em; text-indent: -1em}}".format(dd_indent_class, iamt+1))
             else: # hang=n
-              self.css.addcss("[1241] .{} {{ padding-left: {}em}}".format(dd_indent_class, iamt))
+              b.css.addcss("[1241] .{} {{ padding-left: {}em}}".format(dd_indent_class, iamt))
 
         if self.dd_indent_class or self.dd_class:
           if self.dd_indent_class and self.dd_class:
@@ -11159,7 +11252,7 @@ class Pph(Book):
         #  cvs = "margin-top: {}em; ".format(b.pvs)
         #  b.pvs = 0
 
-        #if self.options["style"] == "p":####
+        #if self.options["style"] == "p":
         #  if not self.term and self.dl_ptxtindent != 0:
         #    ctxt = "text-indent: {}em; ".format(self.dl_ptxtindent)
         #  elif self.dl_pindent:
