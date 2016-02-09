@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54c" + with_regex   # 4-Feb-2016
+VERSION="3.54d" + with_regex   # 8-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
@@ -70,6 +70,13 @@ VERSION="3.54c" + with_regex   # 4-Feb-2016
 #  Fix failure when using -sbin option but not using the -ppqt2 option.
 #  Properly handle .pn and .bn that happen within a .dl/.dl- block.
 #  Add some padding between <dt> and <dd> when using .dt with style=d, align=r, float=y so the text doesn't run together.
+#3.54d:
+#  Better handling of nested .dv blocks. Before this they sort of nested, but a missing .dv- could give an incorrect
+#    context marker in the error message. Also, detect .dv- that's not closing a .dv block.
+#  Detect .ig- directive that's not closing a .ig block
+#  Modify .sr processing: When the search string does NOT contain \n, but the replacement string DOES contain \n, insert
+#    individual lines based on the \n rather than one long string containing the \n characters. This will prevent false
+#    "long line" warnings during the text output phase.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -141,6 +148,7 @@ class Book(object):
   llstack = [] # last line length
   psstack = [] # last para spacing
   nfstack = [] # block stack
+  dvstack = [] # stack for nested .dv blocks
   liststack = [] # ul/ol stack
   list_type = None   # no list in progress
   list_item_style = ''  # no item marker for unordered lists yet
@@ -366,7 +374,7 @@ class Book(object):
   # 2. character(s) ppgen outputs
   # 3. printable form for .cvglist output listing
   gk = [                              # builtin Greek transliterations
-  
+
      ('ï/', 'i/+', 'ï/', None, 'ΐ (i/+ is the preferred form)'), # i/u/y alternatives using dieresis
      ('ü/', 'y/+', 'ü/', None, 'ΰ (y/+ is preferred)'), # standardize to doubly marked form and fall into normal processing
      ('ÿ/', 'y/+', 'ÿ/', None, 'ΰ (y/+ is preferred)'),
@@ -1555,6 +1563,7 @@ class Book(object):
     del self.llstack[:]
     del self.psstack[:]
     del self.nfstack[:]
+    del self.dvstack[:]
     del self.liststack[:]
     del self.dotcmdstack[:]
     del self.warnings[:]
@@ -2735,6 +2744,7 @@ class Book(object):
       quit = False
       j = 0
       while j < len(buffer) and not quit:
+        linecnt = 1 # number of lines replaced into buffer by replace operation (assume only 1)
         try:
           m = re.search(self.srs[srnum], buffer[j]) # search for current search string
         except:
@@ -2761,10 +2771,12 @@ class Book(object):
               good_reply = False
               while not good_reply:
                 if reply == "y":                                               # if user replied y (yes)
-                  buffer[j], l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
+                  #buffer[j], l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
+                  temp, l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
                   good_reply = True
                 elif reply == "r":                                             # else if user replied r (run)
-                  buffer[j], l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
+                  #buffer[j], l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
+                  temp, l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
                   self.srw[srnum] = self.srw[srnum].replace("p","")                      # and stop prompting
                   good_reply = True
                 elif reply == "n":                                             # else if user replied n (no)
@@ -2775,7 +2787,13 @@ class Book(object):
                   good_reply = True
                   quit = True
             else:                                                            # not prompting
-              buffer[j], l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
+              #buffer[j], l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
+              temp, l = re.subn(self.srs[srnum], self.srr[srnum], buffer[j])    # replace all occurrences in the line
+
+            tempbuf = temp.split("\n") # split the result in case .sr added any \n
+            buffer[j:j+1] = tempbuf    # assign back into buffer, replacing line j and then inserting any other lines
+            #buffer[j] = temp
+            linecnt = len(tempbuf)     # get count of total lines for incrementing j past them
             ll += l
           except:
             if 'd' in self.debug:
@@ -2785,7 +2803,9 @@ class Book(object):
               self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[srnum], self.srr[srnum], buffer[j]))
           if 'r' in self.debug:
             print(self.umap("Replaced: {}".format(buffer[j])))
-        j += 1
+
+        j += linecnt # bump past the line we worked on, or that line plus others we inserted
+
       if quit:
         exit(1)
       print(self.umap("Search string {}:{} matched in {} lines, replaced {} times.".format(srnum+1,
@@ -3583,8 +3603,11 @@ class Book(object):
     # ignored text removed in preprocessor
     i = 0
     while i < len(self.wb):
+      # detect misplaced .ig-
+      if ".ig-" == self.wb[i]:
+        self.crash_w_context("Extraneous .ig-; no matching .ig", i)
       # one line
-      if re.match(r"\.ig ",self.wb[i]): # single line
+      elif re.match(r"\.ig ",self.wb[i]): # single line
         del self.wb[i]
       elif ".ig" == self.wb[i]: # multi-line
         del self.wb[i]
@@ -5176,12 +5199,31 @@ class Ppt(Book):
   # doDiv (text)
   def doDiv(self):
     j = self.cl
-    while j < len(self.wb) and self.wb[j] != ".dv-":   # skip over .dv block
+
+    while j < len(self.wb):
+      if self.wb[j].startswith(".dv "):
+        self.dvstack.append(j) # remember where we started
+
+      elif self.wb[j] == ".dv-":
+        if self.dvstack:
+          self.dvstack.pop()
+        else:
+          self.crash_w_context(".dv- found, but no open .dv block to close", j)
+
+        if not self.dvstack: # did this .dv- leave us with all open .dv blocks closed?
+          break              # yes
+
       j += 1
+
     if j < len(self.wb):
-      self.wb[j] = ""                                  # force paragraph break after .dv block if closed properly
+      self.wb[j] = ""              # delete the .dv- and force paragraph break after .dv block if closed properly
     else:
-      self.crash_w_context("unclosed .dv directive.",self.cl)
+      if len(self.dvstack) > 1:
+        self.crash_w_context("{} unclosed nested .dv directives; showing outer one.".format(len(self.dvstack)),
+                             self.dvstack[0])
+      else:
+        self.crash_w_context("Unclosed .dv directive:", self.dvstack[0])
+
     del(self.wb[self.cl])                              # delete the .dv directive.
 
   # .hr horizontal rule
@@ -6982,7 +7024,7 @@ class Pph(Book):
   ul_dict = {}
   ol_classnum = 0
   ol_dict = {}
-  
+
   booktype = "html"
 
   def __init__(self, args, renc):
@@ -7213,7 +7255,7 @@ class Pph(Book):
           m = re.match(r"^([iIvVxXlLcCdDmM]+|)$", self.pageno)
           if not m:
             self.crash_w_context("Cannot increment non-numeric, non-Roman page number {}".format(self.pageno), i)
-          else: 
+          else:
             ucRoman = False
             if not (self.pageno).islower():
               ucRoman = True # page number has at least 1 upper-case Roman numeral (or is null)
@@ -8105,29 +8147,50 @@ class Pph(Book):
     self.cl += 2
 
   # extract any "class=" argument from string s
-  def getClass(self, s):
+  def dvGetClass(self, s):
     if "class='" in s:
       m = re.search(r"class='(.*?)'", s)
       if m:
-        self.wb[self.cl] = re.sub(m.group(0), "", self.wb[self.cl])
         return m.group(1)
-    if "class=\"" in s:
+    elif "class=\"" in s:
       m = re.search(r"class=\"(.*?)\"", s)
       if m:
-        self.wb[self.cl] = re.sub(m.group(0), "", self.wb[self.cl])
         return m.group(1)
-    return ""
+    elif "class=" in s:
+      m = re.search(r"class=(.*?)", s)
+      if m:
+        return m.group(1)
+    else:
+      return ""
 
   # doDiv (HTML)
   def doDiv(self):
-    self.wb[self.cl:self.cl+1] = ["<div class='{}'>".format(self.getClass(self.wb[self.cl])), ""]
     j = self.cl
-    while j < len(self.wb) and self.wb[j] != ".dv-":
+
+    while j < len(self.wb):
+      if self.wb[j].startswith(".dv "):
+        self.dvstack.append(j) # remember where we started
+
+      elif self.wb[j] == ".dv-":
+        if self.dvstack:
+          k = self.dvstack.pop()
+        else:
+          self.crash_w_context(".dv- found, but no open .dv block to close", j)
+
+        if not self.dvstack: # did this .dv- leave us with all open .dv blocks closed?
+          break              # yes
+
       j += 1
+
     if j < len(self.wb):
       self.wb[j:j+1] = ["", "</div>"]
+      self.wb[k:k+1] = ["<div class='{}'>".format(self.dvGetClass(self.wb[k])), ""]
     else:
-      self.crash_w_context("unclosed .dv directive.",self.cl)
+      if len(self.dvstack) > 1:
+        self.crash_w_context("{} unclosed nested .dv directives; showing outer one.".format(len(self.dvstack)),
+                             self.dvstack[0])
+      else:
+        self.crash_w_context("Unclosed .dv directive:", self.dvstack[0])
 
   # .hr horizontal rule
   def doHr(self):
@@ -10625,7 +10688,7 @@ class Pph(Book):
       self.list_item_active = False
 
       if indent != -1: # indent specified
-        self.regIN += int(indent) 
+        self.regIN += int(indent)
         if self.list_item_style != "none":
           self.regIN += 2
 
@@ -10732,7 +10795,7 @@ class Pph(Book):
       self.list_item_active = False
 
       if indent != -1: # indent specified
-        self.regIN += int(indent) 
+        self.regIN += int(indent)
         if self.list_item_style != "none":
           self.regIN += 2
 
@@ -10906,7 +10969,7 @@ class Pph(Book):
               b.dl_classnum += 1
               self.dl_class = "dl_" + str(b.dl_classnum)
               b.dl_dict[self.dl_class] = csstuple
-          
+
             if self.options["debug"]:
               s = []
               s.append("***Generated class name: " + self.dl_class)
