@@ -77,7 +77,7 @@ VERSION="3.54dsrE" + with_regex   # 8-Feb-2016
 #  Modify .sr processing: When the search string does NOT contain \n, but the replacement string DOES contain \n, insert
 #    individual lines based on the \n rather than one long string containing the \n characters. This will prevent false
 #    "long line" warnings during the text output phase.
-#3.54dsrE:
+#3.54e:
 #  Enhancements to .sr processing:
 #    Implement a new B tag, similar to the b tag but moved even earlier in processing.
 #    Allow the replacement string to be a defined macro (via .dm) written in Python
@@ -1773,6 +1773,24 @@ class Book(object):
             n -= integer
     return result
 
+  def toRoman2(self, n): # like toRoman, but for use in user-provided macros; accepts either string or integer
+
+    try:
+      n = n + 0 # did user pass an integer?
+    except TypeError: # no, it's a string
+      if n.isdigit(): # is it at least all digits?
+        n = int(n)    # if yes, convert it to integer
+      else:
+        n = 0         # else assume 0
+
+    result = ""
+    for numeral, integer in self.romanNumeralMap:
+        while n >= integer:
+            result += numeral
+            n -= integer
+    return result
+
+
   def fromRoman(self, s):
     """convert Roman numeral to integer"""
     result = 0
@@ -2732,6 +2750,8 @@ class Book(object):
       macglobals = __builtins__.__dict__
       macglobals["var"] = var # make macro variables available
       macglobals["re"] = re # make re module available
+      macglobals["toRoman"] = self.toRoman2
+      macglobals["fromRoman"] = self.fromRoman
       macglobals["debugging"] = [self.bailout, self.wb, -1]
       macglobals["savevar"] = savevar # make communication dictionary available
       maclocals = {"__builtins__":None}
@@ -3936,6 +3956,8 @@ class Book(object):
           macglobals = __builtins__.__dict__
           macglobals["var"] = var # make macro variables available
           macglobals["re"] = re # make re module available
+          macglobals["toRoman"] = self.toRoman2
+          macglobals["fromRoman"] = self.fromRoman
           macglobals["debugging"] = [self.bailout, self.wb, i]
           macglobals["savevar"] = savevar # make communication dictionary available
           maclocals = {"__builtins__":None}
