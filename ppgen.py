@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54d" + with_regex   # 8-Feb-2016
+VERSION="3.54dsrE" + with_regex   # 8-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
@@ -77,6 +77,11 @@ VERSION="3.54d" + with_regex   # 8-Feb-2016
 #  Modify .sr processing: When the search string does NOT contain \n, but the replacement string DOES contain \n, insert
 #    individual lines based on the \n rather than one long string containing the \n characters. This will prevent false
 #    "long line" warnings during the text output phase.
+#3.54dsrE:
+#  Enhancements to .sr processing:
+#    Implement a new B tag, similar to the b tag but moved even earlier in processing.
+#    Allow the replacement string to be a defined macro (via .dm) written in Python
+#  Enhancements to Greek processing: detect accents that remain after the Greek conversion and warn user
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -2704,13 +2709,76 @@ class Book(object):
     else:
       return s
 
+
   #
   # process saved .sr requests
   #
   def process_SR(self, buffer, srnum):
+
+    def pythonSR(match):
+      if not self.pmcount: # if first python macro this pass, initialize a dictionary
+        savevar = {}  # to allow macros to communicate
+      else:
+        savevar = self.savevar
+      self.pmcount += 1
+      var = {}
+      var["count"] = 0 # count of input variables; none, as the match object is implicit
+      var["match"] = match
+      var["name"] = srrMacname # the name of the macro, in case the macro cares for some reason
+      var["srchfor"] = self.srs[srnum]
+      var["hint"] = srrHint    # the string after the macro name in the replace expression, or None
+      var["out"] = [] # place for macro to put its output
+      var["type"] = self.booktype # text or html
+      macglobals = __builtins__.__dict__
+      macglobals["var"] = var # make macro variables available
+      macglobals["re"] = re # make re module available
+      macglobals["debugging"] = [self.bailout, self.wb, -1]
+      macglobals["savevar"] = savevar # make communication dictionary available
+      maclocals = {"__builtins__":None}
+
+      try: # exec the macro
+        exec(self.macro[srrMacname][1], macglobals, maclocals)
+      except:
+        where = traceback.extract_tb(sys.exc_info()[2])[-1]
+        if where[0] == "<macro {}>".format(srrMacname):
+          macro_line = "{}:".format(where[1]-1) + self.macro[srrMacname][3][where[1]-1]
+        else:
+          macro_line = "not available"
+        mac_info = "Exception occurred running Python macro {} during .sr at\n       Source line {}\n".format(srrMacname,
+                                                                                                              self.umap(macro_line))
+        trace_info = traceback.format_exception(*sys.exc_info())
+        self.fatal(mac_info + "\n".join(trace_info))
+
+      try: # try to grab its output
+        output = var["out"]
+      except:
+        traceback.print_exc()
+        self.fatal("Above error occurred trying to copy output from Python macro {}".format(srrMacname))
+
+      self.savevar = savevar
+      return output
+
     k = 0
     l = 0
     ll = 0
+    restore_srr = "" # no srr string to replace
+
+    # handle python macros as replacement strings
+    if self.srr[srnum].startswith("{{python"): # Possibly a python macro call as replace string?
+      m = re.match("\{\{python ([^ ]+) ?(.*?)\}\}", self.srr[srnum]) # yes, check syntax
+      if m:  # yes, a Python macro call
+        restore_srr = self.srr[srnum] # remember original srr string so we can restore it
+        self.srr[srnum] = pythonSR    # set srr so it will invoke the pythonSR function during replace processing
+        srrMacname = m.group(1)  # capture python macro name
+        srrHint = m.group(2)
+        # validate macro exists, and is Python
+        if not srrMacname in self.macro: # Does the macro exist:
+          self.fatal(".sr number {} tried to invoke macro {} that is not defined.".format(srnum+1,
+                               srrMacname))
+        elif self.macro[srrMacname][0] != "p":        # yes, is it a Python macro?
+          self.fatal(".sr number {} tried to invoke non-Python macro {}.".format(srnum+1,
+                               srrMacname))
+
     if "\\n" in self.srs[srnum]: # did user use a regex containing \n ? If so, process all lines in one blob
       text = '\n'.join(buffer) # form lines into a blob
       try:
@@ -2810,6 +2878,8 @@ class Book(object):
         exit(1)
       print(self.umap("Search string {}:{} matched in {} lines, replaced {} times.".format(srnum+1,
             self.srs[srnum], k, ll)))
+      if restore_srr:    # if we had a Python macro as replace string, restore original replace string
+        self.srr[srnum] = restore_srr
 
 
   # .nr named register
@@ -3140,9 +3210,16 @@ class Book(object):
       elif self.gkkeep.lower().startswith("a"): # original after?
         gkoriga = gkmatch.group(0)
       gkfull = gkorigb + self.gkpre + gkstring + self.gksuf + gkoriga
+
+      # Check for errant accent marks within the substituted Greek
+      m = re.search(r"[~=_)(/\\|+]", gkstring)
+      if m:
+        self.warn("Possible accent problem in Greek string {} with result {}".format(gkmatch.group(0), gkstring))
+
       gkfull = gkfull.replace(r"\|", "⑩") # temporarily protect \| and \(space) so they
       gkfull = gkfull.replace(r"\ ", "⑮") # retain their special meaning within [Greek: ...] tags
       gkfull = gkfull.replace(r"\]", "\④") # also \] needs to become protected here, but with an added \
+
       return gkfull
 
     def loadFilter():
@@ -3290,6 +3367,7 @@ class Book(object):
               middle = re.sub(r"\[Greek: ?(.*)]", gkrepl, text[start:end], flags=re.DOTALL)
               text = front + middle + back
               start = len(front) + len(middle)
+
           #text = re.sub(r"\[Greek: ?(.*?)]", gkrepl, text, flags=re.DOTALL)
         # even if Greek processing not requested, [Greek: ...] strings could have \| and \(space)
         # characters we need to protect
@@ -3524,9 +3602,9 @@ class Book(object):
               sr_error = True
             if "f" in m.group(1):  # if request to do s/r during filtering
               filter_sr = True     # remember the request
-              if ("u" in m.group(1) or "l" in m.group(1) or
+              if ("u" in m.group(1) or "l" in m.group(1) or "B" in m.group(1) or
                   "t" in m.group(1) or "h" in m.group(1) or "b" in m.group(1)):
-                self.warn(".sr f option can not be used with u, l, t, h, or b options:" +
+                self.warn(".sr f option can not be used with u, l, t, h, B, or b options:" +
                           "\n             {}".format(self.wb[i]))
                 sr_error = True
               if not self.cvgfilter:
@@ -3538,6 +3616,11 @@ class Book(object):
                 self.warn(".sr p option can not be used with \\n in search string:" +
                           "\n             {}".format(self.wb[i]))
                 sr_error = True
+              if m.group(4).startswith("{{python "): # attempt to use python macros during .sr for filtering?
+                self.warn(".sr with f option cannot use Python macros in replacement string:" +
+                          "\n             {}".format(self.wb[i]))
+                sr_error = True
+
               self.srw.append(m.group(1))
               self.srs.append(m.group(3))
               self.srr.append(m.group(4))
@@ -3623,66 +3706,67 @@ class Book(object):
         i += 1
 
     # .if conditionals (moved to preProcessCommon 28-Aug-2014)
-    if not self.cvgfilter:
-      text = []
-      keep = True
-      inIf = False
-      for i, line in enumerate(self.wb):
+    text = []
+    keep = True
+    inIf = False
+    for i, line in enumerate(self.wb):
 
-        m = re.match(r"\.if (\w)", line)  # start of conditional
-        if m:
-          if inIf:
-            self.crash_w_context("Nested .if not supported", i)
-          inIf = True
-          ifloc = i
-          keep = False
-          keepType = m.group(1)
-          if m.group(1) == 't' and self.renc in "lut":
-            keep = True
-          elif m.group(1) == 'h' and self.renc == "h":
-            keep = True
-          continue
-
-        if line == ".if-":
-          if not inIf:
-            self.crash_w_context(".if- has no matching .if", i)
+      m = re.match(r"\.if (\w)", line)  # start of conditional
+      if m:
+        if inIf:
+          self.crash_w_context("Nested .if not supported", i)
+        inIf = True
+        ifloc = i
+        keep = False
+        keepType = m.group(1)
+        if m.group(1) == 't' and self.renc in "lut":
           keep = True
-          keepType = None
-          inIf = False
-          continue
+        elif m.group(1) == 'h' and self.renc == "h":
+          keep = True
+        continue
 
-        if keep:
-          text.append(line)
-        elif line.startswith(".sr"):
-          m2 = re.match(r"\.sr (\w+)", line)
-          if m2:
-            if keepType == 't' and "h" in m2.group(1):
-              self.warn(".sr command for HTML skipped by .if t: {}".format(self.umap(line)))
-            elif keepType == 'h':
-              m3 = re.match(r"h*[ult]", m2.group(1))
-              if m3:
-                self.warn(".sr command for text skipped by .if h: {}".format(self.umap(line)))
+      if line == ".if-":
+        if not inIf:
+          self.crash_w_context(".if- has no matching .if", i)
+        keep = True
+        keepType = None
+        inIf = False
+        continue
 
-      if inIf: # unclosed .if?
-        self.crash_w_context("Unclosed .if directive", ifloc)
-      self.wb = text
-      text = []
+      if keep:
+        text.append(line)
+      elif line.startswith(".sr"):
+        m2 = re.match(r"\.sr (\w+)", line)
+        if m2:
+          if keepType == 't' and "h" in m2.group(1):
+            self.warn(".sr command for HTML skipped by .if t: {}".format(self.umap(line)))
+          elif keepType == 'h':
+            m3 = re.match(r"h*[ult]", m2.group(1))
+            if m3:
+              self.warn(".sr command for text skipped by .if h: {}".format(self.umap(line)))
+
+    if inIf: # unclosed .if?
+      self.crash_w_context("Unclosed .if directive", ifloc)
+    self.wb = text
+    text = []
 
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # capture and remove search/replace directives
     # .sr <which> /search/replace/
     # which is a string containing some combination of ulthf (UTF-8, Latin-1, Text, HTML, filtering)
-    #   or b (before processing, rather than in postprocessing) or p (prompt whether to replace or not)
+    #   or b (late in pre-processing (before processing), rather than in postprocessing)
+    #   or B (early in pre-processing) or p (prompt whether to replace or not)
     # search is  reg-ex search string
-    # replace is a reg-ex replace string
+    # replace is a reg-ex replace string or the string {{python <macro-name>}}
     # / is any character not contained within either search or replace
     #
     # Values gathered during preprocessCommon and saved for use during post-processing
     i = 0
-    filter_sr = False
-    self.filter_b = False
     sr_error = False
+    self.sr_b = False # if True, some .sr specified the b option
+    self.sr_B = False # if True, some .sr specified the B option
+
     while i < len(self.wb):
       if self.wb[i].startswith(".sr"):
         #self.wb[i] = self.restore_some_escapes(self.wb[i])
@@ -3693,24 +3777,15 @@ class Book(object):
                       "1={} 2={} 3={} 4={} Unexpected 5={}\n             {}".format(
                       m.group(1),m.group(2), m.group(3), m.group(4), m.group(5), self.wb[i]))
             sr_error = True
-          if "f" in m.group(1):  # if request to do s/r during filtering
-            filter_sr = True     # remember the request
-            if ("u" in m.group(1) or "l" in m.group(1) or
-                "t" in m.group(1) or "h" in m.group(1) or "b" in m.group(1)):
-              self.warn(".sr f option can not be used with u, l, t, h, or b options:" +
-                        "\n             {}".format(self.wb[i]))
-              sr_error = True
-            if not self.cvgfilter:
-              self.warn(".sr f option can only be used with -f command line option:" +
-                        "\n             {}".format(self.wb[i]))
-              sr_error = True
           if (("\\n" in m.group(3)) and
               ("p" in m.group(1))): # Can't do prompting with \n in request
             self.warn(".sr p option can not be used with \\n in search string:" +
                       "\n             {}".format(self.wb[i]))
             sr_error = True
           if "b" in m.group(1):  # remember b option if specified on any .sr
-            self.filter_b = True
+            self.sr_b = True
+          if "B" in m.group(1):  # remember B option if specified on any .sr
+            self.sr_B = True
           self.srw.append(m.group(1))
           self.srs.append(m.group(3))
           self.srr.append(m.group(4))
@@ -3811,7 +3886,7 @@ class Book(object):
     # play macro
     # .pm name
     i = 0
-    pmcount = 0 # number of python macros executed in this phase
+    self.pmcount = 0 # number of python macros executed in this phase
     while i < len(self.wb):
       if self.wb[i].startswith(".pm"):
         while (i < len(self.wb) - 1) and self.wb[i].endswith("\\"):   # allow continuation via ending \ for .pm
@@ -3848,9 +3923,9 @@ class Book(object):
           self.wb[i:i+1] = t
 
         else: # python format macro
-          if not pmcount: # if first python macro this pass, initialize a dictionary
+          if not self.pmcount: # if first python macro this pass, initialize a dictionary
             savevar = {}  # to allow macros to communicate
-          pmcount += 1
+          self.pmcount += 1
           var = {}
           var["count"] = len(tlex) - 2 # count of input variables
           for j in range(2, len(tlex)):
@@ -3861,6 +3936,7 @@ class Book(object):
           macglobals = __builtins__.__dict__
           macglobals["var"] = var # make macro variables available
           macglobals["re"] = re # make re module available
+          macglobals["debugging"] = [self.bailout, self.wb, i]
           macglobals["savevar"] = savevar # make communication dictionary available
           maclocals = {"__builtins__":None}
 
@@ -3883,10 +3959,22 @@ class Book(object):
             self.crash_w_context("Above error occurred trying to copy output from Python macro {}".format(macroid), i)
 
           var = {}
+          self.savevar = savevar[:]
         i -= 1
 
       i += 1
 
+    # Handle any .sr that have the B option specified
+    #
+    if self.sr_B:
+      for i in range(len(self.srw)):
+        if self.booktype == "text":
+          if ((('t' in self.srw[i]) or (self.renc in self.srw[i])) and
+              ('B' in self.srw[i])): # if this one is for pre-pre-processing and applies to the text form we're generating
+            self.process_SR(self.wb, i)
+        else : # HTML
+          if ('h' in self.srw[i]) and ('B' in self.srw[i]): # if this one is for pre-pre-processing and applies to HTML
+            self.process_SR(self.wb, i)
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # process character mappings
@@ -4860,7 +4948,7 @@ class Ppt(Book):
 
     #
     # Handle any .sr for text that have the b option specified
-    if self.filter_b:
+    if self.sr_b:
       #self.dprint("Processing .sr for text with b specified")
       for i in range(len(self.srw)):
         if ((('t' in self.srw[i]) or (self.renc in self.srw[i])) and
@@ -5031,7 +5119,7 @@ class Ppt(Book):
     #self.dprint("processing .sr for text without b specified")
     for i in range(len(self.srw)):
       if ((('t' in self.srw[i]) or (self.renc in self.srw[i])) and not
-          ('b' in self.srw[i])): # if this one is for post-processing and applies to the text form we're generating
+          ('b' in self.srw[i]) or 'B' in self.srw[i]): # if this one is for post-processing and applies to the text form we're generating
         self.process_SR(self.eb, i)
 
     # build GG .bin info if needed
@@ -7875,7 +7963,7 @@ class Pph(Book):
 
     #
     # Handle any .sr for HTML that have the b option specified
-    if self.filter_b:
+    if self.sr_b:
       #self.dprint("processing .sr for HTML with b specified")
       for i in range(len(self.srw)):
         if ('h' in self.srw[i]) and ('b' in self.srw[i]): # if this one is for pre-processing and applies to HTML
@@ -8107,7 +8195,7 @@ class Pph(Book):
   def doHTMLSr(self):
     #self.dprint("processing .sr for HTML without b specified")
     for i in range(len(self.srw)):
-      if ('h' in self.srw[i]) and not ('b' in self.srw[i]): # if this one applies to HTML and was not already handled
+      if ('h' in self.srw[i]) and not ('b' in self.srw[i] or 'B' in self.srw[i]): # if this one applies to HTML and was not already handled
         self.process_SR(self.wb, i)
 
   # ----- process method group -----
