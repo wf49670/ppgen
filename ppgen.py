@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54dsrE" + with_regex   # 8-Feb-2016
+VERSION="3.54f" + with_regex   # 11-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
@@ -82,6 +82,10 @@ VERSION="3.54dsrE" + with_regex   # 8-Feb-2016
 #    Implement a new B tag, similar to the b tag but moved even earlier in processing.
 #    Allow the replacement string to be a defined macro (via .dm) written in Python
 #  Enhancements to Greek processing: detect accents that remain after the Greek conversion and warn user
+#3.54f:
+#  Text: Fix bug in .nf r that resulted in the loss of leading blanks from the lines. HTML was OK.
+#  Text: Squash multiple spaces from the interior of lines within a .ix block (but preserve leading spaces)
+#  HTML: Adjust CSS generated for .ix blocks to give better indentation
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -4658,6 +4662,22 @@ class Ppt(Book):
       t[0] = leadstr + t[0][indent:]
     return t
 
+  # Squash repeated spaces inside a string, preserving any leading spaces
+  def squashBlanks(self, s):
+    i = 0
+    while i < len(s) and s[i] == ' ': # preserve leading spaces
+      i += 1
+    if i > 0:
+      s0 = s[:i+1]
+      s2 = s[i+1:]
+    else:
+      s0 = ""
+      s2 = s
+    while '  ' in s2:   # squash any repeated spaces in interior of string
+      s2 = s2.replace('  ', ' ')
+    return s0 + s2, i   # return squashed string and count of any preserved leading spaces
+
+
   def wrap(self, s,  indent=0, ll=72, ti=0, optimal_needed=True):
     ta = [] # list of paragraph (lists)
     ts = [] # paragraph stats
@@ -4670,18 +4690,20 @@ class Ppt(Book):
                            "while wrapping: {}".format(s), self.cl)
     done = False
 
-    i = 0
-    while i < len(s) and s[i] == ' ': # preserve leading spaces
-      i += 1
-    if i > 0:
-      s0 = s[:i+1]
-      s2 = s[i+1:]
-    else:
-      s0 = ""
-      s2 = s
-    while '  ' in s2:   # squash any repeated spaces in interior of string
-      s2 = s2.replace('  ', ' ')
-    s = s0 + s2
+    s, i = self.squashBlanks(s) # squash any repeated spaces in interior of string
+                                # i = number of leading spaces preserved
+    #i = 0
+    #while i < len(s) and s[i] == ' ': # preserve leading spaces
+    #  i += 1
+    #if i > 0:
+    #  s0 = s[:i+1]
+    #  s2 = s[i+1:]
+    #else:
+    #  s0 = ""
+    #  s2 = s
+    #while '  ' in s2:   # squash any repeated spaces in interior of string
+    #  s2 = s2.replace('  ', ' ')
+    #s = s0 + s2
 
     # Handle case where caller wants an optimal (repeated/tested) wrap?
     if optimal_needed and ll > 55: # don't need optimality if we're wrapping shorter than PG's "minimum" of 55 anyway
@@ -5502,11 +5524,11 @@ class Ppt(Book):
                   else:
                     self.crash_w_context("Oops. Unexpected problem with caption.", i-1)
                 else:
-                  t.append(s) # no need to wrap, as it's short enough already ### need to squash blanks
+                  t.append(s) # no need to wrap, as it's short enough already ### need to squash blanks?
               else: # caption line does not have marker, so it's literal text, just wrap to LL if necessary and assume user knows what he's doing
                 if self.truelen(s) > self.regLL:
                   t = self.wrap(s, 0, self.regLL, 0, optimal_needed=False)
-                else: # no need to wrap if it's short enough ### need to squash blanks
+                else: # no need to wrap if it's short enough ### need to squash blanks?
                   t.append(s)
               self.eb += t
               j += 1
@@ -5796,7 +5818,7 @@ class Ppt(Book):
         for line in u:
           self.eb.append(line)
       else:
-        self.eb.append(s) ### need to squash blanks
+        self.eb.append(s) ### need to squash blanks?
       i += 1
     self.eb.append(".RS c") # (special flag for .ul/.ol/.it processing)
     self.cl = i + 1 # skip the closing .nf-
@@ -5868,7 +5890,7 @@ class Ppt(Book):
         for line in u:
           t.append(line)
       else:
-        t.append(s) ### need to squash blanks
+        t.append(s) ### need to squash blanks?
       i += 1
     self.cl = i + 1 # skip the closing .nf-
 
@@ -5938,8 +5960,8 @@ class Ppt(Book):
         i += 1
         continue
 
-      s = (" " * fixed_indent + self.wb[i].strip())
-      if self.truelen(self.wb[i].strip()) > self.regLL:
+      s = (" " * fixed_indent + self.wb[i].rstrip())
+      if self.truelen(self.wb[i].rstrip()) > self.regLL:
         wi = 0
         m = re.match("^(\s+)(.*)", s)
         if m:
@@ -5949,7 +5971,7 @@ class Ppt(Book):
         for line in u:
           self.eb.append(line)
       else:
-        self.eb.append(s) ### need to squash blanks
+        self.eb.append(s) ### need to squash blanks?
       i += 1
     self.cl = i + 1 # skip the closing .nf-
     self.eb.append(".RS c") # (special flag for .ul/.ol/.it processing)
@@ -6628,7 +6650,7 @@ class Ppt(Book):
       # if the line is shorter than the line length just send it to emit buffer
       # if longer, calculate the leading spaces on line and use as shift amount during
       # wrapping
-      if self.truelen(s) > self.regLL:
+      if self.truelen(self.squashBlanks(s)[0]) > self.regLL:
         wi = 0
         m = re.match("^(\s+)(.*)", s)
         if m:
@@ -6638,7 +6660,7 @@ class Ppt(Book):
         for line in u:
           self.eb.append(line)
       else:
-        self.eb.append(s) ### need to squash blanks
+        self.eb.append(self.squashBlanks(s)[0])
       i += 1
     self.eb.append(".RS 1")
     self.cl = i + 1 # skip the closing .ix-
@@ -10527,8 +10549,9 @@ class Pph(Book):
           s = ""
       return s
 
-    self.css.addcss("[1240] .index li {list-style-type: none; " +
-                    "text-indent: -1em; padding-left: 1em; }")
+    self.css.addcss("[1240] .index ul {list-style-type: none;  padding-left: 0; }")
+    self.css.addcss("[1240] ul.index  {list-style-type: none;  padding-left: 0; }")
+    self.css.addcss("[1240] .index li {text-indent: -1em; padding-left: 1em; }")
     ssty = ""
     s = self.fetchStyle() # supplemental style
     if s:
