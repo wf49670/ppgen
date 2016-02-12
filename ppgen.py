@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54f" + with_regex   # 11-Feb-2016
+VERSION="3.54g" + with_regex   # 12-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
@@ -86,6 +86,8 @@ VERSION="3.54f" + with_regex   # 11-Feb-2016
 #  Text: Fix bug in .nf r that resulted in the loss of leading blanks from the lines. HTML was OK.
 #  Text: Squash multiple spaces from the interior of lines within a .ix block (but preserve leading spaces)
 #  HTML: Adjust CSS generated for .ix blocks to give better indentation
+#3.54g:
+#  Text: Honor align=r in .dl that specifies combine=y
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -6922,22 +6924,31 @@ class Ppt(Book):
         # layout the term and definition line(s)
 
         s = []
+
+        # handle alignment of term
+        l = b.truelen(self.term)
+
+        if l >= b.list_item_width:
+          ltrm = self.term + " " # just pad with a blank (as separator) if the term is full-width or longer
+
+        # else term is narrow, so align to the left or right as requested
+        elif self.options["align"] == "l": # if aligning narrow term to the left of its block
+          ltrm = self.term + " " * (b.list_item_width - l + 1)
+        else: # aligning narrow term to the right of its block
+          ltrm = " " * (b.list_item_width - l) + self.term + " "
+
         if self.options["float"]:
           #if self.term:
-          blanks = (len(self.definition_padding) - len(self.term) -
-                    self.options["tindent"] + self.options["dindent"]) * " "
-          if len(blanks) == 0:
-            blanks = " "
+          blanks = (self.options["dindent"]) * " "
+
           s.append(".RS 1")
-          s.append(self.indent_padding + (self.options["tindent"] * " ") + self.term + blanks + t[0].rstrip())
-          #else:
-          #  s.append(self.indent_padding + (self.options["tindent"] * " ") + self.definition_padding + t[0].rstrip())
+          s.append(self.indent_padding + (self.options["tindent"] * " ") + ltrm + blanks + t[0].rstrip())
 
         else:                 # non-floated style (first line is term, if we have one)
           s.append(".RS 1")
           if self.term:
-            s.append(self.indent_padding + (self.options["tindent"] * " ") + self.term)
-            #s.append(" ") ### do we want this blank line? If so should it be .RS 1?
+            s.append(self.indent_padding + (self.options["tindent"] * " ") + ltrm)
+
           l = t[0].rstrip()
           if l: # avoid adding another blank line
             s.append(self.indent_padding + self.definition_padding + t[0].rstrip())
@@ -6952,7 +6963,7 @@ class Ppt(Book):
         # append definition line(s) to output
         ### could simplify this and append directly to self.eb above, instead of appending to s as an intermediate
         b.eb += s
-        #self.eb.append(".RS 1") # add a blank line as a separator
+
         self.term = ""
         self.paragraph = ""
 
