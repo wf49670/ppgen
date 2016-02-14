@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54g" + with_regex   # 12-Feb-2016
+VERSION="3.54h" + with_regex   # 13-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
@@ -88,6 +88,11 @@ VERSION="3.54g" + with_regex   # 12-Feb-2016
 #  HTML: Adjust CSS generated for .ix blocks to give better indentation
 #3.54g:
 #  Text: Honor align=r in .dl that specifies combine=y
+#3.54h:
+#  HTML: Fix validation error if a .pn occurs just before a .ul, .ol, or .it. Also revise handling of .pn/.bn info
+#    within .dl block to avoid validation and other errors.
+#  HTML: Fix processing error with top/bottom margins for paragraphs within .ol/.ul items.
+#  Fix error that misinterpreted a .dt (define term) inside a .dl block as a .dt (define title) instead.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -1626,7 +1631,8 @@ class Book(object):
 
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string (null is the same as a Roman numeral 0)
-    self.bnmatch = re.compile("^⑱.*?⑱$")
+    self.bnmatch = re.compile("^⑱.*?⑱$")  # re to match a .bn line
+    self.pnmatch = re.compile("^⑯.*⑰$")   # re to match a .pn line
 
     self.list_styles_u = {
       'disc':'●',
@@ -2395,8 +2401,8 @@ class Book(object):
     def set_dd_class(self):
       self.book.crash_w_context("Internal error; class method set_dd_class not overridden", self.book.cl)
 
-    # Routine to handle special lines (page numbers, .bn info)
-    def emit_special(self, pageinfo, bninfo):
+    # Routine to handle special lines (bn info)
+    def emit_special(self, bninfo):
       self.book.crash_w_context("Internal error; class method handle_special_line not overridden", self.book.cl)
 
     # main processing
@@ -2461,7 +2467,9 @@ class Book(object):
       #        definitions in text output. If more are desired, use .sp to specify them.
 
 
-      pageinfo = bninfo = ""
+      bninfo = ""
+      self.pageinfo = ""
+      combine_dtdd = False
 
       while b.cl < len(b.wb) and not b.wb[b.cl] == ".dl-":  # process until we hit our .dl-
 
@@ -2472,9 +2480,7 @@ class Book(object):
               self.emit_paragraph()
             else:
               assert len(self.dlbuffer) == 0, "Trying to invoke a dot directive from .dl while dlbuffer contains data"
-            if pageinfo or bninfo:
-              self.emit_special(pageinfo, bninfo) # handle any page or bn info before doing the next dot command
-              pageinfo = bninfo = ""
+
             b.doDot()
             continue
 
@@ -2504,12 +2510,8 @@ class Book(object):
         # check for .dt or .dd (form d of definition line) and handle
         # Note: text processing is straightforward: turn into form a or b2
         #       We can ignore the optional parameters on .dd
-        combine_dtdd = False
-        if b.wb[b.cl].startswith(".dt"):
 
-          if pageinfo or bninfo: # if we have page or bninfo saved emit it now, as we're between entries.
-            self.emit_special(pageinfo, bninfo) # handle any page or bn info before doing the next do
-            pageinfo = bninfo = ""
+        if b.wb[b.cl].startswith(".dt"):
 
           b.wb[b.cl] = b.wb[b.cl][4:] + "|"
           if (b.cl < len(b.wb) - 1) and b.wb[b.cl+1].startswith(".dd"):
@@ -2518,12 +2520,9 @@ class Book(object):
               combine_dtdd = True
               saveline = b.wb[b.cl]
               self.bump_cl()
+              continue
 
         if b.wb[b.cl].startswith(".dd"):
-
-          if pageinfo or bninfo: # if we have page or bninfo saved emit it now, as we're between entries.
-            self.emit_special(pageinfo, bninfo) # handle any page or bn info before doing the next do
-            pageinfo = bninfo = ""
 
           m = re.match(r"\.dd( +class=[^ ]*?)? +(.*)", b.wb[b.cl])
           if m:
@@ -2533,31 +2532,55 @@ class Book(object):
               b.wb[b.cl] = m.group(2)
             elif combine_dtdd:
               b.wb[b.cl] = saveline + m.group(2)
+              combine_dtdd = False
             else:
               b.wb[b.cl] = "|" + m.group(2)
           else:
             b.crash_w_context("Error parsing .dd directive: {} \n".format(b.wb[b.cl]), b.cl)
 
+        # Must be .pn or .bn or format a, b1, b2, or c line at this point
+        # If .pn or .bn it may take these forms:
+        #    .pn info (standalone) if it precedes a .dt or .dd directive
+        #        In this case, remember it and skip over the line; emit as for next case
+        #    .pn info + rest of line 
+        #        Rest of line may be one of format a, b1, b2, or c. If format a, b1, or b2. We
+        #        can't emit the info without it being inside a <dt> or <dd>, so we extract it
+        #        and save it and emit at the front of the next <dt> or <dd> we generate or dump
+        #        it out after the </dl> if necessary. If format c we let normal processing handle it.
+        #    .bn info 
+        #        Always stand-alone, and proper handling depends on whether we're combining
+        #         or not. If combining, need to wrap onto rest of prior definition, if any,
+        #         or emit if no prior definition. If not combining, just emit (we're between defs).
+        #
         # check for a line beginning with a page number, or a .bn info line,
         # and handle. Page numbers will be present only in the HTML pass.
         if b.wb[b.cl].startswith("⑯"): # page number, possibly?
-          m = re.match(r"(⑯.+⑰)(.*)", b.wb[b.cl])
+          m = re.match(r"(⑯.+?⑰)(.*)", b.wb[b.cl])
           if m: # yes
             if m.group(2): # more on the line?
-              l = len(m.group(1))  # yes; get length of page number
-              pageinfo = b.wb[b.cl][:l]   # grab it
-              b.wb[b.cl] = b.wb[b.cl][l:] # and remove it from the line (rest of line is normal data)
-            else:                  # no; entire line is special
-              pageinfo = m.group(1)
-              self.bump_cl()                          # and we're done with this line
+              if m.group(2).find("|") != -1: # format a/b1/b2?
+                self.pageinfo = m.group(1) # grab it and remember
+                l = len(m.group(1))          # yes; get length of page number
+                b.wb[b.cl] = b.wb[b.cl][l:]  # remove page info from the line (rest of line is normal a/b1/b2 data)
+              else:                          # else format c; just let it flow through
+                pass
+            else: # standalone (before what was a .dt or .dd directive)
+              self.pageinfo = m.group(1)
+              self.bump_cl()
               continue
 
         elif b.bnPresent and b.is_bn_line(b.wb[b.cl]): # not a page number; possibly .bn info?
-          bninfo = b.wb[b.cl] # bninfo is always standalone
-          self.bump_cl()                         # and we're done with this line
-          continue
+          if not self.options["combine"] or not self.paragraph: # if not combining, or combining but no paragraph yet
+            bninfo = b.wb[b.cl] # bninfo is always standalone
+            self.emit_special(bninfo)    # handle the page info
+            bninfo = ""
+            self.bump_cl()                         # and we're done with this line
+            continue
+          else:                           # combining, and paragraph has data already
+            self.paragraph += b.wb[b.cl]  # add the .bn info to the end of the paragraph
+            self.bump_cl()                # and we're done with the line
+            continue
 
-        # Must be format a, b1, b2, or c line at this point
         # isolate term and definition
         blankfound = False
         t = b.wb[b.cl].split("|", maxsplit=1) # split term and definition
@@ -2566,10 +2589,6 @@ class Book(object):
           # new term/speaker needs to force emission of prior paragraph for combine=y
           if self.options["combine"] and (self.term or self.paragraph):
             self.emit_paragraph()
-
-          if pageinfo or bninfo: # if we have page or bninfo saved emit it now, as we're between entries.
-            self.emit_special(pageinfo, bninfo) # handle any page or bn info before doing the next do
-            pageinfo = bninfo = ""
 
           self.term = t[0].rstrip()
           self.definition = t[1]
@@ -4220,7 +4239,7 @@ class Book(object):
     indl = False
     while i < len(self.wb):
       # option with a value
-      if self.wb[i].startswith(".dl "):
+      if self.wb[i].startswith(".dl ") or self.wb[i] == ".dl":
         indl = True
       elif self.wb[i].startswith(".dl-"):
         indl = False
@@ -6886,15 +6905,13 @@ class Ppt(Book):
       def bump_cl(self):
         self.book.cl += 1
 
-      # Routine to handle special lines (page number, .bn info)
+      # Routine to handle special lines (.bn info)
       # (called by code in base DefList class)
-      def emit_special(self, pageinfo, bninfo):
+      def emit_special(self, bninfo):
 
         b = self.book
 
-        assert not pageinfo, "Internal error: Unexpected page info found during .dl processing in text phase."
-
-        # bninfo, if any, is purely passthrough for the text phase
+        # bninfo is purely passthrough for the text phase
         if bninfo:
           b.eb.append(bninfo)
 
@@ -7522,9 +7539,13 @@ class Pph(Book):
           if self.bnPresent and self.is_bn_line(self.wb[i]):
             i += 1
             continue
-          if (self.wb[i].startswith(".it") or # we can't put it on .it or .dt or .dl but we can't let
-              self.wb[i].startswith(".dt") or # it slide beyond, either, so insert it before
-              self.wb[i].startswith(".dd")):
+          if self.wb[i].startswith(".it "): # .it line?
+            self.wb[i] = ".it " + "⑯{}⑰".format(pnum) + self.wb[i][4:] # merge it onto the line after the ".it "
+            i += 1
+            found = True
+            continue
+          if (self.wb[i].startswith(".dt") or # we can't put it on .dt or .dd but we can't let
+              self.wb[i].startswith(".dd")):  # it slide beyond, either, so insert it before
             self.wb.insert(i,"⑯{}⑰".format(pnum)) # insert page number before current line
             i += 2 # bump past the new page number line and old current line
             found = True
@@ -10671,6 +10692,8 @@ class Pph(Book):
 
     s = self.fetchStyle() # style line with current parameters
 
+    s_top = s_bot = ""
+
     # if there is a pending drop cap, don't indent
     # if there is a text-indent already, don't change it
     # otherwise, add a text-indent if self.pindent is set.
@@ -10718,7 +10741,8 @@ class Pph(Book):
     # setup CSS for paragraphs inside list items
     if self.list_item_active and (self.list_type == "o" or self.list_type == "u"):
       self.css.addcss("[1171] .li-p-first { margin-top: inherit; " + s_bot + "}")
-      self.css.addcss("[1171] .li-p-mid {" + s_top + s_bot + "}")
+      if s_top or s_bot:
+        self.css.addcss("[1171] .li-p-mid {" + s_top + s_bot + "}")
       self.css.addcss("[1171] .li-p-last {" + s_top + " margin-bottom: inherit; }")
       self.css.addcss("[1171] .li-p-only { margin-top: inherit; margin-bottom: inherit; }")
 
@@ -11067,18 +11091,14 @@ class Pph(Book):
       def bump_cl(self):
         del self.book.wb[self.book.cl]
 
-      # Routine to handle special lines (page number, .bn info)
+      # Routine to handle special lines (.bn info)
       # (called by code in base DefList class)
-      def emit_special(self, pageinfo, bninfo):
+      def emit_special(self, bninfo):
 
         b = self.book
 
-        if self.dd_active: # if a dd is active, end it
-          self.build_dd("", True)
-
-        if pageinfo: # if pageinfo passed, insert it into the output buffer before the current line pointer
-          b.wb[b.cl:b.cl] = [pageinfo]
-          b.cl += 1
+        #if self.dd_active: # if a dd is active, end it
+        #  self.build_dd("", True)
 
         if bninfo: # if bninfo passed, insert it into the output buffer before the current line pointer
           b.wb[b.cl:b.cl] = [bninfo]
@@ -11376,6 +11396,9 @@ class Pph(Book):
           b.pvs = 0
 
         term = self.term.rstrip()
+        if self.pageinfo:   # pending page info?
+          term += self.pageinfo
+          self.pageinfo = ""
         if not term:
           term = "&nbsp;"
         if self.options["style"] == "d": # style=d
@@ -11407,6 +11430,9 @@ class Pph(Book):
         extraspaces = ""
 
         if endit:
+          if self.pageinfo:  # is there pending page info?
+            self.dlbuffer.append(self.pageinfo)
+            self.pageinfo = ""
           if self.options["style"] == "d":
             self.dlbuffer.append(self.dtddspaces + "</dd>")
           else:
@@ -11647,6 +11673,13 @@ class Pph(Book):
       if self.bnPresent and self.is_bn_line(self.wb[self.cl]):
         self.cl += 1
         continue
+
+      # don't turn standalone .pn info lines into paragraphs, either
+      if self.wb[self.cl].startswith("⑯"): # could it be page info?
+        m = self.pnmatch.match(self.wb[self.cl]) # Yes; see if it's just (solely) a page number
+        if m:      # yes, it's solely a page number
+          self.cl += 1 # leave it in place for later handling
+          continue
 
       self.doPara() # it's a paragraph to wrap
 
