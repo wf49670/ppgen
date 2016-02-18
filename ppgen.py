@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54h" + with_regex   # 13-Feb-2016
+VERSION="3.54i" + with_regex   # 16-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
@@ -93,6 +93,11 @@ VERSION="3.54h" + with_regex   # 13-Feb-2016
 #    within .dl block to avoid validation and other errors.
 #  HTML: Fix processing error with top/bottom margins for paragraphs within .ol/.ul items.
 #  Fix error that misinterpreted a .dt (define term) inside a .dl block as a .dt (define title) instead.
+#3.54i:
+#  Modify get_id routine so that it retrieves unquoted options (e.g., pre= or suf= or ew=, etc.) without truncating a
+#    trailing > if it's present. (This is very old code, and I only guess why it was swallowing a > in the first
+#    place. I suspect it was to allow get_id to be used for situations like <abbr rend=arabic> though nothing like
+#    that ever invokes get_id; they all parse the line manually.)
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -2028,7 +2033,8 @@ class Book(object):
         done = True
 
     if not done:
-      m = re.search(r"{}=(.*?)($|[ >])".format(tgt), attr)  # no quotes
+      #m = re.search(r"{}=(.*?)($|[ >])".format(tgt), attr)  # no quotes
+      m = re.search(r"{}=(.*?)($|[ ])".format(tgt), attr)  # no quotes
       if m:
         the_id = m.group(1)
         attr = re.sub(re.escape(m.group(0)), "", attr)
@@ -2542,12 +2548,12 @@ class Book(object):
         # If .pn or .bn it may take these forms:
         #    .pn info (standalone) if it precedes a .dt or .dd directive
         #        In this case, remember it and skip over the line; emit as for next case
-        #    .pn info + rest of line 
+        #    .pn info + rest of line
         #        Rest of line may be one of format a, b1, b2, or c. If format a, b1, or b2. We
         #        can't emit the info without it being inside a <dt> or <dd>, so we extract it
         #        and save it and emit at the front of the next <dt> or <dd> we generate or dump
         #        it out after the </dl> if necessary. If format c we let normal processing handle it.
-        #    .bn info 
+        #    .bn info
         #        Always stand-alone, and proper handling depends on whether we're combining
         #         or not. If combining, need to wrap onto rest of prior definition, if any,
         #         or emit if no prior definition. If not combining, just emit (we're between defs).
