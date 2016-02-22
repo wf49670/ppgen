@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54i" + with_regex   # 16-Feb-2016
+VERSION="3.54i-imgcheck" + with_regex   # 21-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
@@ -98,6 +98,7 @@ VERSION="3.54i" + with_regex   # 16-Feb-2016
 #    trailing > if it's present. (This is very old code, and I only guess why it was swallowing a > in the first
 #    place. I suspect it was to allow get_id to be used for situations like <abbr rend=arabic> though nothing like
 #    that ever invokes get_id; they all parse the line manually.)
+#-imgcheck: check for unused images during HTML pass
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -199,6 +200,8 @@ class Book(object):
   nregsusage = {} # usage counters for selected named registers
   macro = {} # user macro storage
   caption_model = {} # storage for named caption models for multi-line captions in text output
+
+  imageDict = {} # dictionary to track used/unused image files
 
   mau = [] # UTF-8
   mal = [] # user-defined Latin-1
@@ -1594,6 +1597,7 @@ class Book(object):
     self.forceutf8 = (True) if (renc == "U") else (False)
     self.debug = args.debug
     self.srcfile = args.infile
+    self.imgcheck = args.imagecheck
     self.anonymous = args.anonymous
     self.log = args.log
     self.listcvg = args.listcvg
@@ -7183,7 +7187,7 @@ class Pph(Book):
   pdc = "" # pending drop cap
   igc = 1 # illustration geometry counter
   fnlist = [] # list of footnotes
-  imagedict = {} # list of css specifications for illustrations, with the number that defined them.
+  imageCssDict = {} # list of css specifications for illustrations, with the number that defined them.
   dl_classnum = 0 # used to generate unique class names for .dl with unique characteristics
   dl_dict = {} # initialize dictionary to track unique .dl characteristics
   ul_classnum = 0 # same for ul and ol
@@ -7200,6 +7204,7 @@ class Pph(Book):
     self.dstfile = re.sub("-src", "", self.srcfile.split('.')[0]) + ".html"
     self.css = self.userCSS()
     self.linkinfo = self.linkMsgs()
+    self.imageCheck = args.imagecheck
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # internal class to manage CSS as it is added at runtime
@@ -8248,6 +8253,7 @@ class Pph(Book):
     else:
       t.append("    <title>{}</title>".format("Unknown"))
     t.append("    <link rel=\"coverpage\" href=\"images/{}\" />".format(self.cimage))
+    self.checkIllo(self.cimage)
     t.append("    <style type=\"text/css\">")
     t.append("      CSS PLACEHOLDER")
     t.append("    </style>")
@@ -8912,23 +8918,30 @@ class Pph(Book):
       self.crash_w_context("malformed .fs directive", self.cl)
     del self.wb[self.cl]
 
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  # check that image file exists
+  #
+  def checkIllo(self, fname): # assure that fn exists in images folder
+    if " " in fname:
+      self.warn("cannot have spaces in illustration filenames.")
+    if re.search("[A-Z]", fname):
+      self.warn("illustration filenames must be lower case.")
+    #fullname = os.path.join(os.path.dirname(self.srcfile),"images",fname)
+    #if not os.path.isfile(fullname):
+    if self.imageDirectoryOK:
+      if not fname in self.imageDict:
+        self.warn("file {} not in images folder".format(fname))
+      else:
+        self.imageDict[fname] += 1
+    else:
+      self.warn("image checking bypassed; unable to open images folder")
+
+
   # .il illustrations
   # .il id=i01 fn=illus-fpc.jpg w=332 alt=illus-fpcf.jpg
   # .ca Dick was taken by surprise.
 
   def doIllo(self):
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # check that file exists
-    #
-    def checkIllo(fname): # assure that fn exists in images folder
-      if " " in fname:
-        self.warn("cannot have spaces in illustration filenames.")
-      if re.search("[A-Z]", fname):
-        self.warn("illustration filenames must be lower case.")
-      fullname = os.path.join(os.path.dirname(self.srcfile),"images",fname)
-      if not os.path.isfile(fullname):
-        self.warn("file {} not in images folder".format(fullname))
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # given the .il line, parse all arguments
@@ -8955,14 +8968,14 @@ class Pph(Book):
         s, ifn = self.get_id("fn", s)
       else:
         self.fatal("no display file specified in {}".format(s0))
-      checkIllo(ifn)
+      self.checkIllo(ifn)
       ia["ifn"] = ifn
 
       # link to alternate (larger) image
       link = ""
       if "link=" in s:
         s, link = self.get_id("link", s)
-        checkIllo(link)
+        self.checkIllo(link)
       ia["link"] = link
 
       # optional caption width
@@ -9163,13 +9176,13 @@ class Pph(Book):
     build1614 = "[1614] .{} {{ width:100%; }} ".format(ign, ia["iw"])
 
     # see if we have an image with these characteristics defined already
-    saved1610 = self.imagedict.get(lookup1610) # try to get the definition info
+    saved1610 = self.imageCssDict.get(lookup1610) # try to get the definition info
     if lookup161113:
-      saved161113 = self.imagedict.get(lookup161113)
-    saved1614 = self.imagedict.get(lookup1614)
+      saved161113 = self.imageCssDict.get(lookup161113)
+    saved1614 = self.imageCssDict.get(lookup1614)
     bumpcounter = False
     if not saved1610: # if no matching [1610] found
-      self.imagedict[lookup1610] = idn # add it to the dictionary, remembering the idn value
+      self.imageCssDict[lookup1610] = idn # add it to the dictionary, remembering the idn value
       self.css.addcss(build1610a) # add the [1610] css we just built
       self.css.addcss(build1610b)
       bumpcounter = True
@@ -9177,7 +9190,7 @@ class Pph(Book):
       idn = saved1610
     if lookup161113:
       if not saved161113: # if no matching [1611/13] found
-        self.imagedict[lookup161113] = icn # add it to the dictionary, remembering the icn value
+        self.imageCssDict[lookup161113] = icn # add it to the dictionary, remembering the icn value
         self.css.addcss(build1611) # add the [1611] css we just built
         if build1613:
           self.css.addcss(build1613) # add the [1613] css we just built
@@ -9185,7 +9198,7 @@ class Pph(Book):
       else:
         icn = saved161113
     if not saved1614: # if no matching [1614] found
-      self.imagedict[lookup1614] = ign # add it to the dictionary, remembering the ign value
+      self.imageCssDict[lookup1614] = ign # add it to the dictionary, remembering the ign value
       self.css.addcss(build1614) # add the [1614] css we just built
       bumpcounter = True
     else:
@@ -11650,6 +11663,41 @@ class Pph(Book):
       for w in rb:
         print(self.umap(w))
 
+    # report on possible image problems (used too many times, not used at all)
+    if self.imageDirectoryOK:
+      msgIssued = False
+      notUsed = 0
+      notUsedList = []
+      multiplyUsed = 0
+      multiplyUsedList = []
+      for k in self.imageDict:
+        if self.imageDict[k] == 0: # unused image
+          notUsed += 1
+          notUsedList.append(k)
+        elif self.imageDict[k] > 1: # used multiple times
+          multiplyUsed += 1
+          multiplyUsedList.append(k)
+      
+      notUsedS = "s" if notUsed > 1 else ""
+      multiplyUsedS = "s" if multiplyUsed > 1 else ""
+      
+      if self.imageCheck: # full report?
+        if notUsed:
+          self.warn("{} image{} not used:".format(notUsed, notUsedS))
+          for img in notUsedList:
+            self.warn("  {}".format(img))
+        if multiplyUsed:
+          self.warn("{} image{} used multiple times:".format(multiplyUsed, multiplyUsedS))
+          for img in multiplyUsedList:
+            self.warn("  {} ({}x)".format(img, self.imageDict[img]))
+      
+      else:  # summary only
+        if notUsed:
+          self.warn("{} image{} not used. Rerun with -img option for more information".format(notUsed, notUsedS))
+        if multiplyUsed:
+          self.warn("{} image{} used multiple times. Rerun with -img option for more information".format(multiplyUsed, multiplyUsedS))
+
+
   #def doUdiv(self):
   #  print(self.wb[self.cl])
 
@@ -11699,8 +11747,27 @@ class Pph(Book):
     self.cleanup()
     self.doHTMLSr()
 
+  # build dictionary of images in images directory
+  # later we'll check which were used
+  def buildImgDict(self):
+   imgpath = os.path.join(os.path.dirname(self.srcfile),"images")
+   self.imageDirectoryOK = True
+   try:
+     imglist = os.listdir(imgpath)
+   except FileNotFoundError:
+     self.imageDirectoryOK = False
+
+   if self.imageDirectoryOK:
+     for s in imglist:
+       if s.endswith(".png") or s.endswith(".jpg"):
+         self.imageDict[s] = 0
+       else:
+         self.warn("file {} in images folder does not have type .jpg or .png".format(s))
+
+
   def run(self): # HTML
     self.loadFile(self.srcfile)
+    self.buildImgDict()
     self.preprocess()
     if self.gk_requested or self.dia_requested: # override output encoding if doing Greek or diacritics
       self.encoding = "utf_8"
@@ -11722,6 +11789,7 @@ class Pph(Book):
 # 'd' enables dprint, 's' retains runtime-generated styles,
 # 'a' shows lines as they are processed, 'p' shows architecture
 # 'r' shows regex results for .sr, 'l' provides detailed logging for Greek conversions
+# 'x' produces "title" style page numbering regardless of .nr pnstyle setting (intended for regression testing)
 
 def main():
   # process command line
@@ -11747,6 +11815,9 @@ def main():
                       help="create .ppqt file in addition to any .bin file")
   parser.add_argument("-pmok", "--pythonmacrosok", action="store_true",
                       help="allow macros written in Python without prompting user for permission")
+  parser.add_argument("-img", "--imagecheck", action="store_true",
+                      help="create report of unused image files")
+
   args = parser.parse_args()
 
   # version request. print and exit
