@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54i-imgcheck" + with_regex   # 21-Feb-2016
+VERSION="3.54j" + with_regex   # 22-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
@@ -98,7 +98,12 @@ VERSION="3.54i-imgcheck" + with_regex   # 21-Feb-2016
 #    trailing > if it's present. (This is very old code, and I only guess why it was swallowing a > in the first
 #    place. I suspect it was to allow get_id to be used for situations like <abbr rend=arabic> though nothing like
 #    that ever invokes get_id; they all parse the line manually.)
-#-imgcheck: check for unused images during HTML pass
+#3.54j: check for unused images during HTML pass
+#  Warn PPer of unused images, or images used multiple times.
+#  Also warn of files in images directory that aren't .jpg or .png files. 
+#  Implement -img command-line option. Without it only a summary report of the new errors is provided; with it
+#    a detailed report is provided.
+
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
