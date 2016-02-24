@@ -18,6 +18,7 @@ except:
   import re
   with_regex = ""
 import sys, string, os, platform
+import configparser
 import textwrap
 import codecs
 import unicodedata
@@ -29,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54j" + with_regex   # 22-Feb-2016
+VERSION="3.54j-inifile" + with_regex   # 22-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
@@ -100,9 +101,10 @@ VERSION="3.54j" + with_regex   # 22-Feb-2016
 #    that ever invokes get_id; they all parse the line manually.)
 #3.54j: check for unused images during HTML pass
 #  Warn PPer of unused images, or images used multiple times.
-#  Also warn of files in images directory that aren't .jpg or .png files. 
+#  Also warn of files in images directory that aren't .jpg or .png files.
 #  Implement -img command-line option. Without it only a summary report of the new errors is provided; with it
 #    a detailed report is provided.
+#inifile
 
 
 
@@ -1577,7 +1579,7 @@ class Book(object):
   #                    '\u039C\u039D\u039E\u039F\u03A0\u03A1\u03A3\u03A4\u03A5\u03A6\u03A7' +
   #                    '\u03A8\u03A9')
 
-  def __init__(self, args, renc):
+  def __init__(self, args, renc, config):
 
     del self.wb[:]
     del self.eb[:]
@@ -1609,6 +1611,7 @@ class Book(object):
     self.cvgfilter = args.filter
     self.srcbin = args.srcbin
     self.ppqt2 = args.ppqt2
+    self.config = config # ConfigParser object
     #self.wrapper = textwrap.TextWrapper()
     #self.wrapper.break_long_words = False
     #self.wrapper.break_on_hyphens = False
@@ -1771,6 +1774,25 @@ class Book(object):
     self.dotcmdstack.append(self.dotcmds)
 
     self.dlbuffer = []
+
+    # Process any Nregs items in ppgen.ini via our ConfigParser object
+    for k in self.config['Nregs']:
+      if k in self.nregs:
+        self.nregs[k] = self.config['Nregs'][k]
+        print("setting self.nregs[{}] via .ini file: {}".format(k, self.nregs[k]))
+      else:
+        self.warn("Ignoring unsupported Nregs key {} from .ini file".format(k))
+
+  # Determine default alignment for h1-h6 headers based on content of ppgen.ini self.config['CSS']
+  # type: 'h1', 'h2', etc.
+  def getHnAlignment(self, type):
+    css = self.config['CSS'][type]
+    m = re.search("text-align: *([clr])", css) # look for text-align in the specification and pass back first character
+    if m:
+      align = m.group(1)[0]
+    else:
+      align = "" # default to null if none found
+    return align
 
   # Backstop routine to crash and say "only valid inside a .dl block" upon hitting .dd
   #
@@ -2090,7 +2112,7 @@ class Book(object):
         t = ":".join("{0:x}".format(ord(c)) for c in self.wb[0])
         if t[0:4] == 'feff':
           self.wb[0] = self.wb[0][1:]
-      except:
+      except Exception as e:
         pass
 
     if self.encoding == "":
@@ -2775,9 +2797,7 @@ class Book(object):
 
     def pythonSR(match):
       if not self.pmcount: # if first python macro this pass, initialize a dictionary
-        savevar = {}  # to allow macros to communicate
-      else:
-        savevar = self.savevar
+        self.savevar = {}  # to allow macros to communicate
       self.pmcount += 1
       var = {}
       var["count"] = 0 # count of input variables; none, as the match object is implicit
@@ -2787,13 +2807,16 @@ class Book(object):
       var["hint"] = srrHint    # the string after the macro name in the replace expression, or None
       var["out"] = [] # place for macro to put its output
       var["type"] = self.booktype # text or html
+      var["ll"] = self.regLL  # specified line length
+      var["in"] = self.regIN  # specified
+      var["nr-nfl"] = self.nregs["nfl"] # .nr nfl value
       macglobals = __builtins__.__dict__
       macglobals["var"] = var # make macro variables available
       macglobals["re"] = re # make re module available
       macglobals["toRoman"] = self.toRoman2
       macglobals["fromRoman"] = self.fromRoman
       macglobals["debugging"] = [self.bailout, self.wb, -1]
-      macglobals["savevar"] = savevar # make communication dictionary available
+      macglobals["savevar"] = self.savevar # make communication dictionary available
       maclocals = {"__builtins__":None}
 
       try: # exec the macro
@@ -2815,7 +2838,6 @@ class Book(object):
         traceback.print_exc()
         self.fatal("Above error occurred trying to copy output from Python macro {}".format(srrMacname))
 
-      self.savevar = savevar
       return output
 
     k = 0
@@ -3984,7 +4006,7 @@ class Book(object):
 
         else: # python format macro
           if not self.pmcount: # if first python macro this pass, initialize a dictionary
-            savevar = {}  # to allow macros to communicate
+            self.savevar = {}  # to allow macros to communicate
           self.pmcount += 1
           var = {}
           var["count"] = len(tlex) - 2 # count of input variables
@@ -3993,13 +4015,16 @@ class Book(object):
           var["name"] = macroid # the name of the macro, in case the macro cares for some reason
           var["out"] = [] # place for macro to put its output
           var["type"] = self.booktype # text or html
+          var["ll"] = self.regLL  # specified line length
+          var["in"] = self.regIN  # specified
+          var["nr-nfl"] = self.nregs["nfl"] # .nr nfl value
           macglobals = __builtins__.__dict__
           macglobals["var"] = var # make macro variables available
           macglobals["re"] = re # make re module available
           macglobals["toRoman"] = self.toRoman2
           macglobals["fromRoman"] = self.fromRoman
           macglobals["debugging"] = [self.bailout, self.wb, i]
-          macglobals["savevar"] = savevar # make communication dictionary available
+          macglobals["savevar"] = self.savevar # make communication dictionary available
           maclocals = {"__builtins__":None}
 
           try: # exec the macro
@@ -4021,7 +4046,6 @@ class Book(object):
             self.crash_w_context("Above error occurred trying to copy output from Python macro {}".format(macroid), i)
 
           var = {}
-          self.savevar = savevar[:]
         i -= 1
 
       i += 1
@@ -4446,8 +4470,8 @@ class Ppt(Book):
 
   long_table_line_count = 0
 
-  def __init__(self, args, renc):
-    Book.__init__(self, args, renc)
+  def __init__(self, args, renc, config):
+    Book.__init__(self, args, renc, config)
     if args.pythonmacrosok:
       Book.python_macros_allowed = True
     self.booktype = "text"
@@ -5413,15 +5437,17 @@ class Ppt(Book):
 
   #Guts of doH"n" for text
   def doHnText(self, m):
-    align = "c" # default all to centered
-    if m: # modifier
+    hnType = "h" + m.group(0)[2]
+    align = self.getHnAlignment(hnType)
+    #align = "c" # default all to centered
+    if m.group(1): # modifier
       rend = m.group(1) # for text we'll ignore everything except a possible align= operand
       if "align=" in rend:
         rend, align = self.get_id("align", rend)
         align = align.lower()
     if align == "c":
       fmt = "{:^72}"
-    elif align == "l":
+    elif align == "l" or not align: # l specified or nothing specified (assume l)
       fmt = "{:<72}"
     elif align == "r":
       fmt = "{:>72}"
@@ -5443,33 +5469,32 @@ class Ppt(Book):
 
   # h1
   def doH1(self):
-    m = re.match(r"\.h1 (.*)", self.wb[self.cl])
+    m = re.match(r"\.h1 ?(.*)", self.wb[self.cl])
     self.doHnText(m)
 
   # h2
   def doH2(self):
-    m = re.match(r"\.h2 (.*)", self.wb[self.cl])
+    m = re.match(r"\.h2 ?(.*)", self.wb[self.cl])
     self.doHnText(m)
 
   # h3
   def doH3(self):
-    tmp = self.wb[self.cl + 1]
-    m = re.match(r"\.h3 (.*)", self.wb[self.cl])
+    m = re.match(r"\.h3 ?(.*)", self.wb[self.cl])
     self.doHnText(m)
 
   # h4
   def doH4(self):
-    m = re.match(r"\.h4 (.*)", self.wb[self.cl])
+    m = re.match(r"\.h4 ?(.*)", self.wb[self.cl])
     self.doHnText(m)
 
   # h5
   def doH5(self):
-    m = re.match(r"\.h5 (.*)", self.wb[self.cl])
+    m = re.match(r"\.h5 ?(.*)", self.wb[self.cl])
     self.doHnText(m)
 
   # h6
   def doH6(self):
-    m = re.match(r"\.h6 (.*)", self.wb[self.cl])
+    m = re.match(r"\.h6 ?(.*)", self.wb[self.cl])
     self.doHnText(m)
 
   # .sp n
@@ -7202,8 +7227,8 @@ class Pph(Book):
 
   booktype = "html"
 
-  def __init__(self, args, renc):
-    Book.__init__(self, args, renc)
+  def __init__(self, args, renc, config):
+    Book.__init__(self, args, renc, config)
     if self.listcvg:
       self.cvglist()
     self.dstfile = re.sub("-src", "", self.srcfile.split('.')[0]) + ".html"
@@ -7229,6 +7254,10 @@ class Pph(Book):
       keys.sort()
       for s in keys:
         t.append("      " + s[6:])
+        #s2 = s[6:].split('\n')
+        #t.append("      " + s2[0])
+        #for i in range(1, len(s2)):
+        #  t.append("        " + s2[i])
       return t
 
     def showde(self): # return only the CSS created by the PPer using .de
@@ -8320,7 +8349,7 @@ class Pph(Book):
       self.pvs = 0
 
     self.css.addcss("[1465] div.pbb { page-break-before: always; }")
-    self.css.addcss("[1466] hr.pb { border: none; border-bottom: thin solid; margin-bottom:1em; }")
+    self.css.addcss("[1466] hr.pb { border: none; border-bottom: thin solid; margin-bottom: 1em; }")
     self.css.addcss("[1467] @media handheld { hr.pb { display: none; }}")
     self.wb[self.cl:self.cl+1] = ["<div class='pbb'>",
                                   "  <hr class='pb' style='{}' />".format(hcss),
@@ -8433,20 +8462,26 @@ class Pph(Book):
         self.fatal("source file ends with continued .de command: {}".format(self.wb[self.cl]))
 
 
-  # h1
-  def doH1(self):
+  def doHnHTML(self, hnString):
+
     pnum = ""
     id = ""
-    rend = "" # default no rend
+    rend = "" if hnString in ['h1', 'h2', 'h3'] else "nobreak" # default to break for h1-h3
     hcss = ""
-    align = "c" # default to centered heading
+    alignDefault = self.getHnAlignment(hnString)
+    align = ""
     title = ""
 
-    self.css.addcss("[1100] h1 { text-align: center; font-weight: normal; font-size: 1.4em; }")
+    hnCss = self.config['CSS'][hnString]
+    if hnCss:
+      self.css.addcss("[1100] {} {{ {} }}".format(hnString, hnCss))
 
-    m = re.match(r"\.h1 (.*)", self.wb[self.cl])
+    m = re.match(r"\.h[1-6] (.*)", self.wb[self.cl])
     if m: # modifier
-      rend = m.group(1)
+      if hnString in ['h1', 'h2', 'h3']:
+        rend = m.group(1)
+      else:
+        rend += m.group(1)
 
       if "pn=" in rend:
         rend, pnum = self.get_id("pn", rend)
@@ -8457,29 +8492,55 @@ class Pph(Book):
       if "align=" in rend:
         rend, align = self.get_id("align", rend)
 
-      if "title=" in rend:
+      if hnString in ['h1', 'h2'] and "title=" in rend:
         rend, title = self.get_id("title", rend)
         title = title.replace("'","&#39;") # escape any ' in the title string
         title = "title='{}'".format(title)
 
-    if align == "l":
-      hcss += "text-align: left; "
-    elif align == "r":
-      hcss += "text-align: right; "
-    elif align != "c":
-      self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
+    if not align:
+      align = (alignDefault if alignDefault else 'l') # default to left if no specification found
 
-    if "nobreak" in rend:
-      hcss += "page-break-before: auto; "
-    else:
-      hcss += "page-break-before: always; "
+    if align != alignDefault:
+      if align == "l":
+        hcss += "text-align: left; "
+      elif align == "r":
+        hcss += "text-align: right; "
+      elif align == "c":
+        hcss += "text-align: center; "
+      else:
+        self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
 
-    if self.pvs > 0:
-      hcss += "margin-top: {}em; ".format(self.pvs)
-      self.pvs = 0
-    else: # default 1 before, 1 after
-      hcss += "margin-top: 1em; "
-    self.pvs = 1
+    if hnString in ['h1', 'h3']:        # I'm not sure why we have h3 defaulting to "break" as that seems odd
+      if "nobreak" in rend:
+        hcss += "page-break-before: auto; "
+      else:
+        hcss += "page-break-before: always; "
+
+    elif hnString == 'h2':
+      hcss += "page-break-before:auto; " # always have this on an <h2> element; if a break
+                                         # is needed we'll have the <h2> inside a
+                                         # <div class='chapter'> to force one. If it's not on
+                                         # the <h2> then epubmaker's CSS for <h2> will override
+                                         # and may force a second page break
+
+    else: # h4-h6
+      if " break" in rend: # .h4/5/6 default to nobreak, so look for break (preceded by space) that user may have supplied
+        hcss += "page-break-before: always; "
+      else:
+        hcss += "page-break-before: auto; "
+
+
+    if hnString in ['h1', 'h4', 'h5', 'h6']: # else for h1, h4-6 default 1 before 1 after
+      hcss += "margin-top: {}em; ".format(self.pvs if self.pvs else 1)
+      self.pvs = 1
+
+    elif hnString == 'h2': # else for h2 default 4 before, 2 after
+      hcss += "margin-top: {}em; ".format(self.pvs if self.pvs else 4)
+      self.pvs = 2
+
+    elif hnString == 'h3': # else for h3 default 2 before, 1 after
+      hcss += "margin-top: {}em; ".format(self.pvs if self.pvs else 2)
+      self.pvs = 1
 
     del self.wb[self.cl] # the .h line
 
@@ -8493,9 +8554,23 @@ class Pph(Book):
     s = re.sub("\|", "<br />", s)
     t = []
 
-    # new in 1.79
-    t.append("<div>")
-    if pnum != "":
+    endDiv = False
+    if hnString == 'h1': # always want a <div> around the <h1>
+      t.append("<div>")
+      endDiv = True
+
+    elif hnString == 'h2': # always want a div for <h2>. If it's not a no-break, give it class='chapter'
+      if not "nobreak" in rend:
+        t.append("<div class='chapter'>") # will force file break
+        self.css.addcss("[1576] .chapter { clear: both; page-break-before: always;}")
+      else:
+        t.append("<div>")
+      endDiv = True
+
+    if pnum != "" and (self.pnshow or self.pnlink):
+      if hnString in ['h3', 'h4', 'h5', 'h6']:
+        t.append("<div>")
+        endDiv = True
       if self.pnshow:
         if self.nregs["pnstyle"] == "title" or "x" in self.debug:
           t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
@@ -8503,391 +8578,49 @@ class Pph(Book):
           t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
       elif self.pnlink:
         t.append("  <a id='Page_{0}'></a>".format(pnum))
+
     if id != "":
-      t.append("  <h1 id='{}' style='{}' {}>{}</h1>".format(id, hcss, title, s))
+      t.append("  <{} id='{}' style='{}' {}>{}</{}>".format(hnString, id, hcss, title, s, hnString))
     else:
-      t.append("  <h1 style='{}' {}>{}</h1>".format(hcss, title, s))
-    t.append("</div>")
+      t.append("  <{} style='{}' {}>{}</{}>".format(hnString, hcss, title, s, hnString))
+
+    if endDiv:
+      t.append("</div>")
 
     self.wb[self.cl:self.cl+1] = t
     self.cl += len(t)
+
+
+  # h1
+  def doH1(self):
+
+    self.doHnHTML('h1')
 
   # h2
   def doH2(self):
-    pnum = ""
-    id = ""
-    hcss = ""
-    rend = "" # default no rend
-    align = "c" # default to centered heading
-    title = ""
 
-    self.css.addcss("[1100] h2 { text-align: center; font-weight: normal; font-size: 1.2em; }") # 3.52e
-
-    m = re.match(r"\.h2 (.*)", self.wb[self.cl])
-    if m: # modifier
-      rend = m.group(1)
-
-      if "pn=" in rend:
-        rend, pnum = self.get_id("pn", rend)
-
-      if "id=" in rend:
-        rend, id = self.get_id("id", rend)
-
-      if "align=" in rend:
-        rend, align = self.get_id("align", rend)
-
-      if "title=" in rend:
-        rend, title = self.get_id("title", rend)
-        title = title.replace("'","&#39;") # escape any ' in the title string
-        title = "title='{}'".format(title)
-
-    if align == "l":
-      hcss += "text-align: left; "
-    elif align == "r":
-      hcss += "text-align: right; "
-    elif align != "c":
-      self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
-
-    hcss += "page-break-before:auto; " # always have this on an <h2> element; if a break
-                                       # is needed we'll have the <h2> inside a
-                                       # <div class='chapter'> to force one. If it's not on
-                                       # the <h2> then epubmaker's CSS for <h2> will override
-                                       # and may force a second page break
-
-    if self.pvs > 0:
-      hcss += "margin-top: {}em; ".format(self.pvs)
-      self.pvs = 0
-    else: # default 4 before, 2 after
-      hcss += "margin-top: 4em; "
-    self.pvs = 2
-
-    del self.wb[self.cl] # the .h line
-
-    # if we have .bn info after the .h and before the header join them together
-    if self.bnPresent and self.is_bn_line(self.wb[self.cl]):
-      i = self.cl
-      if i < len(self.wb) - 1:
-        self.wb[i] = self.wb[i] + self.wb[i+1]
-        del self.wb[i+1]
-    s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
-    s = re.sub("\|", "<br />", s)
-    t = []
-
-    # new in 1.79
-    # I always want a div. If it's not a no-break, give it class='chapter'
-    if not "nobreak" in rend:
-      t.append("<div class='chapter'>") # will force file break
-      self.css.addcss("[1576] .chapter { clear: both; page-break-before: always;}")
-    else:
-      t.append("<div>") # always want a div around the h2
-    if pnum != "":
-      if self.pnshow:
-        if self.nregs["pnstyle"] == "title" or "x" in self.debug:
-          t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
-        else:
-          t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
-      elif self.pnlink:
-        t.append("  <a id='Page_{0}'></a>".format(pnum))
-    if id != "":
-      t.append("  <h2 id='{}' style='{}' {}>{}</h2>".format(id, hcss, title, s))
-    else:
-      t.append("  <h2 style='{}' {}>{}</h2>".format(hcss, title, s))
-
-    t.append("</div>") # always close the div
-
-    self.wb[self.cl:self.cl+1] = t
-    self.cl += len(t)
+    self.doHnHTML('h2')
 
   # h3
   def doH3(self):
-    pnum = ""
-    id = ""
-    hcss = ""
-    rend = "" # default no rend
-    align = "c" # default to centered heading
 
-    self.css.addcss("[1100] h3 { text-align: center; font-weight: normal; font-size: 1.2em; }")
-
-    m = re.match(r"\.h3 (.*)", self.wb[self.cl])
-    if m: # modifier
-      rend = m.group(1)
-
-      if "pn=" in rend:
-        rend, pnum = self.get_id("pn", rend)
-
-      if "id=" in rend:
-        rend, id = self.get_id("id", rend)
-
-      if "align=" in rend:
-        rend, align = self.get_id("align", rend)
-
-    if align == "l":
-      hcss += "text-align: left; "
-    elif align == "r":
-      hcss += "text-align: right; "
-    elif align != "c":
-      self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
-
-    if "nobreak" in rend: # default to "break" in .h3 (seems odd to me, change this?)
-      hcss += "page-break-before: auto; "
-    else:
-      hcss += "page-break-before: always; "
-
-    if self.pvs > 0:
-      hcss += "margin-top: {}em; ".format(self.pvs)
-      self.pvs = 0
-    else: # default 2 before, 1 after
-      hcss += "margin-top: 2em; "
-    self.pvs = 1
-
-    del self.wb[self.cl] # the .h line
-
-    # if we have .bn info after the .h and before the header join them together
-    if self.bnPresent and self.is_bn_line(self.wb[self.cl]):
-      i = self.cl
-      if i < len(self.wb) -1:
-        self.wb[i] = self.wb[i] + self.wb[i+1]
-        del self.wb[i+1]
-    s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
-    s = re.sub("\|", "<br />", s)
-    t = []
-
-    # new in 1.79
-    # sections do not force file breaks. chapters usually do.
-    if pnum != "":
-      t.append("<div>")
-      if self.pnshow:
-        if self.nregs["pnstyle"] == "title" or "x" in self.debug:
-          t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
-        else:
-          t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
-      elif self.pnlink:
-        t.append("  <a id='Page_{0}'></a>".format(pnum))
-    if id != "":
-      t.append("<h3 id='{}' style='{}'>{}</h3>".format(id, hcss, s))
-    else:
-      t.append("<h3 style='{}'>{}</h3>".format(hcss, s))
-    if pnum != "":
-      t.append("</div>")
-
-    self.wb[self.cl:self.cl+1] = t
-    self.cl += len(t)
+    self.doHnHTML('h3')
 
   # h4
   def doH4(self):
-    pnum = ""
-    id = ""
-    hcss = ""
-    rend = "nobreak"
-    align = "c" # default to centered heading
 
-    self.css.addcss("[1100] h4 { text-align: center; font-weight: normal; font-size: 1.0em; }")
-
-    m = re.match(r"\.h4( .*)", self.wb[self.cl])
-    if m: # modifier
-      rend += m.group(1) # add user-supplied values to default rend value of nobreak
-
-      if "pn=" in rend:
-        rend, pnum = self.get_id("pn", rend)
-
-      if "id=" in rend:
-        rend, id = self.get_id("id", rend)
-
-      if "align=" in rend:
-        rend, align = self.get_id("align", rend)
-
-    if align == "l":
-      hcss += "text-align: left; "
-    elif align == "r":
-      hcss += "text-align: right; "
-    elif align != "c":
-      self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
-
-    if " break" in rend: # .h4/5/6 default to nobreak, so look for break (preceded by space) that user may have supplied
-      hcss += "page-break-before: always; "
-    else:
-      hcss += "page-break-before: auto; "
-
-    if self.pvs > 0:
-      hcss += "margin-top: {}em; ".format(self.pvs)
-      self.pvs = 0
-    else: # default 1 before, 1 after
-      hcss += "margin-top: 1em; "
-    self.pvs = 1
-
-    del self.wb[self.cl] # the .h line
-
-    # if we have .bn info after the .h and before the header join them together
-    if self.bnPresent and self.is_bn_line(self.wb[self.cl]):
-      i = self.cl
-      if i < len(self.wb) - 1:
-        self.wb[i] = self.wb[i] + self.wb[i+1]
-        del self.wb[i+1]
-    s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
-    s = re.sub("\|", "<br />", s)
-    t = []
-
-    if pnum != "":
-      t.append("<div>")
-      if self.pnshow:
-        if self.nregs["pnstyle"] == "title" or "x" in self.debug:
-          t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
-        else:
-          t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
-      elif self.pnlink:
-        t.append("  <a id='Page_{0}'></a>".format(pnum))
-      t.append("</div>")
-    if id != "":
-      t.append("<h4 id='{}' style='{}'>{}</h4>".format(id, hcss, s))
-    else:
-      t.append("<h4 style='{}'>{}</h4>".format(hcss, s))
-
-    self.wb[self.cl:self.cl+1] = t
-    self.cl += len(t)
+    self.doHnHTML('h4')
 
   # h5
   def doH5(self):
-    pnum = ""
-    id = ""
-    hcss = ""
-    rend = "nobreak"
-    align = "c" # default to centered heading
 
-    self.css.addcss("[1100] h5 { text-align: center; font-weight: normal; font-size: 1.0em; }")
-
-    m = re.match(r"\.h5( .*)", self.wb[self.cl])
-    if m: # modifier
-      rend += m.group(1) # add user-supplied values to default rend value of nobreak
-
-      if "pn=" in rend:
-        rend, pnum = self.get_id("pn", rend)
-
-      if "id=" in rend:
-        rend, id = self.get_id("id", rend)
-
-      if "align=" in rend:
-        rend, align = self.get_id("align", rend)
-
-    if align == "l":
-      hcss += "text-align: left; "
-    elif align == "r":
-      hcss += "text-align: right; "
-    elif align != "c":
-      self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
-
-    if " break" in rend: # .h4/5/6 default to nobreak, so look for break (preceded by space) that user may have supplied
-      hcss += "page-break-before: always; "
-    else:
-      hcss += "page-break-before: auto; "
-
-    if self.pvs > 0:
-      hcss += "margin-top: {}em; ".format(self.pvs)
-      self.pvs = 0
-    else: # default 1 before, 1 after
-      hcss += "margin-top: 1em; "
-    self.pvs = 1
-
-    del self.wb[self.cl] # the .h line
-
-    # if we have .bn info after the .h and before the header join them together
-    if self.bnPresent and self.is_bn_line(self.wb[self.cl]):
-      i = self.cl
-      if i < len(self.wb) - 1:
-        self.wb[i] = self.wb[i] + self.wb[i+1]
-        del self.wb[i+1]
-    s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
-    s = re.sub("\|", "<br />", s)
-    t = []
-
-    if pnum != "":
-      t.append("<div>")
-      if self.pnshow:
-        if self.nregs["pnstyle"] == "title" or "x" in self.debug:
-          t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
-        else:
-          t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
-      elif self.pnlink:
-        t.append("  <a id='Page_{0}'></a>".format(pnum))
-      t.append("</div>")
-    if id != "":
-      t.append("<h5 id='{}' style='{}'>{}</h5>".format(id, hcss, s))
-    else:
-      t.append("<h5 style='{}'>{}</h5>".format(hcss, s))
-
-    self.wb[self.cl:self.cl+1] = t
-    self.cl += len(t)
+    self.doHnHTML('h5')
 
   # h6
   def doH6(self):
-    pnum = ""
-    id = ""
-    hcss = ""
-    rend = "nobreak"
-    align = "c" # default to centered heading
 
-    self.css.addcss("[1100] h6 { text-align: center; font-weight: normal; font-size: 1.0em; }")
+    self.doHnHTML('h6')
 
-    m = re.match(r"\.h6( .*)", self.wb[self.cl])
-    if m: # modifier
-      rend += m.group(1) # add user-supplied values to default rend value of nobreak
-
-      if "pn=" in rend:
-        rend, pnum = self.get_id("pn", rend)
-
-      if "id=" in rend:
-        rend, id = self.get_id("id", rend)
-
-      if "align=" in rend:
-        rend, align = self.get_id("align", rend)
-
-    if align == "l":
-      hcss += "text-align: left; "
-    elif align == "r":
-      hcss += "text-align: right; "
-    elif align != "c":
-      self.crash_w_context("Incorrect align= value (not c, l, or r):", self.cl)
-
-    if " break" in rend: # .h4/5/6 default to nobreak, so look for break (preceded by space) that user may have supplied
-      hcss += "page-break-before: always; "
-    else:
-      hcss += "page-break-before: auto; "
-
-    if self.pvs > 0:
-      hcss += "margin-top: {}em; ".format(self.pvs)
-      self.pvs = 0
-    else: # default 1 before, 1 after
-      hcss += "margin-top: 1em; "
-    self.pvs = 1
-
-    del self.wb[self.cl] # the .h line
-
-    # if we have .bn info after the .h and before the header join them together
-    if self.bnPresent and self.is_bn_line(self.wb[self.cl]):
-      i = self.cl
-      if i < len(self.wb) - 1:
-        self.wb[i] = self.wb[i] + self.wb[i+1]
-        del self.wb[i+1]
-    s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
-    s = re.sub("\|", "<br />", s)
-    t = []
-
-    if pnum != "":
-      t.append("<div>")
-      if self.pnshow:
-        if self.nregs["pnstyle"] == "title" or "x" in self.debug:
-          t.append("  <span class='pageno' title='{0}' id='Page_{0}' ></span>".format(pnum)) # new 3.24M
-        else:
-          t.append("  <span class='pageno' id='Page_{0}' >{0}</span>".format(pnum))
-      elif self.pnlink:
-        t.append("  <a id='Page_{0}'></a>".format(pnum))
-      t.append("</div>")
-    if id != "":
-      t.append("<h6 id='{}' style='{}'>{}</h6>".format(id, hcss, s))
-    else:
-      t.append("<h6 style='{}'>{}</h6>".format(hcss, s))
-
-    self.wb[self.cl:self.cl+1] = t
-    self.cl += len(t)
 
   # .sp n
   # if a space is encountered. for HTML drop it to the next
@@ -11682,10 +11415,10 @@ class Pph(Book):
         elif self.imageDict[k] > 1: # used multiple times
           multiplyUsed += 1
           multiplyUsedList.append(k)
-      
+
       notUsedS = "s" if notUsed > 1 else ""
       multiplyUsedS = "s" if multiplyUsed > 1 else ""
-      
+
       if self.imageCheck: # full report?
         if notUsed:
           self.warn("{} image{} not used:".format(notUsed, notUsedS))
@@ -11695,7 +11428,7 @@ class Pph(Book):
           self.warn("{} image{} used multiple times:".format(multiplyUsed, multiplyUsedS))
           for img in multiplyUsedList:
             self.warn("  {} ({}x)".format(img, self.imageDict[img]))
-      
+
       else:  # summary only
         if notUsed:
           self.warn("{} image{} not used. Rerun with -img option for more information".format(notUsed, notUsedS))
@@ -11796,6 +11529,74 @@ class Pph(Book):
 # 'r' shows regex results for .sr, 'l' provides detailed logging for Greek conversions
 # 'x' produces "title" style page numbering regardless of .nr pnstyle setting (intended for regression testing)
 
+# Load configuration file (ppgen.ini) and provide defaults
+def loadConfig(ini_file):
+  config = configparser.ConfigParser(allow_no_value=True)
+
+  # set default values
+  config.read_dict({'CSS':
+                       {'h1': 'text-align: center; font-weight: normal; font-size: 1.4em;',
+                        'h2': 'text-align: center; font-weight: normal; font-size: 1.2em;',
+                        'h3': 'text-align: center; font-weight: normal; font-size: 1.2em;',
+                        'h4': 'text-align: center; font-weight: normal; font-size: 1.0em;',
+                        'h5': 'text-align: center; font-weight: normal; font-size: 1.0em;',
+                        'h6': 'text-align: center; font-weight: normal; font-size: 1.0em;',
+                        },
+                   'Nregs': {}
+                   })
+
+  config_encoding = ""
+  fn = ""
+
+  if ini_file:
+    s = "ppgen-" + ini_file + ".ini"
+  else:
+    s = "ppgen.ini"
+
+  # determine location of config file
+  if os.path.isfile(s): # prefer local version
+    fn = s
+  else:
+    s = os.path.join(os.path.dirname(os.path.realpath(__file__)), s) # alternate location
+    if os.path.isfile(s):
+      fn = s
+  if fn:
+    try:
+      config_file = open(fn, "r", encoding='ascii').read()
+      config_encoding = "ASCII" # we consider ASCII as a subset of Latin-1 for DP purposes
+    except Exception as e:
+      pass
+
+    if config_encoding == "":
+      try:
+        config_file = open(fn, "rU", encoding='utf-8-sig').read()
+        config_encoding = "utf_8"
+      except Exception as e:
+        pass
+
+    if config_encoding == "":
+      try:
+        config_file = open(fn, "r", encoding='latin_1').read()
+        config_encoding = "latin_1"
+      except Exception as e:
+        pass
+
+  if config_encoding:
+    print("Processing ini file {}".format(fn))
+
+    try:
+      config.read(fn, encoding=config_encoding)
+    except:
+      traceback.print_exc()
+      self.fatal("Above error occurred while reading ini file {}".format(fn))
+
+  # convert any multi-line header values to single line
+  for k in config['CSS']:
+    config['CSS'][k] = config['CSS'][k].replace('\n', ' ')
+
+  return config
+
+
 def main():
   # process command line
   parser = argparse.ArgumentParser(description='ppgen generator')
@@ -11822,6 +11623,9 @@ def main():
                       help="allow macros written in Python without prompting user for permission")
   parser.add_argument("-img", "--imagecheck", action="store_true",
                       help="create report of unused image files")
+  parser.add_argument("-ini", "--ini_file",
+                      help="ini file suffix")
+
 
   args = parser.parse_args()
 
@@ -11846,28 +11650,31 @@ def main():
     print("infile must be specified. use \"--help\" for help")
     exit(1)
 
+  # Handle config file (ppgen.ini)
+  config = loadConfig(args.ini_file)
+
   if 't' in args.output_format:
-    ppt = Ppt(args, "u") # if PPer did not explicitly ask for utf-8, only create it if input is encoded in utf-8
+    ppt = Ppt(args, "u", config) # if PPer did not explicitly ask for utf-8, only create it if input is encoded in utf-8
     ppt.run()
-    ppt = Ppt(args, "l")
+    ppt = Ppt(args, "l", config)
     ppt.run()
 
 
   # UTF-8 only
   if 'u' in args.output_format:
-    ppt = Ppt(args, "U")  # if PPer explicitly asked for utf-8 always create it, even if input is encoded in Latin-1 or ASCII
+    ppt = Ppt(args, "U", config)  # if PPer explicitly asked for utf-8 always create it, even if input is encoded in Latin-1 or ASCII
     ppt.run()
 
 
   # Latin-1 only
   if 'l' in args.output_format:
-   ppt = Ppt(args, "l")
+   ppt = Ppt(args, "l", config)
    ppt.run()
 
 
   if 'h' in args.output_format:
     print("creating HTML version")
-    pph = Pph(args, "h")
+    pph = Pph(args, "h", config)
     pph.run()
 
   print("done.")
