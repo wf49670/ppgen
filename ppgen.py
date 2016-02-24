@@ -104,7 +104,7 @@ VERSION="3.54j-inifile" + with_regex   # 22-Feb-2016
 #  Also warn of files in images directory that aren't .jpg or .png files.
 #  Implement -img command-line option. Without it only a summary report of the new errors is provided; with it
 #    a detailed report is provided.
-#inifile
+#3.54k: Fix failure during Python macro handling (improper reference to a slice of savevar)
 
 
 
@@ -7254,10 +7254,6 @@ class Pph(Book):
       keys.sort()
       for s in keys:
         t.append("      " + s[6:])
-        #s2 = s[6:].split('\n')
-        #t.append("      " + s2[0])
-        #for i in range(1, len(s2)):
-        #  t.append("        " + s2[i])
       return t
 
     def showde(self): # return only the CSS created by the PPer using .de
@@ -11415,10 +11411,10 @@ class Pph(Book):
         elif self.imageDict[k] > 1: # used multiple times
           multiplyUsed += 1
           multiplyUsedList.append(k)
-
+      
       notUsedS = "s" if notUsed > 1 else ""
       multiplyUsedS = "s" if multiplyUsed > 1 else ""
-
+      
       if self.imageCheck: # full report?
         if notUsed:
           self.warn("{} image{} not used:".format(notUsed, notUsedS))
@@ -11428,7 +11424,7 @@ class Pph(Book):
           self.warn("{} image{} used multiple times:".format(multiplyUsed, multiplyUsedS))
           for img in multiplyUsedList:
             self.warn("  {} ({}x)".format(img, self.imageDict[img]))
-
+      
       else:  # summary only
         if notUsed:
           self.warn("{} image{} not used. Rerun with -img option for more information".format(notUsed, notUsedS))
