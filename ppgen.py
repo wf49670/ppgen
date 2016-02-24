@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54j-inifile" + with_regex   # 22-Feb-2016
+VERSION="3.54l" + with_regex   # 24-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
@@ -105,6 +105,13 @@ VERSION="3.54j-inifile" + with_regex   # 22-Feb-2016
 #  Implement -img command-line option. Without it only a summary report of the new errors is provided; with it
 #    a detailed report is provided.
 #3.54k: Fix failure during Python macro handling (improper reference to a slice of savevar)
+#3.54l:
+#  .ini file support
+#    Added support for ppgen.ini or ppgen-<name>.ini where <name> is specified
+#      via the command-line argument -ini
+#    Support allows specification of CSS defaults for h1-h6 and the
+#      specification of .nr values
+#  Also externalized the .ll and .in values to Python macros, along with the .nr nfl value
 
 
 
@@ -8575,10 +8582,14 @@ class Pph(Book):
       elif self.pnlink:
         t.append("  <a id='Page_{0}'></a>".format(pnum))
 
-    if id != "":
-      t.append("  <{} id='{}' style='{}' {}>{}</{}>".format(hnString, id, hcss, title, s, hnString))
+    if hnString in ['h1', 'h2'] or (pnum != "" and (self.pnshow or self.pnlink)):
+      tempbl = "  "
     else:
-      t.append("  <{} style='{}' {}>{}</{}>".format(hnString, hcss, title, s, hnString))
+      tempbl = ""
+    if id != "":
+      t.append("{}<{} id='{}' style='{}' {}>{}</{}>".format(tempbl, hnString, id, hcss, title, s, hnString))
+    else:
+      t.append("{}<{} style='{}' {}>{}</{}>".format(tempbl, hnString, hcss, title, s, hnString))
 
     if endDiv:
       t.append("</div>")
