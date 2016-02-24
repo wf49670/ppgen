@@ -29,7 +29,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54j" + with_regex   # 22-Feb-2016
+VERSION="3.54k" + with_regex   # 23-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
@@ -103,6 +103,7 @@ VERSION="3.54j" + with_regex   # 22-Feb-2016
 #  Also warn of files in images directory that aren't .jpg or .png files. 
 #  Implement -img command-line option. Without it only a summary report of the new errors is provided; with it
 #    a detailed report is provided.
+#3.54k: Fix failure during Python macro handling (improper reference to a slice of savevar)
 
 
 
@@ -2775,9 +2776,7 @@ class Book(object):
 
     def pythonSR(match):
       if not self.pmcount: # if first python macro this pass, initialize a dictionary
-        savevar = {}  # to allow macros to communicate
-      else:
-        savevar = self.savevar
+        self.savevar = {}  # to allow macros to communicate
       self.pmcount += 1
       var = {}
       var["count"] = 0 # count of input variables; none, as the match object is implicit
@@ -2793,7 +2792,7 @@ class Book(object):
       macglobals["toRoman"] = self.toRoman2
       macglobals["fromRoman"] = self.fromRoman
       macglobals["debugging"] = [self.bailout, self.wb, -1]
-      macglobals["savevar"] = savevar # make communication dictionary available
+      macglobals["savevar"] = self.savevar # make communication dictionary available
       maclocals = {"__builtins__":None}
 
       try: # exec the macro
@@ -2815,7 +2814,6 @@ class Book(object):
         traceback.print_exc()
         self.fatal("Above error occurred trying to copy output from Python macro {}".format(srrMacname))
 
-      self.savevar = savevar
       return output
 
     k = 0
@@ -3984,7 +3982,7 @@ class Book(object):
 
         else: # python format macro
           if not self.pmcount: # if first python macro this pass, initialize a dictionary
-            savevar = {}  # to allow macros to communicate
+            self.savevar = {}  # to allow macros to communicate
           self.pmcount += 1
           var = {}
           var["count"] = len(tlex) - 2 # count of input variables
@@ -3999,7 +3997,7 @@ class Book(object):
           macglobals["toRoman"] = self.toRoman2
           macglobals["fromRoman"] = self.fromRoman
           macglobals["debugging"] = [self.bailout, self.wb, i]
-          macglobals["savevar"] = savevar # make communication dictionary available
+          macglobals["savevar"] = self.savevar # make communication dictionary available
           maclocals = {"__builtins__":None}
 
           try: # exec the macro
@@ -4021,7 +4019,6 @@ class Book(object):
             self.crash_w_context("Above error occurred trying to copy output from Python macro {}".format(macroid), i)
 
           var = {}
-          self.savevar = savevar[:]
         i -= 1
 
       i += 1
