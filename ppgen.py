@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54l" + with_regex   # 24-Feb-2016
+VERSION="3.54m" + with_regex   # 24-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
@@ -112,6 +112,15 @@ VERSION="3.54l" + with_regex   # 24-Feb-2016
 #    Support allows specification of CSS defaults for h1-h6 and the
 #      specification of .nr values
 #  Also externalized the .ll and .in values to Python macros, along with the .nr nfl value
+#3.54m:
+#  Remove externalization of .ll/.in and .nr nfl to Python macros. The macro phase is too early for that to make sense,
+#    and they never make sense for Python macros used in .sr processing.
+#  Add a '\' to the end of the pngspath when creating .bin files to ensure that GG and the image viewer program
+#    can properly find the relevant image file.
+#  Allow .fs to affect lists (.ul, .ol, .dl)
+#  Allow .fs to affect .fn directly, so consistent font size results will occur when footnotes contain a mixture of
+#    different elements, not just paragraphs.
+
 
 
 
@@ -185,6 +194,7 @@ class Book(object):
   psstack = [] # last para spacing
   nfstack = [] # block stack
   dvstack = [] # stack for nested .dv blocks
+  fnfszstack = [] # stack for font-sizes across footnotes
   liststack = [] # ul/ol stack
   list_type = None   # no list in progress
   list_item_style = ''  # no item marker for unordered lists yet
@@ -1602,6 +1612,7 @@ class Book(object):
     del self.psstack[:]
     del self.nfstack[:]
     del self.dvstack[:]
+    del self.fnfszstack[:]
     del self.liststack[:]
     del self.dotcmdstack[:]
     del self.warnings[:]
@@ -2009,7 +2020,7 @@ class Book(object):
       temp = os.path.dirname(temp)
       temp = os.path.join(temp, "pngs")
       bb.append(");")  # finish building GG .bin file
-      bb.append("$::pngspath = '{}';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      bb.append("$::pngspath = '{}\\';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
       bb.append("1;")
       binfn = self.srcfile + ".bin"
       f1 = codecs.open(binfn, "w", "ISO-8859-1")
@@ -2814,9 +2825,10 @@ class Book(object):
       var["hint"] = srrHint    # the string after the macro name in the replace expression, or None
       var["out"] = [] # place for macro to put its output
       var["type"] = self.booktype # text or html
-      var["ll"] = self.regLL  # specified line length
-      var["in"] = self.regIN  # specified
-      var["nr-nfl"] = self.nregs["nfl"] # .nr nfl value
+      # below 3 lines don't make sense during .sr
+      #var["ll"] = self.regLL  # specified line length
+      #var["in"] = self.regIN  # specified
+      #var["nr-nfl"] = self.nregs["nfl"] # .nr nfl value
       macglobals = __builtins__.__dict__
       macglobals["var"] = var # make macro variables available
       macglobals["re"] = re # make re module available
@@ -3015,7 +3027,8 @@ class Book(object):
                            self.outertype,       # 12
                            self.outerregIN,      # 13
                            self.list_hang,       # 14
-                           self.list_align))     # 15
+                           self.list_align,      # 15
+                           self.fsz))            # 16
     self.dotcmds = dotcmds   # restrict set of valid dot cmds within a list
     self.regTI = 0    # always start these at 0 for a new stack
     self.regTIP = 0
@@ -3039,6 +3052,7 @@ class Book(object):
     self.outerregIN = currlist[13]
     self.list_hang = currlist[14]
     self.list_align = currlist[15]
+    self.fsz = currlist[16]
     self.dotcmds = self.dotcmdstack.pop()
 
   # Parse options on .ul or .ol directives
@@ -4022,9 +4036,10 @@ class Book(object):
           var["name"] = macroid # the name of the macro, in case the macro cares for some reason
           var["out"] = [] # place for macro to put its output
           var["type"] = self.booktype # text or html
-          var["ll"] = self.regLL  # specified line length
-          var["in"] = self.regIN  # specified
-          var["nr-nfl"] = self.nregs["nfl"] # .nr nfl value
+          # below 3 lines don't make sense for .pm as the phase is too early
+          #var["ll"] = self.regLL  # specified line length
+          #var["in"] = self.regIN  # specified
+          #var["nr-nfl"] = self.nregs["nfl"] # .nr nfl value
           macglobals = __builtins__.__dict__
           macglobals["var"] = var # make macro variables available
           macglobals["re"] = re # make re module available
@@ -4476,6 +4491,7 @@ class Book(object):
 class Ppt(Book):
 
   long_table_line_count = 0
+  fsz = "100%" # font size for paragraphs (ignored in Ppt, but must be defined as it's ref'd in common code)
 
   def __init__(self, args, renc, config):
     Book.__init__(self, args, renc, config)
@@ -5269,7 +5285,7 @@ class Ppt(Book):
         else:
           i += 1
       self.bb.append(");")  # finish building GG .bin file
-      self.bb.append("$::pngspath = '{}';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      self.bb.append("$::pngspath = '{}\\';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
       self.bb.append("1;")
 
   # -------------------------------------------------------------------------------------
@@ -6074,7 +6090,7 @@ class Ppt(Book):
     if not nf_handled:
       self.crash_w_context("invalid .nf option: {}".format(self.wb[self.cl]),self.cl)
 
-  # footnotes
+  # footnotes (Text)
   # here on footnote start or end
   # note: in text do not check for duplicate footnotes. they occur in the wild
   # note: invalid footnote names generated warning messages earlier during pre-processing
@@ -8650,17 +8666,18 @@ class Pph(Book):
   def doFontSize(self):
     if ".fs" == self.wb[self.cl]: # .fs with no args resets to 100%
       self.fsz = "100%" # reset font size
-      self.wb[self.cl] = "" # processing complete
-    m = re.match(r"\.fs (.+)%", self.wb[self.cl])
-    if m:
-      self.fsz = m.group(1) + "%"
-      self.wb[self.cl] = ""
-    m = re.match(r"\.fs (.+)em", self.wb[self.cl])
-    if m:
-      self.fsz = m.group(1) + "em"
-      self.wb[self.cl] = ""
-    if ".fs" in self.wb[self.cl]:
-      self.crash_w_context("malformed .fs directive", self.cl)
+
+    else:
+      m = re.match(r"\.fs (.+)%", self.wb[self.cl])
+      if m:
+        self.fsz = m.group(1) + "%"
+        self.wb[self.cl] = ""
+      m = re.match(r"\.fs (.+)em", self.wb[self.cl])
+      if m:
+        self.fsz = m.group(1) + "em"
+        self.wb[self.cl] = ""
+      if ".fs" in self.wb[self.cl]:
+        self.crash_w_context("malformed .fs directive", self.cl)
     del self.wb[self.cl]
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -9462,7 +9479,7 @@ class Pph(Book):
         self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
 
 
-  # .fn footnote
+  # Footnotes (HTML)
   # here on footnote start or end
   # handle completely different for paragraph indent or block style
   # Note: messages for invalid footnote names were issued during pre-processing
@@ -9474,6 +9491,12 @@ class Pph(Book):
     if m: # footnote ends
       self.wb[self.cl] = "</div>"
       self.cl += 1
+
+      if len(self.fnfszstack):  # restore prior font-size if possible
+        self.fsz = self.fnfszstack.pop()
+      else:
+        self.fatal("Internal error: footnote font-size stack empty")
+
       if self.footnoteLzH and not self.keepFnHere: # if special footnote landing zone in effect and not disabled for this footnote
         self.grabFootnoteH()
       return
@@ -9495,6 +9518,13 @@ class Pph(Book):
       elif m.group(3).startswith("lz") and not self.footnoteLzT and not self.footnoteLzH:
         self.warn(".fn specifies lz=here but no landing zones are in effect:{}".format(self.wb[self.cl]))
 
+    myfsz = self.fsz                  # capture current font size
+    self.fnfszstack.append(self.fsz)  # stack it for later restoration
+    if myfsz != "100%" and myfsz != "1.0em": # if font-size non-standard
+      self.fsz = "100%"                      # set global font size to 100% (we'll use the other value on our <div>)
+    else:  # standard font size
+      myfsz = ""
+
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     if self.pindent: # indented paragraphs
 
@@ -9503,10 +9533,13 @@ class Pph(Book):
       s1 = int(float(s0)*100.0) # in tenths of ems
       s2 = (s1//2)/100 # forces one decimal place
 
+      if myfsz:                                          # if we have a font-size override
+        myfsz = " style='font-size: {}; '".format(myfsz)  # build a style string for it
+
       self.css.addcss("[1430] div.footnote {}")
       self.css.addcss("[1431] div.footnote > :first-child { margin-top: 1em; }")
       self.css.addcss("[1432] div.footnote p {{ text-indent: 1em; margin-top: {0}em; margin-bottom: {1}em; }}".format(s2,s2))
-      self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
+      self.wb[self.cl] = "<div class='footnote' id='f{}'{}>".format(fnname, myfsz)
       if self.footnoteLzH: # if special footnote landing zone processing in effect
         self.footnoteStart = self.cl # remember where this footnote started
       self.cl += 1
@@ -9527,6 +9560,9 @@ class Pph(Book):
       if self.pvs > 0:
         hcss = "margin-top: {}em; ".format(self.pvs)
         self.pvs = 0
+
+      if myfsz:                                  # if font-size override, build into style string
+        hcss += "font-size: {}; ".format(myfsz)  # build a style string
 
       if hcss != "":
         self.wb[self.cl] = "<div class='footnote' id='f{}' style='{}'>".format(fnname, hcss)
@@ -10223,7 +10259,7 @@ class Pph(Book):
         else:
           i += 1
       self.bb.append(");")
-      self.bb.append("$::pngspath = '{}';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      self.bb.append("$::pngspath = '{}\\';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
       self.bb.append("1;")
 
 
@@ -10255,9 +10291,10 @@ class Pph(Book):
 
   # Called to retrieve a style string representing current display parameters
   #   for a .ul, .ol, or .dl
-  # Unlike the other version this one ignores self.regTI, self.fsz, and self.pvs (which
+  # Unlike the other version this one ignores self.regTI and self.fsz (which
   #   must be handled separately) and has no support for .nf or .rj
   def list_fetchStyle(self):
+
     marginlr = ""
     margintop = ""
     if self.regIN != 0 and not self.list_item_active:
@@ -10642,6 +10679,11 @@ class Pph(Book):
       margintop, marginlr = self.list_fetchStyle()
 
       s = marginlr + "margin-top: .5em; margin-bottom: .5em; " # margin-top may be overriden in HTML later
+
+      if self.fsz != "100%" and self.fsz != "1.0em":
+        s += "font-size: {}; ".format(self.fsz)
+        self.fsz = "100%" # reset so inner elements aren't further reduced (will be restored when popping list stack)
+
       s += "list-style-type: " + self.list_item_style + "; "
 
       ulparms += s
@@ -10749,6 +10791,11 @@ class Pph(Book):
       margintop, marginlr = self.list_fetchStyle()
 
       s = marginlr + "margin-top: .5em; margin-bottom: .5em; " # margin-top may be overriden in HTML later
+
+      if self.fsz != "100%" and self.fsz != "1.0em":
+        s += "font-size: {}; ".format(self.fsz)
+        self.fsz = "100%" # reset so inner elements aren't further reduced (will be restored when popping list stack)
+
       s += "list-style-type: " + self.list_item_style[0] + "; "
 
       olparms += s
@@ -10945,6 +10992,10 @@ class Pph(Book):
           dlparms += marginlr # set left/right margins
           dlparms += " margin-top: .5em; margin-bottom: .5em;" # CSS assumes .5em top margin; HTML will override if needed
 
+          if b.fsz != "100%" and b.fsz != "1.0em":
+            dlparms += " font-size: {};".format(self.fsz)
+            b.fsz = "100%" # reset so inner elements aren't further reduced (will be restored when popping list stack)
+
           if self.options["float"]: # float=y
             dtparms += " float: left; clear: left; text-align: {}; width: {}em;".format(dtalign, dtwidth)
             dtparms += " padding-top: .5em; padding-right: .5em;"
@@ -11045,6 +11096,10 @@ class Pph(Book):
 
           dldivparms += " text-align: left;"
           dlparaparms += " text-align: left; margin-top: .5em; margin-bottom: .5em;"
+
+          if b.fsz != "100%" and b.fsz != "1.0em":
+            dlparms += " font-size: {};".format(self.fsz)
+            b.fsz = "100%" # reset so inner elements aren't further reduced (will be restored when popping list stack)
 
           if self.options["debug"]:
             dlspanparms += " background-color: #FFC0CB;" # set a pink background for the dt if debugging
@@ -11422,10 +11477,10 @@ class Pph(Book):
         elif self.imageDict[k] > 1: # used multiple times
           multiplyUsed += 1
           multiplyUsedList.append(k)
-      
+
       notUsedS = "s" if notUsed > 1 else ""
       multiplyUsedS = "s" if multiplyUsed > 1 else ""
-      
+
       if self.imageCheck: # full report?
         if notUsed:
           self.warn("{} image{} not used:".format(notUsed, notUsedS))
@@ -11435,7 +11490,7 @@ class Pph(Book):
           self.warn("{} image{} used multiple times:".format(multiplyUsed, multiplyUsedS))
           for img in multiplyUsedList:
             self.warn("  {} ({}x)".format(img, self.imageDict[img]))
-      
+
       else:  # summary only
         if notUsed:
           self.warn("{} image{} not used. Rerun with -img option for more information".format(notUsed, notUsedS))
@@ -11555,47 +11610,49 @@ def loadConfig(ini_file):
   config_encoding = ""
   fn = ""
 
-  if ini_file:
-    s = "ppgen-" + ini_file + ".ini"
-  else:
-    s = "ppgen.ini"
+  if ini_file != "none":  # if user wants use to use a .ini file
 
-  # determine location of config file
-  if os.path.isfile(s): # prefer local version
-    fn = s
-  else:
-    s = os.path.join(os.path.dirname(os.path.realpath(__file__)), s) # alternate location
-    if os.path.isfile(s):
+    if ini_file:
+      s = "ppgen-" + ini_file + ".ini"
+    else:
+      s = "ppgen.ini"
+
+    # determine location of config file
+    if os.path.isfile(s): # prefer local version
       fn = s
-  if fn:
-    try:
-      config_file = open(fn, "r", encoding='ascii').read()
-      config_encoding = "ASCII" # we consider ASCII as a subset of Latin-1 for DP purposes
-    except Exception as e:
-      pass
-
-    if config_encoding == "":
+    else:
+      s = os.path.join(os.path.dirname(os.path.realpath(__file__)), s) # alternate location
+      if os.path.isfile(s):
+        fn = s
+    if fn:
       try:
-        config_file = open(fn, "rU", encoding='utf-8-sig').read()
-        config_encoding = "utf_8"
+        config_file = open(fn, "r", encoding='ascii').read()
+        config_encoding = "ASCII" # we consider ASCII as a subset of Latin-1 for DP purposes
       except Exception as e:
         pass
 
-    if config_encoding == "":
+      if config_encoding == "":
+        try:
+          config_file = open(fn, "rU", encoding='utf-8-sig').read()
+          config_encoding = "utf_8"
+        except Exception as e:
+          pass
+
+      if config_encoding == "":
+        try:
+          config_file = open(fn, "r", encoding='latin_1').read()
+          config_encoding = "latin_1"
+        except Exception as e:
+          pass
+
+    if config_encoding:
+      print("Processing ini file {}".format(fn))
+
       try:
-        config_file = open(fn, "r", encoding='latin_1').read()
-        config_encoding = "latin_1"
-      except Exception as e:
-        pass
-
-  if config_encoding:
-    print("Processing ini file {}".format(fn))
-
-    try:
-      config.read(fn, encoding=config_encoding)
-    except:
-      traceback.print_exc()
-      self.fatal("Above error occurred while reading ini file {}".format(fn))
+        config.read(fn, encoding=config_encoding)
+      except:
+        traceback.print_exc()
+        self.fatal("Above error occurred while reading ini file {}".format(fn))
 
   # convert any multi-line header values to single line
   for k in config['CSS']:
@@ -11631,7 +11688,7 @@ def main():
   parser.add_argument("-img", "--imagecheck", action="store_true",
                       help="create report of unused image files")
   parser.add_argument("-ini", "--ini_file",
-                      help="ini file suffix")
+                      help="ini file suffix (or none)")
 
 
   args = parser.parse_args()
