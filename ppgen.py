@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54m" + with_regex   # 24-Feb-2016
+VERSION="3.54n" + with_regex   # 25-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
@@ -120,6 +120,10 @@ VERSION="3.54m" + with_regex   # 24-Feb-2016
 #  Allow .fs to affect lists (.ul, .ol, .dl)
 #  Allow .fs to affect .fn directly, so consistent font size results will occur when footnotes contain a mixture of
 #    different elements, not just paragraphs.
+#3.54n:
+#  Implement .fs for the .dv directive, as was done for .fn and .ul/.ol/.dl.
+#  Also, add fs= operand on .dv so a self-contained font-size change can be .dv fs=whatever/statements/.dv-
+#  Add push operand to .fs to allow stacking the current value, which can be popped by .fs with no arguments
 
 
 
@@ -194,7 +198,8 @@ class Book(object):
   psstack = [] # last para spacing
   nfstack = [] # block stack
   dvstack = [] # stack for nested .dv blocks
-  fnfszstack = [] # stack for font-sizes across footnotes
+  fsstack = [] # stack for .fs push
+  blkfszstack = [] # stack for font-sizes across footnotes, divs, and lists
   liststack = [] # ul/ol stack
   list_type = None   # no list in progress
   list_item_style = ''  # no item marker for unordered lists yet
@@ -1612,7 +1617,8 @@ class Book(object):
     del self.psstack[:]
     del self.nfstack[:]
     del self.dvstack[:]
-    del self.fnfszstack[:]
+    del self.fsstack[:]
+    del self.blkfszstack[:]
     del self.liststack[:]
     del self.dotcmdstack[:]
     del self.warnings[:]
@@ -1707,6 +1713,7 @@ class Book(object):
       # .dm handled separately
       # .dt outside of a .dl block handled separately
       ".dv" :  (self.doDiv, None),
+      ".⓭D" :  (self.doDiv, None),   # special "processed" form of ending tag for .dv-, .⓭DV-
       ".fm" :  (self.doFmark, None),
       ".fn" :  (self.doFnote, None),
       ".fs" :  (self.doFontSize, None),
@@ -1756,6 +1763,7 @@ class Book(object):
       ".di" :  (self.doDropimage, None),
       ".dl" :  (self.doDl, None),
       ".dv" :  (self.doDiv, None),
+      ".⓭D" :  (self.doDiv, None),   # special "processed" form of ending tag for .dv-
       ".fm" :  (self.rejectWithinList, None),
       ".fn" :  (self.rejectWithinList, None),
       ".fs" :  (self.doFontSize, None),
@@ -2271,6 +2279,7 @@ class Book(object):
           if not b.list_item_active:
             b.crash_w_context("Nested list must occur within a list item", b.cl)
         b.push_list_stack(b.list_dotcmds)
+        b.fszpush('.dl')
 
         b.list_type = "d"
         b.list_item_active = False
@@ -2426,6 +2435,7 @@ class Book(object):
     def end_dl(self):
       b = self.book
       b.pop_list_stack()
+      b.fszpop('.dl')
       self.bump_cl()
 
     # Routine to wrap a definition line that is too long
@@ -2530,7 +2540,7 @@ class Book(object):
 
         # If we hit a dot command, handle it
         if not b.wb[b.cl].startswith(".dt") and not b.wb[b.cl].startswith(".dd"):
-          if re.match(r"\.[a-z]", b.wb[b.cl]):
+          if re.match(r"\.([a-z]|⓭DV-)", b.wb[b.cl]):
             if self.options["combine"] and (self.term or self.paragraph):
               self.emit_paragraph()
             else:
@@ -3027,8 +3037,7 @@ class Book(object):
                            self.outertype,       # 12
                            self.outerregIN,      # 13
                            self.list_hang,       # 14
-                           self.list_align,      # 15
-                           self.fsz))            # 16
+                           self.list_align))     # 15
     self.dotcmds = dotcmds   # restrict set of valid dot cmds within a list
     self.regTI = 0    # always start these at 0 for a new stack
     self.regTIP = 0
@@ -3052,8 +3061,84 @@ class Book(object):
     self.outerregIN = currlist[13]
     self.list_hang = currlist[14]
     self.list_align = currlist[15]
-    self.fsz = currlist[16]
     self.dotcmds = self.dotcmdstack.pop()
+
+  # Handle font-size stacking for ppgen blocks (.fn, .ul/ol/dl, .dv) that can contain other elements
+  # type: string, '.fn', '.ul', etc.
+  # Note: We also push the current fsstack, and set to base state, and then restore it when popping,
+  #       so that all font-size effects/changes done within the block are completely local to the block
+  def fszpush(self, type):
+    self.blkfszstack.append((self.fsz, type, self.fsstack))
+    del self.fsstack[:] # reset the fsstack to base state
+
+  def fszpop(self, type):
+    if self.blkfszstack:  # restore prior block's font-size if possible and fsstack
+      self.fsz, fsztype, self.fsstack = self.blkfszstack.pop()
+      if fsztype != type:
+        self.crash_w_context("Improper nesting of .fs requests across blocks. Expecting {}-".format(fsztype))
+    else:
+      self.crash_w_context("Font-size stack empty while processing {}-".format(type))
+
+  # Check for proper termination of .dv block and for proper nesting of any internal
+  # .dv, .fn, .ul, .ol, and/or .dl blocks
+  # At entry, self.cl points to the initial .dv directive
+  def checkDvNest(self):
+    j = self.cl
+
+    ulnest = olnest = dlnest = fnnest = 0      # assume we are properly nested within other elements
+
+    while j < len(self.wb):
+
+      if self.wb[j].startswith(".ul-"):
+        ulnest -= 1
+      elif self.wb[j].startswith(".ul"):
+        ulnest += 1
+      elif self.wb[j].startswith(".ol-"):
+        olnest -= 1
+      elif self.wb[j].startswith(".ol"):
+        olnest += 1
+      elif self.wb[j].startswith(".dl-"):
+        dlnest -= 1
+      elif self.wb[j].startswith(".dl"):
+        dlnest += 1
+      elif self.wb[j].startswith(".fn-"):
+        fnnest -= 1
+      elif self.wb[j].startswith(".fn"):
+        fnnest += 1
+
+      else:
+        if self.wb[j] == ".dv-":
+          nested = ulnest + olnest + dlnest + fnnest
+          if nested:
+            ul = "ul " if ulnest else ""
+            ol = "ol " if olnest else ""
+            dl = "dl " if dlnest else ""
+            fn = "fn" if fnnest else ""
+            nesterr = ul + ol + dl + fn
+            self.crash_w_context("Improper block nesting of {} found at .dv-".format(nesterr), j)
+          if self.dvstack:
+            dummy, (ulnest, olnest, dlnest, fnnest) = self.dvstack.pop()
+
+          else:
+            self.crash_w_context(".dv- found, but no open .dv block to close", j)
+
+          if not self.dvstack: # did this .dv- leave us with all open .dv blocks closed?
+            break              # yes
+
+        elif self.wb[j].startswith(".dv"):
+          self.dvstack.append((j, (ulnest, olnest, dlnest, fnnest))) # remember where we started & block nesting
+
+      j += 1
+
+    if j >= len(self.wb):          # oops; hit end of file before .dv-
+      if len(self.dvstack) > 1:    # were we nested?
+        self.crash_w_context("{} unclosed nested .dv directives; showing outer one.".format(len(self.dvstack)),
+                             self.dvstack[0][0])
+      else:
+        self.crash_w_context("Unclosed .dv directive:", self.dvstack[0][0])
+
+    return j
+
 
   # Parse options on .ul or .ol directives
   # type: "u" (.ul) or "o" (.ol)
@@ -3206,6 +3291,7 @@ class Book(object):
       elif self.list_type != "u":
         self.crash_w_context("Cannot close .ol block with .ul-", self.cl)
       self.pop_list_stack()
+      self.fszpop('.ul')
       return (False, active, -1, id, clss)
 
     else: # beginning an unordered list
@@ -3214,6 +3300,7 @@ class Book(object):
           self.crash_w_context("Nested list must occur within a list item", self.cl)
 
       self.push_list_stack(self.list_dotcmds)
+      self.fszpush('.ul')
 
       self.list_type = "u"
       self.list_item_active = False
@@ -3235,6 +3322,7 @@ class Book(object):
       elif self.list_type != "o":
         self.crash_w_context("Cannot close .ul block with .ol-", self.cl)
       self.pop_list_stack()
+      self.fszpop('.ol')
       return (False, active, -1, id, clss)
 
     else: # beginning an ordered list
@@ -3243,6 +3331,7 @@ class Book(object):
           self.crash_w_context("Nested list must occur within a list item", self.cl)
 
       self.push_list_stack(self.list_dotcmds)
+      self.fszpush('.ol')
 
       self.list_type = "o"
       self.list_item_active = False
@@ -5413,33 +5502,11 @@ class Ppt(Book):
 
   # doDiv (text)
   def doDiv(self):
-    j = self.cl
 
-    while j < len(self.wb):
-      if self.wb[j].startswith(".dv "):
-        self.dvstack.append(j) # remember where we started
+    j = self.checkDvNest()
 
-      elif self.wb[j] == ".dv-":
-        if self.dvstack:
-          self.dvstack.pop()
-        else:
-          self.crash_w_context(".dv- found, but no open .dv block to close", j)
-
-        if not self.dvstack: # did this .dv- leave us with all open .dv blocks closed?
-          break              # yes
-
-      j += 1
-
-    if j < len(self.wb):
-      self.wb[j] = ""              # delete the .dv- and force paragraph break after .dv block if closed properly
-    else:
-      if len(self.dvstack) > 1:
-        self.crash_w_context("{} unclosed nested .dv directives; showing outer one.".format(len(self.dvstack)),
-                             self.dvstack[0])
-      else:
-        self.crash_w_context("Unclosed .dv directive:", self.dvstack[0])
-
-    del(self.wb[self.cl])                              # delete the .dv directive.
+    self.wb[j] = ""              # delete the .dv- and force paragraph break after .dv block if closed properly
+    del(self.wb[self.cl])        # simply delete the .dv directive for text processing
 
   # .hr horizontal rule
   def doHr(self):
@@ -5531,7 +5598,7 @@ class Ppt(Book):
     self.cl += 1
 
   # .fs
-  # change font size for following paragraphs
+  # change font size for following paragraphs (and lists, divs, footnotes)
   # no effect in text
   def doFontSize(self):
     del self.wb[self.cl]
@@ -6749,7 +6816,7 @@ class Ppt(Book):
     self.eb.append(".RS 1")
     self.cl = i + 1 # skip the closing .ix-
 
-
+  # Process a paragraph (Text)
   def doPara(self):
     t = []
     bnt = []
@@ -7196,7 +7263,7 @@ class Ppt(Book):
         continue
 
       # will hit either a dot directive or wrappable text
-      if re.match(r"\.[a-z]", self.wb[self.cl]):
+      if re.match(r"\.[a-z]", self.wb[self.cl]): # don't need check for .⓭DV- here; it's never in text
         self.doDot()
         continue
       self.doPara()
@@ -8392,34 +8459,53 @@ class Pph(Book):
     else:
       return ""
 
+  # extract any "fs=" argument from string s
+  def dvGetFs(self, s, i):
+    if "fs=" in s:
+      m = re.search(r"fs=(.*?%) ?", s)
+      if m:
+        return m.group(1)
+      else:
+        m = re.search(r"fs=(.*?em) ?", s)
+        if m:
+          return m.group(1)
+        else:
+          self.crash_w_context("Improper fs= specification on .dv", i)
+
   # doDiv (HTML)
   def doDiv(self):
-    j = self.cl
 
-    while j < len(self.wb):
-      if self.wb[j].startswith(".dv "):
-        self.dvstack.append(j) # remember where we started
+    if self.wb[self.cl] == ".⓭DV-": # have we hit our special ending tag for a processed .dv-?
+      self.fszpop('.dv')           # pop the fsz stack
+      self.wb[self.cl] = ""        # replace the special ending tag with a null line
+      self.cl += 1
+      return
 
-      elif self.wb[j] == ".dv-":
-        if self.dvstack:
-          k = self.dvstack.pop()
-        else:
-          self.crash_w_context(".dv- found, but no open .dv block to close", j)
+    j = self.cl                   # remember where we started
 
-        if not self.dvstack: # did this .dv- leave us with all open .dv blocks closed?
-          break              # yes
+    self.fszpush('.dv')           # push current .fs value onto fsz stack
+    fs = ""
+    if "fs=" in self.wb[j]:       # did user ask for a different font size for the division?
+      fs = self.dvGetFs(self.wb[j], j)
+    elif self.fsz != "100%" and self.fsz != "1.0em":
+      fs = self.fsz
+    if fs:
+      fs = " style='font-size: {};'".format(fs)
+    self.fsz = "100%" # reset self.fsz to 100% in any case; it was either already 100% or we've captured the
+                      # different value and will use it on our <div>, restoring it later on the .⓭DV-
 
-      j += 1
+    clss = self.dvGetClass(self.wb[j])  # get the specified classname, if any
+    if clss:
+      clss = " class='{}'".format(clss)
 
-    if j < len(self.wb):
-      self.wb[j:j+1] = ["", "</div>"]
-      self.wb[k:k+1] = ["<div class='{}'>".format(self.dvGetClass(self.wb[k])), ""]
-    else:
-      if len(self.dvstack) > 1:
-        self.crash_w_context("{} unclosed nested .dv directives; showing outer one.".format(len(self.dvstack)),
-                             self.dvstack[0])
-      else:
-        self.crash_w_context("Unclosed .dv directive:", self.dvstack[0])
+    if not clss and not fs:     # if we're about to generate a simple <div> mark it so we can ignore it later
+      clss = "⓭"                # and not affect dopara processing (esp. resulting from doDropImage)
+
+    k = self.checkDvNest()      # go check for proper .dv termination and .dv nesting and find our .dv- line
+
+    self.wb[k:k+1] = [".⓭DV-", "</div>"]   # insert special end directive and ending </div> in place of our .dv-
+    self.wb[j:j+1] = ["<div{}{}>".format(clss, fs), ""] # insert <div> and blank line
+                                      # in place of our .dv
 
   # .hr horizontal rule
   def doHr(self):
@@ -8662,22 +8748,35 @@ class Pph(Book):
   # em and % only for scalable text in readers
   #   .fs 0.8em  set font size to 0.8em
   #   .fs 80%    set font size to 80%
-  #   .fs        shortcut, reset font size to 100%
+  #   .fs push   saves current font size on the fsstack
+  #   .fs        shortcut, pop fsstack (if any) and reset font size to that value, or
+  #              reset font size to 100% if fsstack was empty
   def doFontSize(self):
-    if ".fs" == self.wb[self.cl]: # .fs with no args resets to 100%
-      self.fsz = "100%" # reset font size
+    if ".fs" == self.wb[self.cl]: # .fs with no args: pops fsstack and resets to that value, or resets to 100%
+      if self.fsstack:                # any pushed value?
+        self.fsz = self.fsstack.pop() # yes, use it
+      else:
+        self.fsz = "100%"             # no, reset font size to 100%
 
-    else:
-      m = re.match(r"\.fs (.+)%", self.wb[self.cl])
+    else: # something specified
+      m = re.match(r"\.fs +(.+)%$", self.wb[self.cl])  # % form?
       if m:
         self.fsz = m.group(1) + "%"
         self.wb[self.cl] = ""
-      m = re.match(r"\.fs (.+)em", self.wb[self.cl])
+      m = re.match(r"\.fs +(.+)em$", self.wb[self.cl]) # em form?
       if m:
         self.fsz = m.group(1) + "em"
+        if self.fsz == "1em":
+          self.fsz = "1.0em"  # reset to standard format for our purposes
         self.wb[self.cl] = ""
-      if ".fs" in self.wb[self.cl]:
+      m = re.match(r"\.fs +push$", self.wb[self.cl])   # push form?
+      if m:
+        self.fsstack.append(self.fsz)
+        self.wb[self.cl] = ""
+
+      if ".fs" in self.wb[self.cl]:    # was it handled? if not, crash
         self.crash_w_context("malformed .fs directive", self.cl)
+
     del self.wb[self.cl]
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -9478,7 +9577,6 @@ class Pph(Book):
       else:
         self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
 
-
   # Footnotes (HTML)
   # here on footnote start or end
   # handle completely different for paragraph indent or block style
@@ -9492,10 +9590,7 @@ class Pph(Book):
       self.wb[self.cl] = "</div>"
       self.cl += 1
 
-      if len(self.fnfszstack):  # restore prior font-size if possible
-        self.fsz = self.fnfszstack.pop()
-      else:
-        self.fatal("Internal error: footnote font-size stack empty")
+      self.fszpop('.fn')
 
       if self.footnoteLzH and not self.keepFnHere: # if special footnote landing zone in effect and not disabled for this footnote
         self.grabFootnoteH()
@@ -9519,9 +9614,10 @@ class Pph(Book):
         self.warn(".fn specifies lz=here but no landing zones are in effect:{}".format(self.wb[self.cl]))
 
     myfsz = self.fsz                  # capture current font size
-    self.fnfszstack.append(self.fsz)  # stack it for later restoration
+    self.fszpush('.fn')               # stack current size for later restoration
     if myfsz != "100%" and myfsz != "1.0em": # if font-size non-standard
-      self.fsz = "100%"                      # set global font size to 100% (we'll use the other value on our <div>)
+      self.fsz = "100%"               # set global font size to 100% for inner elements
+                                      #(we'll use the other value on our <div>)
     else:  # standard font size
       myfsz = ""
 
@@ -10486,7 +10582,7 @@ class Pph(Book):
     self.wb[startloc:endloc+1] = t # replace source lines with generated list
     self.cl = startloc + len(t)
 
-
+  # Handle paragraph (HTML)
   def doPara(self):
     if self.regTIp != 0: # If persistent temporary indent in effect, pretend we got a .ti command
       self.regTI = self.regTIp
@@ -10574,7 +10670,7 @@ class Pph(Book):
     while ( self.cl < len(self.wb) and
             self.wb[self.cl]): # any blank line or dot command ends paragraph
       if self.wb[self.cl].startswith("."):
-        m = re.match(r"\.[a-z]", self.wb[self.cl])
+        m = re.match(r"\.([a-z]|⓭DV-)", self.wb[self.cl])
         if m:
           break
       self.cl += 1
@@ -11513,13 +11609,16 @@ class Pph(Book):
         self.cl += 1
         continue
       # will hit either a dot directive, a user-defined <div>, or wrappable text
-      if re.match(r"\.[a-z]", self.wb[self.cl]):
+      if re.match(r"\.([a-z]|⓭DV-)", self.wb[self.cl]):
         self.doDot()
         continue
-      if self.wb[self.cl].startswith("<div class="):
+      if (self.wb[self.cl].startswith("<div class=") or # skip over several <div> cases generated by .dv
+          self.wb[self.cl].startswith("<div style=") or
+          self.wb[self.cl] == "</div>"):
         self.cl += 1
         continue
-      if self.wb[self.cl] == "</div>":
+      if self.wb[self.cl] == "<div⓭>": # one more case of .dv to skip over, but this one needs fixup
+        sellf.wb[self.cl] = "<div>"    # remove the ⓭ that marked this one for us
         self.cl += 1
         continue
 
@@ -11790,6 +11889,8 @@ if __name__ == '__main__':
 # \u24ea  ⓪   CIRCLED DIGIT 0 # (\#)
 # \u24eb  ⓫   NEGATIVE CIRCLED NUMBER ELEVEN # temporary substitute for | in inline HTML sidenotes until postprocessing
 # \U24ec  ⓬   NEGATIVE CIRCLED NUMBER TWELVE # temporary substitute for <br> in text wrapping
+# \U24ed  ⓭   NEGATIVE CIRCLED NUMBER THIRTEEN # temporarily marks end of .dv blocks in HTML, .⓭DV-
+#                                                and beginning of the div for .dv without a class or style element
 # \u25ee  ◮   UP-POINTING TRIANGLE WITH RIGHT HALF BLACK # <b> or <strong> (becomes =)
 # \u25f8  ◸   UPPER LEFT TRIANGLE # precedes superscripts
 # \u25f9  ◹   UPPER RIGHT TRIANGLE # follows superscripts
