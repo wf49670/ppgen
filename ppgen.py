@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54n+PoetryLineNumbers" + with_regex   # 25-Feb-2016
+VERSION="3.54n+PoetryLineNumbers+TagChars" + with_regex   # 25-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
@@ -124,10 +124,17 @@ VERSION="3.54n+PoetryLineNumbers" + with_regex   # 25-Feb-2016
 #  Implement .fs for the .dv directive, as was done for .fn and .ul/.ol/.dl.
 #  Also, add fs= operand on .dv so a self-contained font-size change can be .dv fs=whatever/statements/.dv-
 #  Add push operand to .fs to allow stacking the current value, which can be popped by .fs with no arguments
+#TagChars:
+#  For text output, allow PPer to specify the characters to replace <b>, <i>, etc. via .nr directives.
+#  Warn of any conflicts if the chosen characters are used elsewhere
+#  If the PPer chooses to "tag" <sc> in the text output, don't UPPERCASE it.
 #PoetryLineNumbers:
 #  Add support to .nf l/b/c for lnum=r|l (default: none) and snum=nnn (length of number; 0 default = no numbers)
 #  For line numbers we will assume that the appear on the right end of lines, separated by at least 6 spaces from
 #  the other text. Stanza numbers, if present, must be separated from the text by |
+#
+#  Added check to complain and terminate if the PPer happens to use any of the "internal" Unicode characters that ppgen
+#    uses for special purposes.
 
 
 
@@ -1655,6 +1662,18 @@ class Book(object):
     self.nregs["Sidenote"] = "Sidenote" # English word for Sidenote for text files
     self.nregs["dcs"] = "250%" # drop cap font size
     self.nregs["nfl"] = "-1" # default number of spaces to indent .nf l blocks in text (-1 = disabled)
+    self.nregs["tag-i"] = "_" # default to surrounding <i> text with _ in text output
+    self.nregs["tag-b"] = "=" # default to surrounding <b> text with = in text output
+    self.nregs["tag-g"] = "_" # default to surrounding <g> text with _ in text output
+    self.nregs["tag-sc"] = "" # default to surrounding <sc> text with nothing (meaning it will be upper-cased
+                              # by default in text output)
+    self.nregs["tag-f"] = ""  # default to surrounding <f> text with nothing in text output (meaning <f> is ignored
+                              # by default in text)
+    self.nregs["tag-em"] = "_" # default to surrounding <em> text with _ in text output
+    self.nregs["tag-strong"] = "=" # default to surrounding <strong> text with = in text output
+    self.nregs["tag-cite"] = "_" # default to surrounding <cite> text with _ in text output
+    self.nregs["tag-u"] = "" # default to surrounding <u> text with nothing in text output (meaning <u> is ignored
+                             # by default in text)
     self.nregs["btb_"] = "thin solid" # table border: top/bottom using _
     self.nregs["btb__"] = "medium solid" # table border: top/bottom using __
     self.nregs["btb="] = "medium double" # table border: top/bottom using =
@@ -1678,6 +1697,8 @@ class Book(object):
     self.pageno = "" # page number stored as string (null is the same as a Roman numeral 0)
     self.bnmatch = re.compile("^⑱.*?⑱$")  # re to match a .bn line
     self.pnmatch = re.compile("^⑯.*⑰$")   # re to match a .pn line
+
+
 
     self.list_styles_u = {
       'disc':'●',
@@ -2116,6 +2137,87 @@ class Book(object):
       # should never get here
       self.fatal("could not process {} in {}".format(tgt, attr))
 
+  # Check for pppgen special characters in source file
+  # ppgen uses a number of special Unicode characters as flags during
+  # processing. This routine will scan the PPer's source file to make
+  # sure the PPer hasn't chosen to use any of them for some odd reason,
+  # as that could lead to odd behavior
+  def check_for_pppgen_special_characters(self):
+    s = '\n'.join(self.wb)  # make a text blob
+    pattern = r"(.*?)([ᒪᒧⓓⓢ①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳ⓈⓉⓊⓋⓏⓣⓤⓥ⓪⓫⓬⓭⓵⓶⓷⓸⓹⓺⓻⓼⓽◮◸◹◺◿⫉])"
+    
+    values = {'ᒪ': '\\u14aa',  #  ᒪ   CANADIAN SYLLABICS MA # precedes lang= info
+              'ᒧ': '\\u14a7',  #  ᒧ   CANADIAN SYLLABICS MO # follows lang= info
+              'ⓓ': '\\u24d3',  #  ⓓ   CIRCLED LATIN SMALL LETTER D # four dot ellipsis
+              'ⓢ': '\\u24e2',  #  ⓢ   CIRCLED LATIN SMALL LETTER D + CIRCLED LATIN SMALL LETTER S repeated 2.5
+              '①': '\\u2460',  #  ①   CIRCLED DIGIT ONE   # \{
+              '②': '\\u2461',  #  ②   CIRCLED DIGIT TWO   # \}
+              '③': '\\u2462',  #  ③   CIRCLED DIGIT THREE # \[
+              '④': '\\u2463',  #  ④   CIRCLED DIGIT FOUR  # \]
+              '⑤': '\\u2464',  #  ⑤   CIRCLED DIGIT FIVE  # \<
+              '⑥': '\\u2465',  #  ⑥   CIRCLED DIGIT SIX   # \:
+              '⑦': '\\u2466',  #  ⑦   CIRCLED DIGIT SEVEN # used in footnote processing (along with circled 11/12/13/14)
+              '⑧': '\\u2467',  #  ⑧   CIRCLED DIGIT EIGHT # Used for leading nbsp in .ti processing
+              '⑨': '\\u2468',  #  ⑨   CIRCLED DIGIT NINE  # \- (so it doesn't become an em-dash later)
+              '⑩': '\\u2469',  #  ⑩   CIRCLED NUMBER TEN  # temporarily protect \| during Greek conversion
+              '⑪': '\\u246a',  #  ⑪   CIRCLED NUMBER ELEVEN # used in footnote processing (along with 7/12/13/14)
+              '⑫': '\\u246b',  #  ⑫   CIRCLED NUMBER TWELVE # used in footnote processing (along with 7/11/13/14)
+              '⑬': '\\u246c',  #  ⑬   CIRCLED NUMBER THIRTEEN # used in footnote processing (along with 7/11/12/14)
+              '⑭': '\\u246d',  #  ⑭   CIRCLED NUMBER FOURTEEN # used in footnote processing (along with 7/11/12/13)
+              '⑮': '\\u246e',  #  ⑮   CIRCLED NUMBER FIFTEEN # temporarily protect \(space) during Greek conversion
+              '⑯': '\\u246f',  #  ⑯   CIRCLED NUMBER SIXTEEN # precedes page number info
+              '⑰': '\\u2470',  #  ⑰   CIRCLED NUMBER SEVENTEEN # follows page number info
+              '⑱': '\\u2471',  #  ⑱   CIRCLED NUMBER EIGHTEEN # surrounds .bn info
+              '⑲': '\\u2472',  #  ⑲   CIRCLED NUMBER NINETEEN # Protects PPer supplied links (#...#)
+              '⑳': '\\u2473',  #  ⑳   CIRCLED NUMBER TWENTY # \>
+              'Ⓢ': '\\u24c8',  #  Ⓢ   CIRCLED LATIN CAPITAL LETTER S # (non-breaking space)
+              'Ⓣ': '\\u24c9',  #  Ⓣ   CIRCLED LATIN CAPITAL LETTER T # (zero space)
+              'Ⓤ': '\\u24ca',  #  Ⓤ   CIRCLED LATIN CAPITAL LETTER U # (thin space)
+              'Ⓥ': '\\u24cb',  #  Ⓥ   CIRCLED LATIN CAPITAL LETTER V # (thick space)
+              'Ⓩ': '\\u24cf',  #  Ⓩ   CIRCLED LATIN CAPITAL LETTER Z # &
+              #'ⓢ': '\\u24e2',  #  ⓢ   CIRCLED LATIN SMALL LETTER S # non-breaking space (\  or \_ or &nbsp;)
+              'ⓣ': '\\u24e3',  #  ⓣ   CIRCLED LATIN SMALL LETTER T # zero space (\&)
+              'ⓤ': '\\u24e4',  #  ⓤ   CIRCLED LATIN SMALL LETTER U # thin space (\^)
+              'ⓥ': '\\u24e5',  #  ⓥ   CIRCLED LATIN SMALL LETTER V # thick space (\|)
+              '⓪': '\\u24ea',  #  ⓪   CIRCLED DIGIT 0 # (\#)
+              '⓫': '\\u24eb',  #  ⓫   NEGATIVE CIRCLED NUMBER ELEVEN # temporary substitute for | in inline HTML sidenotes until postprocessing
+              '⓬': '\\u24ec',  #  ⓬   NEGATIVE CIRCLED NUMBER TWELVE # temporary substitute for <br> in text wrapping
+              '⓭': '\\u24ed',  #  ⓭   NEGATIVE CIRCLED NUMBER THIRTEEN # temporarily marks end of .dv blocks in HTML, .⓭DV-
+              '⓵': '\\u24f5',  #  ⓵   DOUBLE CIRCLED DIGIT ONE # temporary substitute for <i>
+              '⓶': '\\u24f6',  #  ⓶   DOUBLE CIRCLED DIGIT TWO # temporary substitute for <b>
+              '⓷': '\\u24f7',  #  ⓷   DOUBLE CIRCLED DIGIT THREE # temporary substitute for <g>
+              '⓸': '\\u24f8',  #  ⓸   DOUBLE CIRCLED DIGIT FOUR # temporary substitute for <sc>
+              '⓹': '\\u24f9',  #  ⓹   DOUBLE CIRCLED DIGIT FIVE # temporary substitute for <f>
+              '⓺': '\\u24fa',  #  ⓺   DOUBLE CIRCLED DIGIT SIX # temporary substitute for <em>
+              '⓻': '\\u24fb',  #  ⓻   DOUBLE CIRCLED DIGIT SEVEN # temporary substitute for <strong>
+              '⓼': '\\u24fc',  #  ⓼   DOUBLE CIRCLED DIGIT EIGHT # temporary substitute for <cite>
+              '⓽': '\\u24fd',  #  ⓽   DOUBLE CIRCLED DIGIT NINE # temporary substitute for <u>
+              '◮': '\\u25ee',  #  ◮   UP-POINTING TRIANGLE WITH RIGHT HALF BLACK # <b> or <strong> (becomes =)
+              '◸': '\\u25f8',  #  ◸   UPPER LEFT TRIANGLE # precedes superscripts
+              '◹': '\\u25f9',  #  ◹   UPPER RIGHT TRIANGLE # follows superscripts
+              '◺': '\\u25fa',  #  ◺   LOWER LEFT TRIANGLE # precedes subscripts
+              '◿': '\\u25ff',  #  ◿   LOWER RIGHT TRIANGLE # follows subscripts
+              '⫉': '\\u2ac9',  #  ⫉   SUBSET OF ABOVE ALMOST EQUAL TO # used temporarily during page number reference processing
+              }
+
+    start = 0
+    found = False
+    m = True
+    while m and start < len(s):
+      m = re.search(pattern, s[start:])
+      if m: #  found a prohibited character
+        found = True
+        c = m.group(2)
+        s, count = re.subn(c, "", s) # null out and count the character we found
+        self.warn("Restricted character {} ({}) found in source file {} time(s).".format(unicodedata.name(c),
+                                                                                         values[c],
+                                                                                         count))
+        start = len(m.group(1)) + 1 # bump past the character we found
+
+    if found:
+      self.fatal("Use of restricted characters in the source file will cause unpredictable ppgen processing")
+
+
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # load file from specified source file
   def loadFile(self, fn):
@@ -2166,6 +2268,8 @@ class Book(object):
     for i in range(len(self.wb)):
       self.wb[i] = self.wb[i].rstrip()
 
+    self.check_for_pppgen_special_characters()
+
   # log print
   def lprint(self, msg):
     if self.log:
@@ -2182,8 +2286,8 @@ class Book(object):
 
   # display warning
   def warn(self, message):
-    if message not in self.warnings: # don't give exact same warning more than once.
-      s = self.umap(message)
+    s = self.umap(message)
+    if s not in self.warnings: # don't give exact same warning more than once.
       self.warnings.append(s)
       sys.stderr.write("**warning: " + s + "\n")
 
@@ -3000,7 +3104,7 @@ class Book(object):
   # .nr named register
   # we are here if the line starts with .nr
   def doNr(self):
-    m = re.match(r"\.nr (.+?) (.+)", self.wb[self.cl])
+    m = re.match(r"\.nr +(.+?) +(.+)", self.wb[self.cl])
     if not m:
       self.crash_w_context("malformed .nr directive", self.cl)
     else:
@@ -4586,6 +4690,18 @@ class Ppt(Book):
   long_table_line_count = 0
   fsz = "100%" # font size for paragraphs (ignored in Ppt, but must be defined as it's ref'd in common code)
 
+  # Also see tag_finalize
+  tag_substitutes = {"<i>":      "⓵",  # Use as a substitute for <i> until end of text processing
+                     "<b>":      "⓶",  # for <b>
+                     "<g>":      "⓷",  # <g>
+                     "<sc>":     "⓸",  # <sc>
+                     "<f>":      "⓹",  # <f>
+                     "<em>":     "⓺",  # <em>
+                     "<strong>": "⓻",  # <strong>
+                     "<cite>":   "⓼",  # <cite>
+                     "<u>":      "⓽",  # <u>
+                     }
+
   def __init__(self, args, renc, config):
     Book.__init__(self, args, renc, config)
     if args.pythonmacrosok:
@@ -4939,13 +5055,53 @@ class Ppt(Book):
       self.wb[i] = re.sub(r"<abbr[^>]*>","",self.wb[i])
       self.wb[i] = re.sub(r"</abbr>","",self.wb[i])
 
+    # Look for .nr tag-*** directives as they need to be processed early
+    i = 0
+    while i < len(self.wb):
+      if self.wb[i].startswith(".nr "): # below is part of doNR()
+        m = re.match(r"\.nr +(.+?) +(.+)", self.wb[i])
+        if m: # don't worry about failures; let doNR() handle them later
+          registerName = m.group(1)
+          registerValue = m.group(2)
+          if registerName.startswith("tag-") and registerName in self.nregs:
+            self.nregs[registerName] = self.deQuote(m.group(2), i)
+            del(self.wb[i])
+            continue
+      i += 1
+
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # look for <b>
-    # after text generation look for <b> + "="
+    # look for <b>, <g>, <i>, <em>, <strong>, <cite>, <f>, <u>, <sc>
+    # and remember if any found
     self.found_bold = False
-    for i in range(len(self.wb)):
-      if "<b>" in self.wb[i]:
-        self.found_bold = True
+    self.found_strong = False
+    self.found_gesperrt = False
+    self.found_italic = False
+    self.found_em = False
+    self.found_sc = False
+    self.found_cite = False
+    self.found_ftag = False
+    self.found_utag = False
+
+    s = '\n'.join(self.wb)    # make a text blob
+    if "<b>" in s:
+      self.found_bold = True
+    if "<strong>" in s:
+      self.found_strong = True
+    if "<g>" in s:
+      self.found_gesperrt = True
+    if "<i>" in s:
+      self.found_italic = True
+    if "<em>" in s:
+      self.found_em = True
+    if "<sc>" in s:
+      self.found_sc = True
+    if "<cite>" in s:
+      self.found_cite = True
+    if "<f>" in s:
+      self.found_ftag = True
+    if "<u>" in s:
+      self.found_utag = True
+    s = ""
 
     # Text will choose the UTF-8 Greek line or transliteration
     # depending on self.renc requested encoding
@@ -5084,28 +5240,64 @@ class Ppt(Book):
       self.wb[i] = re.sub(r"<\/?xs>", "", self.wb[i]) # x-small
       self.wb[i] = re.sub(r"<\/?xxs>", "", self.wb[i]) # xx-small
 
-      # underline dropped
-      self.wb[i] = re.sub(r"<\/?u>", "", self.wb[i]) # underline
+      # Note: The following will convert <i>, <b>, <f>, <u>, <g>, <sc>, <cite>, <em>, <strong> to
+      #       temporary values that will later be replaced with the final values. This allows
+      #       full control by the PPer of what values are used while still allowing detection of
+      #       conflicts
+
+      # underline dropped unless PPer specifies .nr tag-u <value>
+      if self.nregs["tag-u"]:
+        self.wb[i] = re.sub(r"<\/?u>", self.tag_substitutes["<u>"], self.wb[i])
+      else:
+        self.wb[i] = re.sub(r"<\/?u>", "", self.wb[i])
 
       # italics and emphasis
-      self.wb[i] = re.sub(r"<\/?i>", "_", self.wb[i])
+      if self.nregs["tag-i"]: # tag-i is provided by default
+        self.wb[i] = re.sub(r"<\/?i>",  self.tag_substitutes["<i>"], self.wb[i])
+      else:
+        self.wb[i] = re.sub(r"<\/?i>",  "", self.wb[i])
       self.wb[i] = re.sub(r"<\/?I>", "", self.wb[i]) # alternate italics dropped
-      self.wb[i] = re.sub(r"<\/?em>", "_", self.wb[i])
-      self.wb[i] = re.sub(r"<\/?b>", "◮", self.wb[i]) # will become "="
+      if self.nregs["tag-em"]: # tag-em is provided by default
+        self.wb[i] = re.sub(r"<\/?em>",  self.tag_substitutes["<em>"], self.wb[i])
+      else:
+        self.wb[i] = re.sub(r"<\/?em>",  "", self.wb[i])
+      if self.nregs["tag-b"]: # tag-b is provided by default
+        self.wb[i] = re.sub(r"<\/?b>",  self.tag_substitutes["<b>"], self.wb[i])
+      else:
+        self.wb[i] = re.sub(r"<\/?b>",  "", self.wb[i])
       self.wb[i] = re.sub(r"<\/?B>", "", self.wb[i]) # alternate bold dropped
 
-      # strong maps to "=" always
-      self.wb[i] = re.sub(r"<\/?strong>", "◮", self.wb[i])
+      # strong
+      if self.nregs["tag-strong"]: # tag-strong is provided by default
+        self.wb[i] = re.sub(r"<\/?strong>",  self.tag_substitutes["<strong>"], self.wb[i])
+      else:
+        self.wb[i] = re.sub(r"<\/?strong>",  "", self.wb[i])
 
-      # cite maps to "_" always
-      self.wb[i] = re.sub(r"<\/?cite>", "_", self.wb[i])
+      # <f> dropped unless PPer specifies .nr tag-f <value>
+      if self.nregs["tag-f"]:
+        self.wb[i] = re.sub(r"<\/?f>",  self.tag_substitutes["<f>"], self.wb[i])
+      else:
+        self.wb[i] = re.sub(r"<\/?f>",  "", self.wb[i])
+
+      # cite maps to self.nregs["tag-cite"] always (default: _)
+      if self.nregs["tag-cite"]:
+        self.wb[i] = re.sub(r"<\/?cite>",  self.tag_substitutes["<cite>"], self.wb[i])
+      else:
+        self.wb[i] = re.sub(r"<\/?cite>",  "", self.wb[i])
 
       # alternate handling
       # small caps ignored
       self.wb[i] = re.sub(r"<\/?SC>", "", self.wb[i])
 
+      # allow PPer to override normal <sc> handling via .nr tag-sc <value>
+      if self.nregs["tag-sc"]:
+        self.wb[i] = re.sub(r"<\/?sc>",  self.tag_substitutes["<sc>"], self.wb[i])
+
       # gesperrt in text
-      self.wb[i] = re.sub(r"<\/?g>", "_", self.wb[i])
+      if self.nregs["tag-g"]: # tag-g is provided by default
+        self.wb[i] = re.sub(r"<\/?g>",  self.tag_substitutes["<g>"], self.wb[i])
+      else:
+        self.wb[i] = re.sub(r"<\/?g>",  "", self.wb[i])
 
       # font-size requests dropped
       self.wb[i] = re.sub(r"<\/?fs[^>]*>", "", self.wb[i])
@@ -5146,25 +5338,26 @@ class Ppt(Book):
         self.warn_w_context("Inline sidenote probably won't work well here:", i)
 
     # do small caps last since it could uppercase a tag.
-    re_scmult = re.compile(r"<sc>(.+?)<\/sc>", re.DOTALL)
-    re_scsing = re.compile(r"<sc>(.*?)<\/sc>")
-    for i, line in enumerate(self.wb):
-      def to_uppercase(m):
-        return m.group(1).upper()
+    if not self.nregs["tag-sc"]: # ignore if we're doing <sc> with tags instead of UPPERCASE
+      re_scmult = re.compile(r"<sc>(.+?)<\/sc>", re.DOTALL)
+      re_scsing = re.compile(r"<sc>(.*?)<\/sc>")
+      for i, line in enumerate(self.wb):
+        def to_uppercase(m):
+          return m.group(1).upper()
 
-      while "<sc>" in self.wb[i]:
-        if not "</sc>" in self.wb[i]: # multi-line
-          t = []
-          while "</sc>" not in self.wb[i]:
-            t.append(self.wb[i])
-            del(self.wb[i])
-          t.append(self.wb[i]) # last line
-          ts = "\n".join(t) # make all one line
-          ts = re.sub(re_scmult, to_uppercase, ts)
-          t = ts.splitlines() # back to a series of lines
-          self.wb[i:i+1] = t
-        else: # single line
-          self.wb[i] = re.sub(re_scsing, to_uppercase, self.wb[i])
+        while "<sc>" in self.wb[i]:
+          if not "</sc>" in self.wb[i]: # multi-line
+            t = []
+            while "</sc>" not in self.wb[i]:
+              t.append(self.wb[i])
+              del(self.wb[i])
+            t.append(self.wb[i]) # last line
+            ts = "\n".join(t) # make all one line
+            ts = re.sub(re_scmult, to_uppercase, ts)
+            t = ts.splitlines() # back to a series of lines
+            self.wb[i:i+1] = t
+          else: # single line
+            self.wb[i] = re.sub(re_scsing, to_uppercase, self.wb[i])
 
     #
     # Handle any .sr for text that have the b option specified
@@ -5319,19 +5512,127 @@ class Ppt(Book):
         if "[ae]" in self.eb[i]:
           self.warn("unconverted [ae] ligature written to UTF-8 file.")
 
-    # checks for <b> and "="
-    # if self.found_bold:
-    #   self.warn("<b> used in text. TN suggested.")
-    equal_sign_seen = False
-    for i, line in enumerate(self.eb):
-      if "=" in line:
-        equal_sign_seen = True
-    if equal_sign_seen and self.found_bold:
-      self.warn("both <b> and \"=\" found in text. markup conflict.")
-    # put the "=" in for bold.
-    for i, line in enumerate(self.eb):
-      self.eb[i] = self.eb[i].replace("◮", "=")
+    # Warn about inline tags that won't convert (will be deleted) because their .nr tag-*** values are null
+    if self.found_bold and not self.nregs["tag-b"]:
+        self.warn("Source file contains <b> but .nr tag-b value is null; <b> will not be marked in text output.")
+    if self.found_strong and not self.nregs["tag-strong"]:
+        self.warn("Source file contains <strong> but .nr tag-strong value is null; <strong> will not be marked in text output.")
+    if self.found_gesperrt and not self.nregs["tag-g"]:
+        self.warn("Source file contains <g> but .nr tag-g value is null; <g> will not be marked in text output.")
+    if self.found_italic and not self.nregs["tag-i"]:
+        self.warn("Source file contains <i> but .nr tag-i value is null; <i> will not be marked in text output.")
+    if self.found_em and not self.nregs["tag-em"]:
+        self.warn("Source file contains <em> but .nr tag-em value is null; <em> will not be marked in text output.")
+    if self.found_cite and not self.nregs["tag-cite"]:
+        self.warn("Source file contains <cite> but .nr tag-cite value is null; <cite> will not be marked in text output.")
+    if self.found_ftag and not self.nregs["tag-f"]:
+        self.warn("Source file contains <f> but .nr tag-f value is null; <f> will not be marked in text output.")
+    if self.found_utag and not self.nregs["tag-u"]:
+        self.warn("Source file contains <u> but .nr tag-u value is null; <u> will not be marked in text output.")
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # look for <b>, <g>, <i>, <em>, <strong>, <cite>, <f>, <u>, <sc>
+    # then look for conflicts (both <b> and the b-tag character, etc.)
+    bold_char = self.nregs["tag-b"]
+    strong_char = self.nregs["tag-strong"]
+    gesperrt_char = self.nregs["tag-g"]
+    italic_char = self.nregs["tag-i"]
+    em_char = self.nregs["tag-em"]
+    cite_char = self.nregs["tag-cite"]
+    ftag_char = self.nregs["tag-f"]
+    utag_char = self.nregs["tag-u"]
+    sc_char = self.nregs["tag-sc"]
+    found_bold_char = False
+    found_strong_char = False
+    found_gesperrt_char = False
+    found_italic_char = False
+    found_em_char = False
+    found_cite_char = False
+    found_ftag_char = False
+    found_utag_char = False
+    found_sc_char = False
+    tag_check = ""
+
+    # setup to warn of conflicts between tag characters (e.g., <b> and <em> present and using same character)
+    # warn of any direct conflicts (e.g., <b> and = present and .nr tab-b "=")
+    s = '\n'.join(self.eb)  # make text blob
+    if self.found_bold and bold_char and bold_char in s:
+      found_bold_char = True
+      tag_check += bold_char
+      self.warn("both <b> and \"{}\" found in text. markup conflict?".format(bold_char))
+    if self.found_strong and strong_char and strong_char in s:
+      found_strong_char = True
+      tag_check += strong_char
+      self.warn("both <strong> and \"{}\" found in text. markup conflict?".format(strong_char))
+    if self.found_gesperrt and gesperrt_char and gesperrt_char in s:
+      found_gesperrt_char = True
+      tag_check += gesperrt_char
+      self.warn("both <g> and \"{}\" found in text. markup conflict?".format(gesperrt_char))
+    if self.found_italic and italic_char and italic_char in s:
+      found_italic_char = True
+      tag_check += italic_char
+      self.warn("both <i> and \"{}\" found in text. markup conflict?".format(italic_char))
+    if self.found_em and em_char and em_char in s:
+      found_em_char = True
+      tag_check += em_char
+      self.warn("both <em> and \"{}\" found in text. markup conflict?".format(em_char))
+    if self.found_cite and cite_char and cite_char in s:
+      found_cite_char = True
+      tag_check += cite_char
+      self.warn("both <cite> and \"{}\" found in text. markup conflict?".format(cite_char))
+    if self.found_ftag and ftag_char and ftag_char in s:
+      found_ftag_char = True
+      tag_check += ftag_char
+      self.warn("both <f> and \"{}\" found in text. markup conflict?".format(ftag_char))
+    if self.found_utag and utag_char and utag_char in s:
+      found_utag_char = True
+      tag_check += utag_char
+      self.warn("both <u> and \"{}\" found in text. markup conflict?".format(utag_char))
+    if self.found_sc and sc_char and sc_char in s:
+      found_sc_char = True
+      tag_check += sc_char
+      self.warn("both <sc> and \"{}\" found in text. markup conflict?".format(sc_char))
+
+    # warn if any character conflicts between tags found
+    if self.found_bold and tag_check.count(bold_char) > 1:
+      self.warn("<b> character " + bold_char + " may be used for multiple purposes in the text output. TN needed?")
+    if self.found_strong and tag_check.count(strong_char) > 1:
+      self.warn("<strong> character " + strong_char + " may be used for multiple purposes in the text output. TN needed?")
+    if self.found_gesperrt and tag_check.count(gesperrt_char) > 1:
+      self.warn("<g> character " + gesperrt_char + " may be used for multiple purposes in the text output. TN needed?")
+    if self.found_italic and tag_check.count(italic_char) > 1:
+      self.warn("<i> character " + italic_char + " may be used for multiple purposes in the text output. TN needed?")
+    if self.found_em and tag_check.count(em_char) > 1:
+      self.warn("<em> character " + em_char + " may be used for multiple purposes in the text output. TN needed?")
+    if self.found_cite and tag_check.count(cite_char) > 1:
+      self.warn("<cite> character " + cite_char + " may be used for multiple purposes in the text output. TN needed?")
+    if self.found_ftag and ftag_char and tag_check.count(ftag_char) > 1:
+      self.warn("<f> character " + ftag_char + " may be used for multiple purposes in the text output. TN needed?")
+    if self.found_utag and utag_char and tag_check.count(utag_char) > 1:
+      self.warn("<u> character " + utag_char + " may be used for multiple purposes in the text output. TN needed?")
+    if self.found_sc and sc_char and tag_check.count(sc_char) > 1:
+      self.warn("<sc> character " + sc_char + " may be used for multiple purposes in the text output. TN needed?")
+
+
+    tag_finalize = [(self.found_italic, "⓵", "tag-i"), # Final substitution list
+                    (self.found_bold, "⓶", "tag-b"),
+                    (self.found_gesperrt, "⓷", "tag-g"),
+                    (self.found_sc, "⓸", "tag-sc"),
+                    (self.found_ftag, "⓹", "tag-f"),
+                    (self.found_em, "⓺", "tag-em"),
+                    (self.found_strong, "⓻", "tag-strong"),
+                    (self.found_cite, "⓼", "tag-cite"),
+                    (self.found_utag, "⓽", "tag-u"),
+                    ]
+
+    # put in the final characters for <b>, <i>, etc. as requested by PPer
+    for t in tag_finalize:
+      if t[0]:
+        aaatagchar = t[1]
+        aaarepchar = t[2]
+        s = s.replace(t[1], self.nregs[t[2]])
+
+    self.eb = s.split('\n')
 
     # process saved search/replace strings for text, if any
     # but only if our output format matches something in the saved "which" value
@@ -11849,7 +12150,11 @@ def main():
 if __name__ == '__main__':
     main()
 
-# Special unicode characters used within ppgen to avoid iterference with PPer-provided text
+# Special unicode characters used within ppgen to avoid iterference with PPer-provided text, assuming
+#   that for some reason the PPer doesn't decide to use one of them for some other purpose.
+#
+# Note: When adding characters to this table be sure to update check_for_pppgen_special_characters()
+#       so it can properly complain if the PPer happens to use any of these characters.
 #
 # \u14aa  ᒪ   CANADIAN SYLLABICS MA # precedes lang= info
 # \u14a7  ᒧ   CANADIAN SYLLABICS MO # follows lang= info
@@ -11892,10 +12197,19 @@ if __name__ == '__main__':
 # \u24e5  ⓥ   CIRCLED LATIN SMALL LETTER V # thick space (\|)
 # \u24ea  ⓪   CIRCLED DIGIT 0 # (\#)
 # \u24eb  ⓫   NEGATIVE CIRCLED NUMBER ELEVEN # temporary substitute for | in inline HTML sidenotes until postprocessing
-# \U24ec  ⓬   NEGATIVE CIRCLED NUMBER TWELVE # temporary substitute for <br> in text wrapping
-# \U24ed  ⓭   NEGATIVE CIRCLED NUMBER THIRTEEN # temporarily marks end of .dv blocks in HTML, .⓭DV-
+# \u24ec  ⓬   NEGATIVE CIRCLED NUMBER TWELVE # temporary substitute for <br> in text wrapping
+# \u24ed  ⓭   NEGATIVE CIRCLED NUMBER THIRTEEN # temporarily marks end of .dv blocks in HTML, .⓭DV-
 #                                                and beginning of the div for .dv without a class or style element
-# \u25ee  ◮   UP-POINTING TRIANGLE WITH RIGHT HALF BLACK # <b> or <strong> (becomes =)
+# \u24f5  ⓵   DOUBLE CIRCLED DIGIT ONE # temporary substitute for <i>
+# \u24f6  ⓶   DOUBLE CIRCLED DIGIT TWO # temporary substitute for <b>
+# \u24f7  ⓷   DOUBLE CIRCLED DIGIT THREE # temporary substitute for <g>
+# \u24f8  ⓸   DOUBLE CIRCLED DIGIT FOUR # temporary substitute for <sc>
+# \u24f9  ⓹   DOUBLE CIRCLED DIGIT FIVE # temporary substitute for <f>
+# \u24fa  ⓺   DOUBLE CIRCLED DIGIT SIX # temporary substitute for <em>
+# \u24fb  ⓻   DOUBLE CIRCLED DIGIT SEVEN # temporary substitute for <strong>
+# \u24fc  ⓼   DOUBLE CIRCLED DIGIT EIGHT # temporary substitute for <cite>
+# \u24fd  ⓽   DOUBLE CIRCLED DIGIT NINE # temporary substitute for <u>
+# \u25ee  ◮   UP-POINTING TRIANGLE WITH RIGHT HALF BLACK # <b> or <strong> (becomes =) (Not used any more; see \u24f6)
 # \u25f8  ◸   UPPER LEFT TRIANGLE # precedes superscripts
 # \u25f9  ◹   UPPER RIGHT TRIANGLE # follows superscripts
 # \u25fa  ◺   LOWER LEFT TRIANGLE # precedes subscripts
