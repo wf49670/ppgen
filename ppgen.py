@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.54n+PoetryLineNumbers+TagChars" + with_regex   # 25-Feb-2016
+VERSION="3.54o" + with_regex   # 29-Feb-2016
 #3.54a:
 #  Finish implementing .dl break option
 #  Text: Detect <br> in short table cells and wrap them anyway
@@ -124,15 +124,10 @@ VERSION="3.54n+PoetryLineNumbers+TagChars" + with_regex   # 25-Feb-2016
 #  Implement .fs for the .dv directive, as was done for .fn and .ul/.ol/.dl.
 #  Also, add fs= operand on .dv so a self-contained font-size change can be .dv fs=whatever/statements/.dv-
 #  Add push operand to .fs to allow stacking the current value, which can be popped by .fs with no arguments
-#TagChars:
-#  For text output, allow PPer to specify the characters to replace <b>, <i>, etc. via .nr directives.
-#  Warn of any conflicts if the chosen characters are used elsewhere
-#  If the PPer chooses to "tag" <sc> in the text output, don't UPPERCASE it.
-#PoetryLineNumbers:
-#  Add support to .nf l/b/c for lnum=r|l (default: none) and snum=nnn (length of number; 0 default = no numbers)
-#  For line numbers we will assume that the appear on the right end of lines, separated by at least 6 spaces from
-#  the other text. Stanza numbers, if present, must be separated from the text by |
-#
+#3.54o:
+#  Text: Allow PPer to specify the characters to replace <b>, <i>, etc. via .nr directives.
+#        Warn of any conflicts if the chosen characters are used elsewhere
+#        If the PPer chooses to "tag" <sc> in the text output, don't UPPERCASE it.
 #  Added check to complain and terminate if the PPer happens to use any of the "internal" Unicode characters that ppgen
 #    uses for special purposes.
 
