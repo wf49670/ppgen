@@ -30,12 +30,15 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55a" + with_regex   # 4-Mar-2016
+VERSION="3.55b" + with_regex   # 11-Mar-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
 #  Include the .di (drop image) directive in the image-checking process to avoid false warning messages and to
 #    perform the additional diagnostic checks on them.
+#3.55b:
+#  Text: When using alt= tag as an illo caption, don't turn single quotes into HTML entities.
+#  Text: Table problem with incorrect right-border on lines that end with <span>
 
 
 
@@ -1540,7 +1543,6 @@ class Book(object):
     self.forceutf8 = (True) if (renc == "U") else (False)
     self.debug = args.debug
     self.srcfile = args.infile
-    self.imgcheck = args.imagecheck
     self.anonymous = args.anonymous
     self.log = args.log
     self.listcvg = args.listcvg
@@ -2194,7 +2196,7 @@ class Book(object):
 
   # display informational message
   def info(self, message):
-    sys.stderr.write("  info: " + message + "\n")
+    sys.stderr.write("  info: " + self.umap(message) + "\n")
 
   class DefList(object):
     # Definition List Class (Base definition)
@@ -5826,14 +5828,15 @@ class Ppt(Book):
       alt = ""
       if "alt=" in s:
         s, alt = self.get_id("alt",s)
-        alt = re.sub("'","&#39;",alt) # escape any '
+        # don't escape single-quotes in the text version, silly!
+        #alt = re.sub("'","&#39;",alt) # escape any '
       ia["alt"] = alt
 
       return(ia)
 
     m = re.match(r"\.il (.*)", self.wb[self.cl])
     if m:
-      # ignore the illustration line except for any cm= info
+      # ignore the illustration line except for any cm= info and possible alt= text
       ia = parse_illo(self.wb[self.cl]) # parse .il line
       # is the .il line followed by a caption line?
       self.eb.append(".RS 1") # request at least one space in text before illustration
@@ -6819,7 +6822,7 @@ class Ppt(Book):
           s = " " * tindent  # center the table
         for col in range(0,ncols):
           w1 = widths[col]
-          temp_bafter = ''
+          temp_bafter = -1
           for j in range(col+1, ncols):
             if w[j][0].strip() == "<span>":
               w1 += widths[j] + len(bafter[j-1]) + len(bbefore[j]) # account for space between columns
@@ -6831,7 +6834,7 @@ class Ppt(Book):
           if w[col][0] != "<span>":
             s += bbefore[col]
             s += self.truefmt(fmt, line)
-            if temp_bafter:
+            if temp_bafter != -1:
               s += temp_bafter
             else:
               s += bafter[col]
@@ -11775,7 +11778,8 @@ class Pph(Book):
         if self.imageDict[k] == 0: # unused image
           notUsed += 1
           notUsedList.append(k)
-        elif self.imageDict[k] > 1: # used multiple times
+        elif k != self.cimage and self.imageDict[k] > 1: # used multiple times (exempt cover 
+                                                         # in case PPer decided to use it in HTML
           multiplyUsed += 1
           multiplyUsedList.append(k)
 
@@ -11788,15 +11792,15 @@ class Pph(Book):
           for img in notUsedList:
             self.warn("  {}".format(img))
         if multiplyUsed:
-          self.warn("{} image{} used multiple times:".format(multiplyUsed, multiplyUsedS))
+          self.info("{} image{} used multiple times:".format(multiplyUsed, multiplyUsedS))
           for img in multiplyUsedList:
-            self.warn("  {} ({}x)".format(img, self.imageDict[img]))
+            self.info("  {} ({}x)".format(img, self.imageDict[img]))
 
       else:  # summary only
         if notUsed:
           self.warn("{} image{} not used. Rerun with -img option for more information".format(notUsed, notUsedS))
         if multiplyUsed:
-          self.warn("{} image{} used multiple times. Rerun with -img option for more information".format(multiplyUsed, multiplyUsedS))
+          self.info("{} image{} used multiple times. Rerun with -img option for more information".format(multiplyUsed, multiplyUsedS))
 
 
   #def doUdiv(self):
