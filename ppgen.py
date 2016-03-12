@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55b" + with_regex   # 11-Mar-2016
+VERSION="3.55c" + with_regex   # 11-Mar-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
@@ -39,6 +39,13 @@ VERSION="3.55b" + with_regex   # 11-Mar-2016
 #3.55b:
 #  Text: When using alt= tag as an illo caption, don't turn single quotes into HTML entities.
 #  Text: Table problem with incorrect right-border on lines that end with <span>
+#3.55c:
+#  Revise handling of stdout and stderr. Previously, to avoid problems on Windows systems when running ppgen in a command
+#    window, ppgen translated any characters with values > x80 to *. With this enhancement ppgen encodes stdout and stderr
+#    as UTF-8 files, and sends all message characters directly. In a Windows console message this may show garbage for the 
+#    UTF-8 characters, but no errors will occur. If stdout/stderr are piped to files the files will be UTF-8 encoded and
+#    will show all characters properly. Also, Linux and Mac consoles should show all the characters properly in the error
+#    messages without piping.
 
 
 
@@ -1516,7 +1523,10 @@ class Book(object):
   #                    '\u039C\u039D\u039E\u039F\u03A0\u03A1\u03A3\u03A4\u03A5\u03A6\u03A7' +
   #                    '\u03A8\u03A9')
 
-  def __init__(self, args, renc, config):
+  def __init__(self, args, renc, config, sout, serr):
+
+    self.stdout = sout
+    self.stderr = serr
 
     del self.wb[:]
     del self.eb[:]
@@ -1733,7 +1743,7 @@ class Book(object):
     for k in self.config['Nregs']:
       if k in self.nregs:
         self.nregs[k] = self.config['Nregs'][k]
-        print("setting self.nregs[{}] via .ini file: {}".format(k, self.nregs[k]))
+        self.print("setting self.nregs[{}] via .ini file: {}".format(k, self.nregs[k]))
       else:
         self.warn("Ignoring unsupported Nregs key {} from .ini file".format(k))
 
@@ -1892,7 +1902,7 @@ class Book(object):
       t = t.replace("⑮", r"\ ")
       f1.write( "{:s}\r\n".format(t.rstrip()) )
     f1.close()
-    print("Terminating as requested after .cv/.gk processing.\n\tOutput file: {}".format(bailfn))
+    self.print("Terminating as requested after .cv/.gk processing.\n\tOutput file: {}".format(bailfn))
     exit(1)
 
   # create a ppqt2 metadata file entry
@@ -1924,7 +1934,7 @@ class Book(object):
       for index,t in enumerate(self.ppqt):
         f1.write("{:s}\r\n".format(t))
       f1.close()
-      print("PPQTv2 metadata file {} created".format(ppqtfn))
+      self.print("PPQTv2 metadata file {} created".format(ppqtfn))
 
   # Create a -src.txt.bin file based on the input file to facilitate using GG
   # or PPQTv1 to work on this ppgen project
@@ -1963,9 +1973,9 @@ class Book(object):
       for index,t in enumerate(bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
-      print("Terminating as requested after creating -src.txt.bin file: {}".format(binfn))
+      self.print("Terminating as requested after creating -src.txt.bin file: {}".format(binfn))
     else:
-      print("Terminating after -sbin processing, but no .bn commands found;\n" +
+      self.print("Terminating after -sbin processing, but no .bn commands found;\n" +
             "-src.txt.bin file not generated.")
     exit(1)
 
@@ -2176,27 +2186,31 @@ class Book(object):
   # log print
   def lprint(self, msg):
     if self.log:
-      print(msg)
+      self.print(msg)
 
   def rp(self, flag, msg):
-    print("=> {} {}".format(flag,msg))
+    self.print("=> {} {}".format(flag,msg))
 
   # display error message and exit
   def fatal(self, message):
-    s = self.umap(message)
-    sys.stderr.write("FATAL: " + s + "\n")
+    #s = self.umap(message)
+    self.stderr.write("FATAL: " + message + "\n")
     exit(1)
 
   # display warning
   def warn(self, message):
-    s = self.umap(message)
-    if s not in self.warnings: # don't give exact same warning more than once.
-      self.warnings.append(s)
-      sys.stderr.write("**warning: " + s + "\n")
+    #s = self.umap(message)
+    if message not in self.warnings: # don't give exact same warning more than once.
+      self.warnings.append(message)
+      self.stderr.write("**warning: " + message + "\n")
 
   # display informational message
   def info(self, message):
-    sys.stderr.write("  info: " + self.umap(message) + "\n")
+    self.stderr.write("  info: " + message + "\n")
+
+  # print a message
+  def print(self, message):
+    self.stdout.write(message + "\n")
 
   class DefList(object):
     # Definition List Class (Base definition)
@@ -2422,7 +2436,7 @@ class Book(object):
 
     # Print debug info if requested
     def print_debug(self, info): # Ppt and Pph will override this
-      print(info)
+      self.print(info)
 
     # Format debug info if requested
     def format_debug(self): # Basic data gathering.
@@ -2745,31 +2759,33 @@ class Book(object):
 
   # Issue error message, show context, and terminate
   def crash_w_context(self, msg, i, r=5):
-    sys.stderr.write("\nERROR: {}\ncontext:\n".format(self.umap(msg)))
+    self.stderr.write("\nERROR: {}\ncontext:\n".format(msg))
     startline = max(0,i-r)
     endline = min(len(self.wb),i+r)
-    sys.stderr.write(" -----\n")
+    self.stderr.write(" -----\n")
     for j in range(startline,endline):
-      s = self.umap(self.wb[j])
+      #s = self.umap(self.wb[j])
+      s = self.wb[j]
       if j == i:
-        sys.stderr.write(">> {}\n".format(s))
+        self.stderr.write(">> {}\n".format(s))
       else:
-        sys.stderr.write("   {}\n".format(s))
-    sys.stderr.write(" -----\n")
+        self.stderr.write("   {}\n".format(s))
+    self.stderr.write(" -----\n")
     exit(1)
 
   def warn_w_context(self, msg, i, r=5):
-    sys.stderr.write("\n**warning: {}\ncontext:\n".format(self.umap(msg)))
+    self.stderr.write("\n**warning: {}\ncontext:\n".format(msg))
     startline = max(0,i-r)
     endline = min(len(self.wb),i+r)
-    sys.stderr.write(" -----\n")
+    self.stderr.write(" -----\n")
     for j in range(startline,endline):
-      s = self.umap(self.wb[j])
+      #s = self.umap(self.wb[j])
+      s = self.wb[j]
       if j == i:
-        sys.stderr.write(">> {}\n".format(s))
+        self.stderr.write(">> {}\n".format(s))
       else:
-        sys.stderr.write("   {}\n".format(s))
-    sys.stderr.write(" -----\n")
+        self.stderr.write("   {}\n".format(s))
+    self.stderr.write(" -----\n")
 
   # Calculate "true" length of a string, accounting for <lang> markup and combining or non-spacing characters in Hebrew
   def truelen(self,s):
@@ -2868,7 +2884,7 @@ class Book(object):
         else:
           macro_line = "not available"
         mac_info = "Exception occurred running Python macro {} during .sr at\n       Source line {}\n".format(srrMacname,
-                                                                                                              self.umap(macro_line))
+                                                                                                              macro_line)
         trace_info = traceback.format_exception(*sys.exc_info())
         self.fatal(mac_info + "\n".join(trace_info))
 
@@ -2913,7 +2929,7 @@ class Book(object):
           self.fatal("Error occurred searching for {} in complete text blob".format(self.srs[srnum]))
       if m:                                             # if found
         if 'r' in self.debug:
-          print(self.umap("Search string {}:{} found in complete text blob".format(srnum+1, self.srs[srnum])))
+          self.print("Search string {}:{} found in complete text blob".format(srnum+1, self.srs[srnum]))
         try:
           text, l = re.subn(self.srs[srnum], self.srr[srnum], text) # replace all occurrences in the blob
           ll += l
@@ -2924,9 +2940,9 @@ class Book(object):
           else:
             self.fatal("Error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[srnum], self.srr[srnum]))
         if 'r' in self.debug:
-          print(self.umap("Replaced with {}".format(self.srr[srnum])))
-      print(self.umap("Search string {}:{} matched in complete text and replaced {} times.".format(srnum+1,
-            self.srs[srnum], ll)))
+          self.print("Replaced with {}".format(self.srr[srnum]))
+      self.print("Search string {}:{} matched in complete text and replaced {} times.".format(srnum+1,
+            self.srs[srnum], ll))
       buffer[:] = text.splitlines() # break blob back into individual lines
       text = ""
 
@@ -2946,17 +2962,17 @@ class Book(object):
         if m:                                   # if found
           k += 1
           if 'r' in self.debug or 'p' in self.srw[srnum]: # if debugging, or if prompt requested
-            print(self.umap("Search string {}:{} found in:\n    {}".format(srnum+1,
-                  self.srs[srnum], buffer[j])))
+            self.print("Search string {}:{} found in:\n    {}".format(srnum+1,
+                  self.srs[srnum], buffer[j]))
           try:
             if 'p' in self.srw[srnum]:                                           # prompting requested?
               l = 0
               temp = re.sub(self.srs[srnum], self.srr[srnum], buffer[j])
-              print(self.umap("replacement will be:\n    {}".format(temp)))
+              self.print("replacement will be:\n    {}".format(temp))
               try:
                 reply = input("replace? (y/n/q/r)")
               except EOFError:
-                print("EOF received on prompt; assuming q")
+                self.print("EOF received on prompt; assuming q")
                 reply = "q"
               good_reply = False
               while not good_reply:
@@ -2970,10 +2986,10 @@ class Book(object):
                   self.srw[srnum] = self.srw[srnum].replace("p","")                      # and stop prompting
                   good_reply = True
                 elif reply == "n":                                             # else if user replied n (no)
-                  print("skipping that one")
+                  self.print("skipping that one")
                   good_reply = True
                 elif reply == "q":                                             # else if user replied q (quit)
-                  print("exiting at user request")
+                  self.print("exiting at user request")
                   good_reply = True
                   quit = True
             else:                                                            # not prompting
@@ -2992,14 +3008,14 @@ class Book(object):
             else:
               self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[srnum], self.srr[srnum], buffer[j]))
           if 'r' in self.debug:
-            print(self.umap("Replaced: {}".format(buffer[j])))
+            self.print("Replaced: {}".format(buffer[j]))
 
         j += linecnt # bump past the line we worked on, or that line plus others we inserted
 
       if quit:
         exit(1)
-      print(self.umap("Search string {}:{} matched in {} lines, replaced {} times.".format(srnum+1,
-            self.srs[srnum], k, ll)))
+      self.print("Search string {}:{} matched in {} lines, replaced {} times.".format(srnum+1,
+            self.srs[srnum], k, ll))
       if restore_srr:    # if we had a Python macro as replace string, restore original replace string
         self.srr[srnum] = restore_srr
 
@@ -3375,9 +3391,9 @@ class Book(object):
       gkstring = gkmatch.group(1)
       if self.log:
         try:
-          print("Processing: {}".format(gkstring))
+          self.print("Processing: {}".format(gkstring))
         except:
-          print(self.umap("Processing: {}".format(gkstring)))
+          print("Processing: {}".format(gkstring))
       count = 0 # count of built-in Greek characters converted
       count1 = 0 # count of PPer-provided Greek characters converted
       if len(self.gk_user) > 0:   # if PPer provided any additional Greek mappings apply them first
@@ -3387,9 +3403,9 @@ class Book(object):
             count1 += count2
             if count2 > 0 and 'l' in self.debug:
               try:
-                print("Replaced PPer-provided Greek character {} {} times.".format(s[0], count2))
+                self.print("Replaced PPer-provided Greek character {} {} times.".format(s[0], count2))
               except:
-                print(self.umap("Replaced PPer-provided Greek character {} {} times.".format(s[0], count2)))
+                self.print("Replaced PPer-provided Greek character {} {} times.".format(s[0], count2))
           except:
             self.warn("Error occurred trying to replace PPer-provided Greek character " +
                       "{} with {}. Check replacement value".format(s[0], s[1]))
@@ -3398,14 +3414,14 @@ class Book(object):
         count += count2
         if count2 > 0 and 'l' in self.debug:
           try:
-            print("Replaced Greek {} {} times.".format(s[0], count2))
+            self.print("Replaced Greek {} {} times.".format(s[0], count2))
           except:
-            print(self.umap("Replaced Greek {} {} times.".format(s[0], count2)))
+            self.print("Replaced Greek {} {} times.".format(s[0], count2))
       if self.log:
         if len(self.gk_user) > 0:
-          print("Replaced {} PPer-provided Greek characters and {} built-in Greek characters".format(count1, count))
+          self.print("Replaced {} PPer-provided Greek characters and {} built-in Greek characters".format(count1, count))
         else:
-          print("Replaced {} built-in Greek characters".format(count))
+          self.print("Replaced {} built-in Greek characters".format(count))
       gkorigb = ""
       gkoriga = ""
       if self.gkkeep.lower().startswith("b"): # original before?
@@ -3667,14 +3683,14 @@ class Book(object):
         # Correct diacritics with <i> markup in them if requested
         #
         if dia_italic.lower().startswith("y"):
-          print("Checking for <i> within diacritic markup and correcting")
+          self.print("Checking for <i> within diacritic markup and correcting")
           for s in self.diacritics_user:
             si = "[<i>" + s[0][1:-1] + "</i>]"
             so = "<i>" + s[0] + "</i>"
             try:
               text, count = re.subn(re.escape(si), so, text)
               if count:
-                print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+                self.print("Replaced {} with {} {} times".format(si, so, count))
             except:
               self.warn("Error occurred trying to replace {} with {}.".format(si, so))
           for s in self.diacritics:
@@ -3683,18 +3699,18 @@ class Book(object):
             try:
               text, count = re.subn(re.escape(si), so, text)
               if count:
-                print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+                self.print("Replaced {} with {} {} times".format(si, so, count))
             except:
               self.warn("Error occurred trying to replace {} with {}.".format(si, so))
         if dia_bold.lower().startswith("y"):
-          print("Checking for <b> within diacritic markup and correcting")
+          self.print("Checking for <b> within diacritic markup and correcting")
           for s in self.diacritics_user:
             si = "[<b>" + s[0][1:-1] + "</b>]"
             so = "<b>" + s[0] + "</b>"
             try:
               text, count = re.subn(re.escape(si), so, text)
               if count:
-                print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+                self.print("Replaced {} with {} {} times".format(si, so, count))
             except:
               self.warn("Error occurred trying to replace {} with {}.".format(si, so))
           for s in self.diacritics:
@@ -3703,7 +3719,7 @@ class Book(object):
             try:
               text, count = re.subn(re.escape(si), so, text)
               if count:
-                print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+                self.print("Replaced {} with {} {} times".format(si, so, count))
             except:
               self.warn("Error occurred trying to replace {} with {}.".format(si, so))
       if self.dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
@@ -3715,14 +3731,14 @@ class Book(object):
             for s in self.diacritics_user:
               try:
                 text, count = re.subn(re.escape(s[0]), s[1], text)
-                print(self.umap("Replaced PPer-provided diacritic {} {} times.".format(s[0], count)))
+                self.print("Replaced PPer-provided diacritic {} {} times.".format(s[0], count))
               except:
                 self.warn("Error occurred trying to replace PPer-provided diacritic " +
                           "{} with {}. Check replacement value".format(s[0], s[1]))
           for s in self.diacritics:
             text, count = re.subn(re.escape(s[0]), s[1], text)
             if count > 0:
-              print("Replaced {} {} times.".format(s[0], count))
+              self.print("Replaced {} {} times.".format(s[0], count))
               if s[3]:
                 self.warn("{} is a non-standard markup for {}. Please examine images to confirm character is correct".format(s[0], s[1]))
         else:
@@ -3737,7 +3753,7 @@ class Book(object):
               repl = diaorigb + diapre + s[1] + diasuf + diaoriga
               try:
                 text, count = re.subn(re.escape(s[0]), repl, text)
-                print(self.umap("Replaced PPer-provided diacritic {} {} times.".format(s[0], count)))
+                self.print("Replaced PPer-provided diacritic {} {} times.".format(s[0], count))
               except:
                 self.warn("Error occurred trying to replace PPer-provided Greek character" +
                           "{} with {}. Check replacement value".format(s[0], s[1]))
@@ -3751,7 +3767,7 @@ class Book(object):
             repl = diaorigb + diapre + s[1] + diasuf + diaoriga
             text, count = re.subn(re.escape(s[0]), repl, text)
             if count > 0:
-              print("Replaced {} {} times.".format(s[0], count))
+              self.print("Replaced {} {} times.".format(s[0], count))
               if s[3]:
                 self.warn("{} is a non-standard markup for {}. Please examine images to confirm character is correct".format(s[0], s[1]))
         if self.log:
@@ -3764,15 +3780,15 @@ class Book(object):
             text2, count = re.subn(re.escape(m.group(0)), "", text2)
             if count > 0 and not inner.isdigit():
               if header_needed:
-                print("Potential diacritics not converted:")
+                self.print("Potential diacritics not converted:")
                 header_needed = False
               try:
-                print(" {} occurred {} times.".format(m.group(0), count))
+                self.print(" {} occurred {} times.".format(m.group(0), count))
               except:
-                print(self.umap("**{} occurred {} times. (Safe-printed due to error.)".format(m.group(0), count)))
+                self.print("**{} occurred {} times. (Safe-printed due to error.)".format(m.group(0), count))
             m = re.search(r"\[([^*\]].{1,7}?)]", text2)
           if header_needed:
-            print("No unconverted diacritics seem to remain after conversion.")
+            self.print("No unconverted diacritics seem to remain after conversion.")
           del text2
 
       if dia_blobbed:
@@ -3942,11 +3958,11 @@ class Book(object):
         m2 = re.match(r"\.sr (\w+)", line)
         if m2:
           if keepType == 't' and "h" in m2.group(1):
-            self.warn(".sr command for HTML skipped by .if t: {}".format(self.umap(line)))
+            self.warn(".sr command for HTML skipped by .if t: {}".format(line))
           elif keepType == 'h':
             m3 = re.match(r"h*[ult]", m2.group(1))
             if m3:
-              self.warn(".sr command for text skipped by .if h: {}".format(self.umap(line)))
+              self.warn(".sr command for text skipped by .if h: {}".format(line))
 
     if inIf: # unclosed .if?
       self.crash_w_context("Unclosed .if directive", ifloc)
@@ -4061,19 +4077,19 @@ class Book(object):
           self.macro[macroid] = ["n", t, len(tlex)-2] # store as a "native" macro
         else: # python macro
           if not Book.python_macros_allowed: # has user authorized use of Python macros?
-            print("Warning: Macro(s) contain Python code.")
+            self.print("Warning: Macro(s) contain Python code.")
             good_warn_reply = False
             while not good_warn_reply:
               try:
                 answer = input("Allow? (y/n)")
               except EOFError:
-                print("EOF received on prompt; assuming n")
+                self.print("EOF received on prompt; assuming n")
                 answer = "n"
               if answer == "y":
                 good_warn_reply = True
                 Book.python_macros_allowed = True
               elif answer == "n":
-                print("Python macros not allowed; quitting")
+                self.print("Python macros not allowed; quitting")
                 exit(1)
           try: # compile the macro
             s = "\n".join(t)
@@ -4157,7 +4173,7 @@ class Book(object):
               macro_line = "{}:".format(where[1]-1) + self.macro[macroid][3][where[1]-1]
             else:
               macro_line = "not available"
-            mac_info = "Exception occurred running Python macro {} at\n       Source line {}\n".format(macroid, self.umap(macro_line))
+            mac_info = "Exception occurred running Python macro {} at\n       Source line {}\n".format(macroid, macro_line)
             trace_info = traceback.format_exception(*sys.exc_info())
             self.crash_w_context(mac_info + "\n".join(trace_info), i)
 
@@ -4605,8 +4621,8 @@ class Ppt(Book):
                      "<u>":      "⓽",  # <u>
                      }
 
-  def __init__(self, args, renc, config):
-    Book.__init__(self, args, renc, config)
+  def __init__(self, args, renc, config, sout, serr):
+    Book.__init__(self, args, renc, config, sout, serr)
     if args.pythonmacrosok:
       Book.python_macros_allowed = True
     self.booktype = "text"
@@ -4624,7 +4640,7 @@ class Ppt(Book):
   # print if debug includes 'd'
   def dprint(self, msg):
     if 'd' in self.debug:
-      print("{}: {}".format(self.__class__.__name__, msg))
+      self.print("{}: {}".format(self.__class__.__name__, msg))
 
   # bailout after saving working buffer in bailout.txt
   def bailout(self, buffer):
@@ -5610,7 +5626,7 @@ class Ppt(Book):
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
-      print("GG .bin file {} created.".format(fnb))
+      self.print("GG .bin file {} created.".format(fnb))
       if self.ppqt2: # and PPQTv2 metadata, if requested
         self.ppqtpage("", 0, fn=fn)
 
@@ -5678,7 +5694,7 @@ class Ppt(Book):
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
-      print("GG .bin file {} created.".format(fnb))
+      self.print("GG .bin file {} created.".format(fnb))
       if self.ppqt2: # and PPQTv2 metadata, if requested
         self.ppqtpage("", 0, fn=fn)
 
@@ -7460,7 +7476,7 @@ class Ppt(Book):
     while self.cl < len(self.wb):
       if "a" in self.debug:
         s = self.wb[self.cl]
-        print( self.umap(s) )  # safe print the current line
+        self.print( s )  # print the current line
       if not self.wb[self.cl]: # skip blank lines
         self.cl += 1
         continue
@@ -7494,9 +7510,9 @@ class Ppt(Book):
       return # do not make UTF-8 text file
 
     if self.renc == "l":
-      print("creating Latin-1 text file")
+      self.print("creating Latin-1 text file")
     if self.renc == "u":
-      print("creating UTF-8 text file")
+      self.print("creating UTF-8 text file")
 
     self.preprocess()
     self.process()
@@ -7526,8 +7542,8 @@ class Pph(Book):
 
   booktype = "html"
 
-  def __init__(self, args, renc, config):
-    Book.__init__(self, args, renc, config)
+  def __init__(self, args, renc, config, sout, serr):
+    Book.__init__(self, args, renc, config, sout, serr)
     if self.listcvg:
       self.cvglist()
     self.dstfile = re.sub("-src", "", self.srcfile.split('.')[0]) + ".html"
@@ -7591,7 +7607,7 @@ class Pph(Book):
   # print if debug includes 'd'
   def dprint(self, msg):
     if 'd' in self.debug:
-      print("{}: {}".format(self.__class__.__name__, msg))
+      self.print("{}: {}".format(self.__class__.__name__, msg))
 
   # bailout after saving working buffer in bailout.txt
   def bailout(self, buffer):
@@ -8039,7 +8055,7 @@ class Pph(Book):
         if header_needed:
           self.warn("No references found for these named footnotes:")
           header_needed = False
-        print("               {}".format(name))
+        self.print("               {}".format(name))
 
     # target references
     i = 0
@@ -8513,7 +8529,7 @@ class Pph(Book):
       try:
         f1.write( "{:s}\r\n".format(t))
       except Exception as e:
-        print( "internal error:\n  cannot write line: {:s}".format(self.umap(t)) )
+        self.print( "internal error:\n  cannot write line: {:s}".format(t))
         self.fatal("exiting")
     f1.close()
 
@@ -8524,7 +8540,7 @@ class Pph(Book):
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
-      print("GG .bin file {} created.".format(fnb))
+      self.print("GG .bin file {} created.".format(fnb))
       if self.ppqt2: # and PPQTv2 metadata, if requested
         self.ppqtpage("", 0, fn=fn)
 
@@ -10924,8 +10940,8 @@ class Pph(Book):
           if csstuple != self.ul_dict[clss]:
             self.warn_w_context("Conflicting .ul CSS characteristics for PPer-supplied class {}".format(clss), self.cl)
             if 'd' in self.debug:
-              print("Older definition requires: {}".format(self.ul_dict[clss]))
-              print("New definition requires: {}".format(csstuple))
+              self.print("Older definition requires: {}".format(self.ul_dict[clss]))
+              self.print("New definition requires: {}".format(csstuple))
         except KeyError: # if key doesn't exist, save it
           self.ul_dict[clss] = csstuple
       else:
@@ -11036,8 +11052,8 @@ class Pph(Book):
           if csstuple != self.ol_dict[clss]:
             self.warn_w_context("Conflicting .ol CSS characteristics for PPer-supplied class {}".format(clss), self.cl)
             if 'd' in self.debug:
-              print("Older definition requires: {}".format(self.ul_dict[clss]))
-              print("New definition requires: {}".format(csstuple))
+              self.print("Older definition requires: {}".format(self.ul_dict[clss]))
+              self.print("New definition requires: {}".format(csstuple))
         except KeyError: # if key doesn't exist, save it
           self.ol_dict[clss] = csstuple
       else:
@@ -11235,8 +11251,8 @@ class Pph(Book):
               if csstuple != b.dl_dict[self.dl_class]:
                 self.warn_w_context("Conflicting .dl CSS characteristics required for PPer-supplied class {}".format(self.dl_class), b.cl)
                 if 'd' in self.debug:
-                  print("Older definition requires: {}".format(b.dl_dict[self.dl_class]))
-                  print("New definition requires: {}".format(csstuple))
+                  self.print("Older definition requires: {}".format(b.dl_dict[self.dl_class]))
+                  self.print("New definition requires: {}".format(csstuple))
             except KeyError: # if key doesn't exist, save it
               b.dl_dict[self.dl_class] = csstuple
           else:
@@ -11765,7 +11781,7 @@ class Pph(Book):
     if len(rb):
       self.warn("Possible link or target problems:")
       for w in rb:
-        print(self.umap(w))
+        self.stderr.write(w + '\n')
 
     # report on possible image problems (used too many times, not used at all)
     if self.imageDirectoryOK:
@@ -11813,7 +11829,7 @@ class Pph(Book):
     while self.cl < len(self.wb):
       if "a" in self.debug:
         s = self.wb[self.cl]
-        print( self.umap(s) )  # safe print the current line
+        self.print( s)  # print the current line
       if not self.wb[self.cl]: # skip blank lines
         self.cl += 1
         continue
@@ -11960,7 +11976,7 @@ def loadConfig(ini_file):
         config.read(fn, encoding=config_encoding)
       except:
         traceback.print_exc()
-        self.fatal("Above error occurred while reading ini file {}".format(fn))
+        sys.stderr.write("Above error occurred while reading ini file {}\n".format(fn))
 
   # convert any multi-line header values to single line
   for k in config['CSS']:
@@ -12025,28 +12041,34 @@ def main():
   # Handle config file (ppgen.ini)
   config = loadConfig(args.ini_file)
 
+  #setup stdout and stderr so they can handle UTF-8 output on Windows
+  ppgen_stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
+  ppgen_stderr = open(sys.stderr.fileno(), mode='w', encoding='utf-8', buffering=1)
+
+  # if PPer did not explicitly ask for utf-8, only create it if input is encoded in utf-8
   if 't' in args.output_format:
-    ppt = Ppt(args, "u", config) # if PPer did not explicitly ask for utf-8, only create it if input is encoded in utf-8
+    ppt = Ppt(args, "u", config, ppgen_stdout, ppgen_stderr)
     ppt.run()
-    ppt = Ppt(args, "l", config)
+    ppt = Ppt(args, "l", config, ppgen_stdout, ppgen_stderr)
     ppt.run()
 
 
+  # if PPer explicitly asked for utf-8 always create it, even if input is encoded in Latin-1 or ASCII
   # UTF-8 only
   if 'u' in args.output_format:
-    ppt = Ppt(args, "U", config)  # if PPer explicitly asked for utf-8 always create it, even if input is encoded in Latin-1 or ASCII
+    ppt = Ppt(args, "U", config, ppgen_stdout, ppgen_stderr)
     ppt.run()
 
 
   # Latin-1 only
   if 'l' in args.output_format:
-   ppt = Ppt(args, "l", config)
+   ppt = Ppt(args, "l", config, ppgen_stdout, ppgen_stderr)
    ppt.run()
 
 
   if 'h' in args.output_format:
     print("creating HTML version")
-    pph = Pph(args, "h", config)
+    pph = Pph(args, "h", config, ppgen_stdout, ppgen_stderr)
     pph.run()
 
   print("done.")
