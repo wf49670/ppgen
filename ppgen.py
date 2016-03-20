@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55c" + with_regex   # 12-Mar-2016
+VERSION="3.55d" + with_regex   # 12-Mar-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
@@ -48,6 +48,9 @@ VERSION="3.55c" + with_regex   # 12-Mar-2016
 #    messages without piping.
 #  Text: Recognize long "centered" table lines (lines without a | to split them into cells) and wrap them to stay within the
 #    edges of the table. Also make sure that any such lines that specify <al=l> or <al=r> stay within the table edges.
+#3.55d:
+#  HTML: Fix issue with vertical placement of sidenotes (.sn) in relation to the text that follows them, when the sidenote
+#    is preceded by a .sp directive.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -10673,11 +10676,16 @@ class Pph(Book):
         t[i] = t[i].strip()
       t = "<br />".join(t)
       if self.pvs > 0: # handle any pending vertical space before the .sn
-        self.wb[self.cl] = "<div class='sidenote' style='margin-top: {}em; '>{}</div>".format(self.pvs, t)
+        # need to apply vertical space separately so sidenote and following text are placed 
+        # properly
+        s = "<div  style='margin-top: {}em; '></div>".format(self.pvs)
+        self.wb.insert(self.cl, s)
+        self.wb[self.cl+1] = "<div class='sidenote'>{}</div>".format(t)
         self.pvs = 0
+        self.cl += 2
       else:
         self.wb[self.cl] = "<div class='sidenote'>{}</div>".format(t)
-      self.cl += 1
+        self.cl += 1
     else:
       self.crash_w_context("malformed .sn directive", self.cl)
 
