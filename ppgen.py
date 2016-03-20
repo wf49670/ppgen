@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55d" + with_regex   # 12-Mar-2016
+VERSION="3.55e" + with_regex   # 12-Mar-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
@@ -51,6 +51,8 @@ VERSION="3.55d" + with_regex   # 12-Mar-2016
 #3.55d:
 #  HTML: Fix issue with vertical placement of sidenotes (.sn) in relation to the text that follows them, when the sidenote
 #    is preceded by a .sp directive.
+#3.55e:
+#  HTML: Fix Python failure when using .dl with .fs in effect.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -11331,7 +11333,7 @@ class Pph(Book):
           dlparms += " margin-top: .5em; margin-bottom: .5em;" # CSS assumes .5em top margin; HTML will override if needed
 
           if b.fsz != "100%" and b.fsz != "1.0em":
-            dlparms += " font-size: {};".format(self.fsz)
+            dlparms += " font-size: {};".format(b.fsz)
             b.fsz = "100%" # reset so inner elements aren't further reduced (will be restored when popping list stack)
 
           if self.options["float"]: # float=y
