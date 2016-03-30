@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55e" + with_regex   # 12-Mar-2016
+VERSION="3.55f" + with_regex   # 29-Mar-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
@@ -42,7 +42,7 @@ VERSION="3.55e" + with_regex   # 12-Mar-2016
 #3.55c:
 #  Revise handling of stdout and stderr. Previously, to avoid problems on Windows systems when running ppgen in a command
 #    window, ppgen translated any characters with values > x80 to *. With this enhancement ppgen encodes stdout and stderr
-#    as UTF-8 files, and sends all message characters directly. In a Windows console message this may show garbage for the 
+#    as UTF-8 files, and sends all message characters directly. In a Windows console message this may show garbage for the
 #    UTF-8 characters, but no errors will occur. If stdout/stderr are piped to files the files will be UTF-8 encoded and
 #    will show all characters properly. Also, Linux and Mac consoles should show all the characters properly in the error
 #    messages without piping.
@@ -53,6 +53,12 @@ VERSION="3.55e" + with_regex   # 12-Mar-2016
 #    is preceded by a .sp directive.
 #3.55e:
 #  HTML: Fix Python failure when using .dl with .fs in effect.
+#3.55f:
+#  Fix Python trap during macro processing (.pm) when macro argument contains regular-expression meta-characters. We may still
+#    terminate, but with a better error message.
+#  When combining long lines continued by a \ character, if the line ended with multiple \ characters ppgen was using a non-breaking
+#    space rather than a regular space. That has been fixed. Also, all the trailing \ characters will be deleted.
+#  Removed unnecessary code for handling continuations, now that it has been centralized.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2062,7 +2068,7 @@ class Book(object):
   def check_for_pppgen_special_characters(self):
     s = '\n'.join(self.wb)  # make a text blob
     pattern = r"(.*?)([ᒪᒧⓓⓢ①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳ⓈⓉⓊⓋⓏⓣⓤⓥ⓪⓫⓬⓭⓵⓶⓷⓸⓹⓺⓻⓼⓽◮◸◹◺◿⫉])"
-    
+
     values = {'ᒪ': '\\u14aa',  #  ᒪ   CANADIAN SYLLABICS MA # precedes lang= info
               'ᒧ': '\\u14a7',  #  ᒧ   CANADIAN SYLLABICS MO # follows lang= info
               'ⓓ': '\\u24d3',  #  ⓓ   CIRCLED LATIN SMALL LETTER D # four dot ellipsis
@@ -2582,11 +2588,11 @@ class Book(object):
         #
         b.list_item_active = True
         i = b.cl
-        while i < (len(b.wb) - 1) and b.wb[i].endswith("\\"): # handle continued lines
-          b.wb[i] = b.wb[i][:-1] + " " + b.wb[i+1]
-          del b.wb[i+1]
-        if b.wb[i].endswith("\\"):
-          b.crash_w_context("File ends with continued definition line: {}".format(b.wb[i]), i)
+        #while i < (len(b.wb) - 1) and b.wb[i].endswith("\\"): # handle continued lines
+        #  b.wb[i] = b.wb[i][:-1] + " " + b.wb[i+1]
+        #  del b.wb[i+1]
+        #if b.wb[i].endswith("\\"):
+        #  b.crash_w_context("File ends with continued definition line: {}".format(b.wb[i]), i)
 
         # check for a blank line, which terminates any combining paragraph
         if b.wb[b.cl] == "":
@@ -4113,7 +4119,7 @@ class Book(object):
     while i < len(self.wb):
       if self.wb[i].startswith(".pm"):
         while (i < len(self.wb) - 1) and self.wb[i].endswith("\\"):   # allow continuation via ending \ for .pm
-          self.wb[i] = re.sub(r"\\$", "", self.wb[i]) + self.wb[i+1]
+          self.wb[i] = re.sub(r"\\$", "", self.wb[i]) + " " + self.wb[i+1]
           del self.wb[i+1]
         if self.wb[i].endswith("\\"):
           self.fatal("file ends with continued .pm")
@@ -4138,7 +4144,14 @@ class Book(object):
               pnum = int(m.group(1))
               subst = r"\${}".format(pnum)
               if pnum < len(tlex) - 1:
-                t[j] = re.sub(subst, tlex[pnum+1], t[j], 1)
+                try:
+                  t[j] = re.sub(subst, tlex[pnum+1], t[j], 1)
+                except:
+                  if 'd' in self.debug:
+                    traceback.print_exc()
+                    self.fatal("Above error occurred while substituting parameter number {} in {}".format(pnum, self.wb[i]))
+                  else:
+                    self.fatal("Error occurred while substituting parameter number {} in {}".format(pnum, self.wb[i]))
               else:
                 self.warn("Incorrect macro invocation (argument ${} missing): {}".format(pnum, self.wb[i]))
                 t[j] = re.sub(subst, "***missing***", t[j], 1)
@@ -4256,7 +4269,7 @@ class Book(object):
     # long lines of any kind may end with a single backslash. The backslash will be replaced by a blank, and
     # the next line will be concatenated to it.
     # Note: .de is exempted here as it needs separate processing.
-    ### Code to allow continuations could be deleted from later code (except .de) now that it's done here
+    # Note: If a line ends with multiple \ characters they are all deleted and replaced by a single blank.
     i = 0
     inde = False
     while i < (len(self.wb) - 1):
@@ -4264,7 +4277,7 @@ class Book(object):
         inde = True
       elif self.wb[i].endswith("\\"):
         if not inde:
-          self.wb[i] = self.wb[i][:-1] + " " + self.wb[i+1]
+          self.wb[i] = re.sub(r"\\$", "", self.wb[i]) + " " + self.wb[i+1]
           del self.wb[i+1]
           continue
       else:
@@ -5406,7 +5419,8 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("⓪", "#")
       self.eb[i] = self.eb[i].replace("⑩", r"\|") # restore temporarily protected \| and \(space)
       self.eb[i] = self.eb[i].replace("⑮", r"\ ")
-      self.eb[i] = re.sub("ⓢ|Ⓢ", " ", self.eb[i]) # non-breaking space
+      self.eb[i] = re.sub("ⓢ|Ⓢ", " ", self.eb[i]) # non-breaking space (becomes regular space in text output
+                                                  # should be OK except if someone rewraps the text file later)
       self.eb[i] = re.sub("ⓣ|Ⓣ", " ", self.eb[i]) # zero space
       self.eb[i] = re.sub("ⓤ|Ⓤ", " ", self.eb[i]) # thin space
       self.eb[i] = re.sub("ⓥ|Ⓥ", " ", self.eb[i]) # thick space
@@ -6514,14 +6528,14 @@ class Ppt(Book):
     widths = list() # column widths
     totalwidth = 0
 
-    # look for continuation characters; restore to one line
+    # look for continuation characters; restore to one line (now, just ensure .ta- is found)
     k1 = self.cl
     s = self.wb[k1]
     while k1 < len(self.wb) and self.wb[k1] != ".ta-":
-      while self.wb[k1].endswith("\\"):
-        self.wb[k1] = re.sub(r"\\$", "", self.wb[k1])
-        self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
-        del self.wb[k1+1]
+      #while self.wb[k1].endswith("\\"):
+      #  self.wb[k1] = re.sub(r"\\$", "", self.wb[k1])
+      #  self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
+      #  del self.wb[k1+1]
       k1 += 1
     if k1 == len(self.wb):
       self.crash_w_context("missing .ta- in table starting: {}".format(s), self.cl)
@@ -6992,7 +7006,8 @@ class Ppt(Book):
   # .de CSS definition
   # ignore the directive in text
   def doDef(self):
-    while (self.cl < len(self.wb) - 1) and self.wb[self.cl].endswith("\\"):
+    while (self.cl < len(self.wb) - 1) and self.wb[self.cl].endswith("\\"): # this version of continuation still needed
+                                                                            # as it behaves differently from others.
       del self.wb[self.cl] # multiple line
     if not self.wb[self.cl].endswith("\\"):
       del self.wb[self.cl] # last or single line
@@ -7744,7 +7759,7 @@ class Pph(Book):
 
       # skip .de statements (including continuations), too, to avoid affecting RGB color specifications
       if self.wb[i].startswith(".de"):
-        while (i < len(self.wb) - 1) and self.wb[i].endswith("\\"):
+        while (i < len(self.wb) - 1) and self.wb[i].endswith("\\"): # this version of continuation still needed
           i += 1
         if not self.wb[i].endswith("\\"):
           i += 1
@@ -8783,6 +8798,7 @@ class Pph(Book):
 
   # .de CSS definition
   # one liners: .de h1 { color:red; }
+  # this version of continuation still needed as it behaves differently from regular one
   def doDef(self):
     if not self.wb[self.cl].endswith("\\"):
       # single line
@@ -9983,13 +9999,13 @@ class Pph(Book):
     il_line = self.wb[self.cl]
     border_tag = "<" + NOW + ">" # tag showing a horizontal border line is already processed
 
-    # look for continuation characters; restore to one line
+    # look for continuation characters; restore to one line (now, just look for .ta-)
     k1 = self.cl
     while k1 < len(self.wb) and self.wb[k1] != ".ta-":
-      while self.wb[k1].endswith("\\"):
-        self.wb[k1] = re.sub(r"\\$", "", self.wb[k1])
-        self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
-        del self.wb[k1+1]
+      #while self.wb[k1].endswith("\\"):
+      #  self.wb[k1] = re.sub(r"\\$", "", self.wb[k1])
+      #  self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
+      #  del self.wb[k1+1]
       k1 += 1
     if k1 == len(self.wb):
       self.crash_w_context("missing .ta- in table starting: {}".format(s), self.cl)
@@ -10678,7 +10694,7 @@ class Pph(Book):
         t[i] = t[i].strip()
       t = "<br />".join(t)
       if self.pvs > 0: # handle any pending vertical space before the .sn
-        # need to apply vertical space separately so sidenote and following text are placed 
+        # need to apply vertical space separately so sidenote and following text are placed
         # properly
         s = "<div  style='margin-top: {}em; '></div>".format(self.pvs)
         self.wb.insert(self.cl, s)
@@ -11814,7 +11830,7 @@ class Pph(Book):
         if self.imageDict[k] == 0: # unused image
           notUsed += 1
           notUsedList.append(k)
-        elif k != self.cimage and self.imageDict[k] > 1: # used multiple times (exempt cover 
+        elif k != self.cimage and self.imageDict[k] > 1: # used multiple times (exempt cover
                                                          # in case PPer decided to use it in HTML
           multiplyUsed += 1
           multiplyUsedList.append(k)
