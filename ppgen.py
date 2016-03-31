@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55f+InlinePlayMacroB" + with_regex   # 29-Mar-2016
+VERSION="3.55f+InlinePlayMacroC" + with_regex   # 29-Mar-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
@@ -62,6 +62,7 @@ VERSION="3.55f+InlinePlayMacroB" + with_regex   # 29-Mar-2016
 #InlinePlayMacro: Allow macros to be invoked by <pm name parms> as long as they return only 1 line of output.
 #InlinePlayMacroB: Allow <pm ...> tags inside of [Greek: ...] tags.
 #                  Fix major Greek processing issue when keep=a or b is specified.
+#InlinePlayMacroC: Fix <pm...> error performing substitution when macro argument contains regex meta-characters
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -4271,7 +4272,7 @@ class Book(object):
         if len(t) > 1:
           self.crash_w_context("Inline macro <{}> tried to generate more than one line of output".format(m.group(2)), i)
         else:
-          self.wb[i], count = re.subn(m.group(0), m.group(1) + t[0], self.wb[i], 1)
+          self.wb[i], count = re.subn(re.escape(m.group(0)), m.group(1) + t[0], self.wb[i], 1)
           if count == 0: 
             self.warn_w_context("Substituting {} for inline macro <{}> failed.".format(t[0], m.group(2)), i)
             break
