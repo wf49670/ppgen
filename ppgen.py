@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55f+InlinePlayMacroB" + with_regex   # 29-Mar-2016
+VERSION="3.55f+InlinePlayMacroD" + with_regex   # 29-Mar-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
@@ -62,6 +62,9 @@ VERSION="3.55f+InlinePlayMacroB" + with_regex   # 29-Mar-2016
 #InlinePlayMacro: Allow macros to be invoked by <pm name parms> as long as they return only 1 line of output.
 #InlinePlayMacroB: Allow <pm ...> tags inside of [Greek: ...] tags.
 #                  Fix major Greek processing issue when keep=a or b is specified.
+#InlinePlayMacroC: Fix <pm...> error performing substitution when macro argument contains regex meta-characters
+#InlinePlayMacroD: move uncomment, .ig, and .if processing before doGreek (only when not filtering, but when filtering we quit anyway
+#  before they would be done).
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -3531,6 +3534,77 @@ class Book(object):
         buffer[i] = buffer[i].rstrip()
         i += 1
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # ignored text removed in preprocessor
+    def handle_ig():
+      i = 0
+      while i < len(self.wb):
+        # detect misplaced .ig-
+        if ".ig-" == self.wb[i]:
+          self.crash_w_context("Extraneous .ig-; no matching .ig", i)
+        # one line
+        elif re.match(r"\.ig ",self.wb[i]): # single line
+          del self.wb[i]
+        elif ".ig" == self.wb[i]: # multi-line
+          del self.wb[i]
+          while i < len(self.wb) and self.wb[i] != ".ig-":
+            if self.wb[i].startswith(".ig"): # hit a .ig while looking for a .ig-?
+              self.crash_w_context("Missing .ig- directive: found another .ig inside a .ig block", i)
+            del self.wb[i]
+          if i < len(self.wb):
+            del self.wb[i] # the ".ig-"
+          else:
+            self.fatal("unterminated .ig command")
+        else:
+          i += 1
+
+    # .if conditionals (moved to preProcessCommon 28-Aug-2014)
+    def handle_if():
+      text = []
+      keep = True
+      inIf = False
+      for i, line in enumerate(self.wb):
+
+        m = re.match(r"\.if (\w)", line)  # start of conditional
+        if m:
+          if inIf:
+            self.crash_w_context("Nested .if not supported", i)
+          inIf = True
+          ifloc = i
+          keep = False
+          keepType = m.group(1)
+          if m.group(1) == 't' and self.renc in "lut":
+            keep = True
+          elif m.group(1) == 'h' and self.renc == "h":
+            keep = True
+          continue
+
+        if line == ".if-":
+          if not inIf:
+            self.crash_w_context(".if- has no matching .if", i)
+          keep = True
+          keepType = None
+          inIf = False
+          continue
+
+        if keep:
+          text.append(line)
+        elif line.startswith(".sr"):
+          m2 = re.match(r"\.sr (\w+)", line)
+          if m2:
+            if keepType == 't' and "h" in m2.group(1):
+              self.warn(".sr command for HTML skipped by .if t: {}".format(line))
+            elif keepType == 'h':
+              m3 = re.match(r"h*[ult]", m2.group(1))
+              if m3:
+                self.warn(".sr command for text skipped by .if h: {}".format(line))
+
+      if inIf: # unclosed .if?
+        self.crash_w_context("Unclosed .if directive", ifloc)
+      self.wb = text
+      text = []
+
+
     def doGreek():
 
       def findGreek(text, start):
@@ -4004,6 +4078,16 @@ class Book(object):
     #  self.wb[i] = self.wb[i].replace(r"\-", "⑨")
     #  self.wb[i] = self.wb[i].replace(r"\#", "⓪")
 
+
+    # Remove commented/ignored stuff if not in filter mode
+    #   so they don't impact Greek/Diacritic processing
+    # (Also un-escapes any escaped / characters (\/ becomes /)
+    if not self.cvgfilter:
+      uncomment(self.wb)
+      handle_ig()
+      handle_if()
+
+
     # Handle Greek, Diacritics, .sr for filtering, and terminate with cvg-bailout text if filtering or user requested it
     doGreek()
     doDiacritics()
@@ -4011,81 +4095,6 @@ class Book(object):
       doFilterSR()
     if self.gk_quit.lower().startswith("y") or self.dia_quit.lower().startswith("y") or self.cvgfilter:
       self.cvgbailout()  # bail out after .cv/.gk or filter processing if user requested early termination
-
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # Remove comments in pre-processor
-    # Also un-escape any escaped / characters in the text (\/ becomes /)
-    #
-    uncomment(self.wb)
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # ignored text removed in preprocessor
-    i = 0
-    while i < len(self.wb):
-      # detect misplaced .ig-
-      if ".ig-" == self.wb[i]:
-        self.crash_w_context("Extraneous .ig-; no matching .ig", i)
-      # one line
-      elif re.match(r"\.ig ",self.wb[i]): # single line
-        del self.wb[i]
-      elif ".ig" == self.wb[i]: # multi-line
-        del self.wb[i]
-        while i < len(self.wb) and self.wb[i] != ".ig-":
-          if self.wb[i].startswith(".ig"): # hit a .ig while looking for a .ig-?
-            self.crash_w_context("Missing .ig- directive: found another .ig inside a .ig block", i)
-          del self.wb[i]
-        if i < len(self.wb):
-          del self.wb[i] # the ".ig-"
-        else:
-          self.fatal("unterminated .ig command")
-      else:
-        i += 1
-
-    # .if conditionals (moved to preProcessCommon 28-Aug-2014)
-    text = []
-    keep = True
-    inIf = False
-    for i, line in enumerate(self.wb):
-
-      m = re.match(r"\.if (\w)", line)  # start of conditional
-      if m:
-        if inIf:
-          self.crash_w_context("Nested .if not supported", i)
-        inIf = True
-        ifloc = i
-        keep = False
-        keepType = m.group(1)
-        if m.group(1) == 't' and self.renc in "lut":
-          keep = True
-        elif m.group(1) == 'h' and self.renc == "h":
-          keep = True
-        continue
-
-      if line == ".if-":
-        if not inIf:
-          self.crash_w_context(".if- has no matching .if", i)
-        keep = True
-        keepType = None
-        inIf = False
-        continue
-
-      if keep:
-        text.append(line)
-      elif line.startswith(".sr"):
-        m2 = re.match(r"\.sr (\w+)", line)
-        if m2:
-          if keepType == 't' and "h" in m2.group(1):
-            self.warn(".sr command for HTML skipped by .if t: {}".format(line))
-          elif keepType == 'h':
-            m3 = re.match(r"h*[ult]", m2.group(1))
-            if m3:
-              self.warn(".sr command for text skipped by .if h: {}".format(line))
-
-    if inIf: # unclosed .if?
-      self.crash_w_context("Unclosed .if directive", ifloc)
-    self.wb = text
-    text = []
 
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -4250,7 +4259,7 @@ class Book(object):
     # play macro (inline: <pm...>)
     # format:
     #   <pm name parameters>
-    # Notes: 
+    # Notes:
     #   (1) This form is allowed to generate only one line, which will replace the inline macro invocation in the line
     #       that contains the macro definition.
     #   (2) As .if processing has already "pruned" the macro contents, this means that it is OK for the macro to contain
@@ -4271,8 +4280,8 @@ class Book(object):
         if len(t) > 1:
           self.crash_w_context("Inline macro <{}> tried to generate more than one line of output".format(m.group(2)), i)
         else:
-          self.wb[i], count = re.subn(m.group(0), m.group(1) + t[0], self.wb[i], 1)
-          if count == 0: 
+          self.wb[i], count = re.subn(re.escape(m.group(0)), m.group(1) + t[0], self.wb[i], 1)
+          if count == 0:
             self.warn_w_context("Substituting {} for inline macro <{}> failed.".format(t[0], m.group(2)), i)
             break
 
