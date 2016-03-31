@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55f" + with_regex   # 29-Mar-2016
+VERSION="3.55f+InlinePlayMacroB" + with_regex   # 29-Mar-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
@@ -59,6 +59,9 @@ VERSION="3.55f" + with_regex   # 29-Mar-2016
 #  When combining long lines continued by a \ character, if the line ended with multiple \ characters ppgen was using a non-breaking
 #    space rather than a regular space. That has been fixed. Also, all the trailing \ characters will be deleted.
 #  Removed unnecessary code for handling continuations, now that it has been centralized.
+#InlinePlayMacro: Allow macros to be invoked by <pm name parms> as long as they return only 1 line of output.
+#InlinePlayMacroB: Allow <pm ...> tags inside of [Greek: ...] tags.
+#                  Fix major Greek processing issue when keep=a or b is specified.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -156,6 +159,7 @@ class Book(object):
   csslc = 3000 # CSS line counter for user defined classes
   dtitle = "" # display title for HTML
   cimage = "cover.jpg" # default cover image
+  bnPresent = False
 
   nregs = {} # named registers
   nregsusage = {} # usage counters for selected named registers
@@ -2872,6 +2876,7 @@ class Book(object):
       var["hint"] = srrHint    # the string after the macro name in the replace expression, or None
       var["out"] = [] # place for macro to put its output
       var["type"] = self.booktype # text or html
+      var["style"] = ".sr"
       # below 3 lines don't make sense during .sr
       #var["ll"] = self.regLL  # specified line length
       #var["in"] = self.regIN  # specified
@@ -3406,6 +3411,19 @@ class Book(object):
           print("Processing: {}".format(gkstring))
       count = 0 # count of built-in Greek characters converted
       count1 = 0 # count of PPer-provided Greek characters converted
+
+      # Protect any <pm> tags within the Greek string by saving the pm and macro name, then replacing
+      #   them with \u2ac9
+      # Later we will restore each saved value.
+      pm_found = False
+      pm_list = []
+      m = re.search(r"(^|[^\\])<(pm +[^ >]+)( .*?[^\\])>", gkstring)
+      while m:
+        pm_found = True
+        pm_list.append(m.group(2))
+        gkstring = re.sub(m.group(0), m.group(1) + "<\u2ac9" + m.group(3) + ">", gkstring, 1)
+        m = re.search(r"(^|[^\\])<(pm +[^ >]+)( .*?[^\\])>", gkstring)
+
       if len(self.gk_user) > 0:   # if PPer provided any additional Greek mappings apply them first
         for s in self.gk_user:
           try:
@@ -3432,6 +3450,12 @@ class Book(object):
           self.print("Replaced {} PPer-provided Greek characters and {} built-in Greek characters".format(count1, count))
         else:
           self.print("Replaced {} built-in Greek characters".format(count))
+
+      # Restore any protected <pm> tags
+      if pm_found:
+        for i, pm_string in enumerate(pm_list):
+          gkstring = re.sub("\u2ac9", pm_string, gkstring, 1)
+
       gkorigb = ""
       gkoriga = ""
       if self.gkkeep.lower().startswith("b"): # original before?
@@ -3512,12 +3536,12 @@ class Book(object):
       def findGreek(text, start):
         found = False
         i = end = newstart = len(text)
-        m = re.search(r"\[Greek: ?", text[start:end], flags=re.DOTALL)
+        m = re.search(r"(^|[^\\])(\[Greek: ?)", text[start:end], flags=re.DOTALL)
         if m:
           found = True
-          newstart = m.start()
-          i = start + m.end() # bump past [Greek:
-          end = len(text)
+          newstart = start + m.start(2)
+          i = start + m.end(2) # bump past [Greek:
+          #end = len(text)
           nest = 0
           done = False
           while i < end and not done:
@@ -3872,6 +3896,90 @@ class Book(object):
         self.srs = []
         self.srr = []
 
+    # Guts of .pm macro processing(so we can also use for <pm processing)
+    #
+    def pm_guts(line, line_num):
+      i = line_num
+      try:
+        tlex = shlex.split(line)  # ".pm" "tnote" "a" "<li>"
+      except:
+        if 'd' in self.debug:
+          traceback.print_exc()
+          self.crash_w_context("Above error occurred while processing macro invocation: {}".format(line), i)
+        else:
+          self.crash_w_context("Error occurred parsing macro arguments for: {}".format(line), i)
+
+      macroid = tlex[1]  # "tnote"
+      if not macroid in self.macro:
+        self.crash_w_context("undefined macro {}: ".format(macroid), i)
+
+      if self.macro[macroid][0] == "n": # "native" ppgen macro?
+        t = list(self.macro[macroid][1]) # all the lines in this macro as previously defined
+        for j,line in enumerate(t): # for each line
+          m = re.search(r'\$(\d{1,2})', t[j]) # is there a substitution?
+          while m:
+            pnum = int(m.group(1))
+            subst = r"\${}".format(pnum)
+            if pnum < len(tlex) - 1:
+              try:
+                t[j] = re.sub(subst, tlex[pnum+1], t[j], 1)
+              except:
+                if 'd' in self.debug:
+                  traceback.print_exc()
+                  self.crash_w_context("Above error occurred while substituting parameter number {} in {}".format(pnum, line), i)
+                else:
+                  self.crash_w_context("Error occurred while substituting parameter number {} in {}".format(pnum, line), i)
+            else:
+              self.warn_w_context("Incorrect macro invocation (argument ${} missing): {}".format(pnum, line), i)
+              t[j] = re.sub(subst, "***missing***", t[j], 1)
+            m = re.search(r'\$(\d{1,2})', t[j]) # another substitution on same line
+
+      else: # python format macro
+        if not self.pmcount: # if first python macro this pass, initialize a dictionary
+          self.savevar = {}  # to allow macros to communicate
+        self.pmcount += 1
+        var = {}
+        var["count"] = len(tlex) - 2 # count of input variables
+        for j in range(2, len(tlex)):
+          var[j-2] = tlex[j]
+        var["name"] = macroid # the name of the macro, in case the macro cares for some reason
+        var["out"] = [] # place for macro to put its output
+        var["type"] = self.booktype # text or html
+        var["style"] = ".pm" if tlex[0].startswith(".") else "<pm>"
+        # below 3 lines don't make sense for .pm as the phase is too early
+        #var["ll"] = self.regLL  # specified line length
+        #var["in"] = self.regIN  # specified
+        #var["nr-nfl"] = self.nregs["nfl"] # .nr nfl value
+        macglobals = __builtins__.__dict__
+        macglobals["var"] = var # make macro variables available
+        macglobals["re"] = re # make re module available
+        macglobals["toRoman"] = self.toRoman2
+        macglobals["fromRoman"] = self.fromRoman
+        macglobals["debugging"] = [self.bailout, self.wb, i]
+        macglobals["savevar"] = self.savevar # make communication dictionary available
+        maclocals = {"__builtins__":None}
+
+        try: # exec the macro
+          exec(self.macro[macroid][1], macglobals, maclocals)
+        except:
+          where = traceback.extract_tb(sys.exc_info()[2])[-1]
+          if where[0] == "<macro {}>".format(macroid):
+            macro_line = "{}:".format(where[1]-1) + self.macro[macroid][3][where[1]-1]
+          else:
+            macro_line = "not available"
+          mac_info = "Exception occurred running Python macro {} at\n       Source line {}\n".format(macroid, macro_line)
+          trace_info = traceback.format_exception(*sys.exc_info())
+          self.crash_w_context(mac_info + "\n".join(trace_info), i)
+
+        try: # try to grab its output
+          t = var["out"][:]
+        except:
+          traceback.print_exc()
+          self.crash_w_context("Above error occurred trying to copy output from Python macro {}".format(macroid), i)
+
+      return t
+
+
     #
     # Begin Pre-process Common
     #
@@ -3881,7 +3989,7 @@ class Book(object):
       loadFilter()
 
     # This ends up causing problems for Greek with \], and now that Greek processing properly finds the end
-    # of the [GreekL ...] tag we don't need to have this done early any more.
+    # of the [Greek: ...] tag we don't need to have this done early any more.
     ## Handle some escaped characters
     #for i, line in enumerate(self.wb):
     #  # some escaped characters
@@ -4054,6 +4162,11 @@ class Book(object):
     # macro line 1
     # macro line 2
     # .dm-
+    # Notes:
+    #    (1) .if processing has already occurred, and has "pruned" macro content to the appropriate statements
+    #        for the phase (text, HTML) that we're in.
+    #    (2) This implies that a macro definition must include a complete .if block; you cannot start a .if in one
+    #        macro and have the .if- in a subsequent macro.
     i = 0
     while i < len(self.wb):
       if self.wb[i].startswith(".dm "):
@@ -4111,9 +4224,11 @@ class Book(object):
         i -= 1
       i += 1
 
+
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # play macro
-    # .pm name
+    # play macro (dot directive, .pm)
+    # format:
+    #  .pm name parameters
     i = 0
     self.pmcount = 0 # number of python macros executed in this phase
     while i < len(self.wb):
@@ -4123,87 +4238,48 @@ class Book(object):
           del self.wb[i+1]
         if self.wb[i].endswith("\\"):
           self.fatal("file ends with continued .pm")
-        try:
-          tlex = shlex.split(self.wb[i])  # ".pm" "tnote" "a" "<li>"
-        except:
-          if 'd' in self.debug:
-            traceback.print_exc()
-            self.fatal("Above error occurred while processing line: {}".format(self.wb[i]))
-          else:
-            self.fatal("Error occurred parsing .pm arguments for: {}".format(self.wb[i]))
 
-        macroid = tlex[1]  # "tnote"
-        if not macroid in self.macro:
-          self.fatal("undefined macro {}: ".format(macroid, self.wb[i]))
+        t = pm_guts(self.wb[i], i) # go play the macro
+        self.wb[i:i+1] = t
 
-        if self.macro[macroid][0] == "n": # "native" ppgen macro?
-          t = list(self.macro[macroid][1]) # all the lines in this macro as previously defined
-          for j,line in enumerate(t): # for each line
-            m = re.search(r'\$(\d{1,2})', t[j]) # is there a substitution?
-            while m:
-              pnum = int(m.group(1))
-              subst = r"\${}".format(pnum)
-              if pnum < len(tlex) - 1:
-                try:
-                  t[j] = re.sub(subst, tlex[pnum+1], t[j], 1)
-                except:
-                  if 'd' in self.debug:
-                    traceback.print_exc()
-                    self.fatal("Above error occurred while substituting parameter number {} in {}".format(pnum, self.wb[i]))
-                  else:
-                    self.fatal("Error occurred while substituting parameter number {} in {}".format(pnum, self.wb[i]))
-              else:
-                self.warn("Incorrect macro invocation (argument ${} missing): {}".format(pnum, self.wb[i]))
-                t[j] = re.sub(subst, "***missing***", t[j], 1)
-              m = re.search(r'\$(\d{1,2})', t[j]) # another substitution on same line
-          self.wb[i:i+1] = t
-
-        else: # python format macro
-          if not self.pmcount: # if first python macro this pass, initialize a dictionary
-            self.savevar = {}  # to allow macros to communicate
-          self.pmcount += 1
-          var = {}
-          var["count"] = len(tlex) - 2 # count of input variables
-          for j in range(2, len(tlex)):
-            var[j-2] = tlex[j]
-          var["name"] = macroid # the name of the macro, in case the macro cares for some reason
-          var["out"] = [] # place for macro to put its output
-          var["type"] = self.booktype # text or html
-          # below 3 lines don't make sense for .pm as the phase is too early
-          #var["ll"] = self.regLL  # specified line length
-          #var["in"] = self.regIN  # specified
-          #var["nr-nfl"] = self.nregs["nfl"] # .nr nfl value
-          macglobals = __builtins__.__dict__
-          macglobals["var"] = var # make macro variables available
-          macglobals["re"] = re # make re module available
-          macglobals["toRoman"] = self.toRoman2
-          macglobals["fromRoman"] = self.fromRoman
-          macglobals["debugging"] = [self.bailout, self.wb, i]
-          macglobals["savevar"] = self.savevar # make communication dictionary available
-          maclocals = {"__builtins__":None}
-
-          try: # exec the macro
-            exec(self.macro[macroid][1], macglobals, maclocals)
-          except:
-            where = traceback.extract_tb(sys.exc_info()[2])[-1]
-            if where[0] == "<macro {}>".format(macroid):
-              macro_line = "{}:".format(where[1]-1) + self.macro[macroid][3][where[1]-1]
-            else:
-              macro_line = "not available"
-            mac_info = "Exception occurred running Python macro {} at\n       Source line {}\n".format(macroid, macro_line)
-            trace_info = traceback.format_exception(*sys.exc_info())
-            self.crash_w_context(mac_info + "\n".join(trace_info), i)
-
-          try: # try to grab its output
-            self.wb[i:i+1] = var["out"][:]
-          except:
-            traceback.print_exc()
-            self.crash_w_context("Above error occurred trying to copy output from Python macro {}".format(macroid), i)
-
-          var = {}
-        i -= 1
+        i -= 1 # so we can rescan the first line generated by the macro
 
       i += 1
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # play macro (inline: <pm...>)
+    # format:
+    #   <pm name parameters>
+    # Notes: 
+    #   (1) This form is allowed to generate only one line, which will replace the inline macro invocation in the line
+    #       that contains the macro definition.
+    #   (2) As .if processing has already "pruned" the macro contents, this means that it is OK for the macro to contain
+    #         .if t
+    #         1 statement
+    #         .if-
+    #         .if h
+    #         1 statement
+    #         .if-
+    #   (3) Unfortunately, we have not processed/protected characters yet, so if the PPer used \> so he could have
+    #       a > in a macro argument that will still look like \> and not like ⑳. This makes the reg-exes below more
+    #       complex as they need to recognize both \< and \> and not consider them as initiating or ending a <pm> tag.
+    i = 0
+    while i < len(self.wb):
+      m = re.search(r"(^|[^\\])<(pm .*?[^\\])>", self.wb[i])
+      while m:
+        t = pm_guts(m.group(2), i) # go play the macro
+        if len(t) > 1:
+          self.crash_w_context("Inline macro <{}> tried to generate more than one line of output".format(m.group(2)), i)
+        else:
+          self.wb[i], count = re.subn(m.group(0), m.group(1) + t[0], self.wb[i], 1)
+          if count == 0: 
+            self.warn_w_context("Substituting {} for inline macro <{}> failed.".format(t[0], m.group(2)), i)
+            break
+
+        m = re.search(r"(^|[^\\])<(pm .*?[^\\])>", self.wb[i])
+
+      i += 1
+
 
     # Handle any .sr that have the B option specified
     #
@@ -12176,7 +12252,7 @@ if __name__ == '__main__':
 # \u25f9  ◹   UPPER RIGHT TRIANGLE # follows superscripts
 # \u25fa  ◺   LOWER LEFT TRIANGLE # precedes subscripts
 # \u25ff  ◿   LOWER RIGHT TRIANGLE # follows subscripts
-# \u2ac9  ⫉   SUBSET OF ABOVE ALMOST EQUAL TO # used temporarily during page number reference processing
+# \u2ac9  ⫉   SUBSET OF ABOVE ALMOST EQUAL TO # used temporarily during page number reference processing and Greek processing
 #
 #
 # ppgen css numbers:
