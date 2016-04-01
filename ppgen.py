@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55f+InlinePlayMacroD" + with_regex   # 29-Mar-2016
+VERSION="3.55h" + with_regex   # 01-Apr-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
@@ -59,12 +59,14 @@ VERSION="3.55f+InlinePlayMacroD" + with_regex   # 29-Mar-2016
 #  When combining long lines continued by a \ character, if the line ended with multiple \ characters ppgen was using a non-breaking
 #    space rather than a regular space. That has been fixed. Also, all the trailing \ characters will be deleted.
 #  Removed unnecessary code for handling continuations, now that it has been centralized.
-#InlinePlayMacro: Allow macros to be invoked by <pm name parms> as long as they return only 1 line of output.
-#InlinePlayMacroB: Allow <pm ...> tags inside of [Greek: ...] tags.
-#                  Fix major Greek processing issue when keep=a or b is specified.
-#InlinePlayMacroC: Fix <pm...> error performing substitution when macro argument contains regex meta-characters
-#InlinePlayMacroD: move uncomment, .ig, and .if processing before doGreek (only when not filtering, but when filtering we quit anyway
-#  before they would be done).
+#3.55g:
+#  Allow macros to be invoked by <pm name parms> as long as they return only 1 line of output.
+#  Allow <pm ...> tags inside of [Greek: ...] tags in some situations.
+#  Fix major Greek processing issue when keep=a or b is specified.
+#  Move uncomment, .ig, and .if processing before doGreek so Greek processing won't be performed on lines that will be ignored anyway
+#    (Note: Uncommenting, etc. still happens only when ppgen is not operating in filter mode.)
+#3.55h:
+#  Eliminate .table### duplication in the CSS when the table classes have the same characteristics
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -155,7 +157,6 @@ class Book(object):
   dotcmdstack = [] # stack for valid dotcmds
   warnings = [] # warnings displayed
   cl = 0 # current line number
-  tcnt = 0 # table counter
   pindent = False
   pnshow = False # set to True if page numbering found in source file
   pnlink = False # create links but do not show page number
@@ -7654,6 +7655,7 @@ class Pph(Book):
   ul_dict = {}
   ol_classnum = 0
   ol_dict = {}
+  table_list = []
 
   booktype = "html"
 
@@ -10278,15 +10280,28 @@ class Pph(Book):
 
     if borders_present:
       s += "border-collapse: {}; ".format(self.nregs["border-collapse"])
-    self.css.addcss("[1670] .table{0} {{ {1} }}".format(self.tcnt, s))
 
     if tw_html != "none" and tw_epub != "":
-        epw = int(re.sub("%", "", tw_epub)) # as integer
-        left_indent_pct = (100 - epw) // 2
-        right_indent_pct = 100 - epw - left_indent_pct
-        self.css.addcss("[1671] @media handheld {{ .table{} {{ margin-left: {}%; margin-right: {}%; width: {}%; }} }}".format(self.tcnt, left_indent_pct, right_indent_pct, epw))
+      epw = int(re.sub("%", "", tw_epub)) # as integer
+      left_indent_pct = (100 - epw) // 2
+      right_indent_pct = 100 - epw - left_indent_pct
+    else:
+      left_indent_pct = right_indent_pct = epw = 0
 
-    t.append("<table class='table{}' summary='{}'{}>".format(self.tcnt, tsum, tid))
+    lookup = (s, left_indent_pct, right_indent_pct, epw)
+    try:
+      ix = self.table_list.index(lookup)
+    except ValueError:
+      self.table_list.append(lookup)
+      ix = len(self.table_list) - 1
+      self.css.addcss("[1670] .table{0} {{ {1} }}".format(ix, s))
+      if left_indent_pct or right_indent_pct or epw:
+        self.css.addcss("[1671] @media handheld {{ .table{} {{ margin-left: {}%; margin-right: {}%; width: {}%; }} }}".format(ix,
+                                                                                                                              left_indent_pct,
+                                                                                                                              right_indent_pct,
+                                                                                                                              epw))
+
+    t.append("<table class='table{}' summary='{}'{}>".format(ix, tsum, tid))
 
     # set relative widths of columns
     if tw_html != "none":
@@ -10482,7 +10497,6 @@ class Pph(Book):
       border_bottom = ''
       self.cl += 1
     t.append("</table>")
-    self.tcnt += 1
     self.wb[startloc:self.cl+1] = t
     self.cl = startloc + len(t)
 
