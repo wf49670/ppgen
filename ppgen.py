@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55h" + with_regex   # 01-Apr-2016
+VERSION="3.55i" + with_regex   # 02-Apr-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
@@ -67,6 +67,9 @@ VERSION="3.55h" + with_regex   # 01-Apr-2016
 #    (Note: Uncommenting, etc. still happens only when ppgen is not operating in filter mode.)
 #3.55h:
 #  Eliminate .table### duplication in the CSS when the table classes have the same characteristics
+#3.55i:
+#  Exempt <g> and </g> from Greek processing so they can be used for emphasis in Greek strings.
+#  Minor rewording of imagecheck warning messages
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -729,6 +732,8 @@ class Book(object):
      ('q',        '\u03DF', 'q (qoppa)'),
      ('C',        '\u03E0', 'C (Sampi)'),
      ('c',        '\u03E1', 'c (sampi)'),
+     ('<γ>',      '<g>',    '<g> (gesperrt emphasis)'),
+     ('</γ>',     '</g>',   '</g> (gesperrt emphasis)'),
     ]
 
   # Format of diacritic table:
@@ -3469,12 +3474,15 @@ class Book(object):
       gkfull = gkorigb + self.gkpre + gkstring + self.gksuf + gkoriga
 
       # Check for errant accent marks within the substituted Greek
-      m = re.search(r"[~=_)(/\\|+]", gkstring)
+      temp_gkstring = gkstring
+      if "</g>" in temp_gkstring: # make sure that </g> doesn't trigger the warning
+        temp_gkstring = re.sub("</?g>", "", temp_gkstring)
+      m = re.search(r"[~=_)(/\\|+]", temp_gkstring)
       if m:
         self.warn("Possible accent problem in Greek string {} with result {}".format(gkmatch.group(0), gkstring))
 
       gkfull = gkfull.replace(r"\|", "⑩") # temporarily protect \| and \(space) so they
-      gkfull = gkfull.replace(r"\ ", "⑮") # retain their special meaning within [Greek: ...] tags
+      gkfull = gkfull.replace(r"\ ", "⑮") # retain their special meaning within [Greek: ...] tags in case keep was specified
       gkfull = gkfull.replace(r"\]", "\④") # also \] needs to become protected here, but with an added \
 
       return gkfull
@@ -11939,7 +11947,7 @@ class Pph(Book):
 
       if self.imageCheck: # full report?
         if notUsed:
-          self.warn("{} image{} not used:".format(notUsed, notUsedS))
+          self.warn("{} image{} apparently not used:".format(notUsed, notUsedS))
           for img in notUsedList:
             self.warn("  {}".format(img))
         if multiplyUsed:
@@ -11949,7 +11957,7 @@ class Pph(Book):
 
       else:  # summary only
         if notUsed:
-          self.warn("{} image{} not used. Rerun with -img option for more information".format(notUsed, notUsedS))
+          self.warn("{} image{} apparently unused. Rerun with -img option for more information".format(notUsed, notUsedS))
         if multiplyUsed:
           self.info("{} image{} used multiple times. Rerun with -img option for more information".format(multiplyUsed, multiplyUsedS))
 
