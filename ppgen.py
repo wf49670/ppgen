@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55j" + with_regex   # 02-Apr-2016
+VERSION="3.55k" + with_regex   # 11-Apr-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
@@ -74,6 +74,8 @@ VERSION="3.55j" + with_regex   # 02-Apr-2016
 #  HTML: Fix issue with .pn off (no page visible numbers) where ppgen creates page numbers anyway for illustrations.
 #        Also ensure that a page number link is generated on the illustration if a .pn directive occurs
 #        just before a .il directive.
+#3.55k:
+# HTML:  Fix Python trap that can occur due to a coding error handling a .dv directive has neither a class= nor an fs= operand
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -11999,7 +12001,7 @@ class Pph(Book):
         self.cl += 1
         continue
       if self.wb[self.cl] == "<div⓭>": # one more case of .dv to skip over, but this one needs fixup
-        sellf.wb[self.cl] = "<div>"    # remove the ⓭ that marked this one for us
+        self.wb[self.cl] = "<div>"    # remove the ⓭ that marked this one for us
         self.cl += 1
         continue
 
