@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55k" + with_regex   # 11-Apr-2016
+VERSION="3.55l" + with_regex   # 21-Apr-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
@@ -76,6 +76,13 @@ VERSION="3.55k" + with_regex   # 11-Apr-2016
 #        just before a .il directive.
 #3.55k:
 # HTML:  Fix Python trap that can occur due to a coding error handling a .dv directive has neither a class= nor an fs= operand
+#3.55l:
+#  HTML: Reduce number of class= specifications for <td> elements by keeping track of which style is most common for that table and
+#    refactoring the .cnnn definition into a .table td CSS specification. Note: This may increase the
+#    number of .table<nnn> classes that are generated, including some that will duplicate others, if they
+#    have a different "most popular" cell style.
+#  Text: Allow bl=y (default) or n on .ta to allow or prevent addition of blank lines between rows
+#    when some cell wraps to multiple lines.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -6658,6 +6665,20 @@ class Ppt(Book):
     if "id=" in self.wb[self.cl]:
       self.wb[self.cl] = self.get_id("id", self.wb[self.cl], 1)
 
+    # pull out bl= (blank line) option
+    # bl=none (PPer in total control; don't add any blank lines) or
+    #    auto (add a blank line if cell wraps, unless PPer already suppiied one)
+    temp = "y"
+    if "bl=" in self.wb[self.cl]:
+      self.wb[self.cl], temp = self.get_id("bl", self.wb[self.cl])
+      temp = temp.lower()[0] # lower-case and grab first character
+    if temp == "y":
+      add_blank_lines = True
+    elif temp == "n":
+      add_blank_lines = False
+    else:
+      self.warn_w_context("Unexpected bl= value on .ta {} ignored; assuming y".format(temp), self.cl)
+
     # table forms:
     # .ta r:5 l:20 l:5  => use specified width and wrap if necessary
     # .ta rll  => calculate width of columns, no wrap
@@ -6800,10 +6821,10 @@ class Ppt(Book):
     #self.twrap = textwrap.TextWrapper()
 
     # if any cell wraps, put a vertical gap between rows
-    # except for cases where the PPer supplies a blank line or a horizontal border
+    # except for cases where the PPer supplies a blank line or a horizontal border or specified bl=n
     rowspace = False
     k1 = self.cl
-    while self.wb[k1] != ".ta-" and not rowspace:
+    while add_blank_lines and self.wb[k1] != ".ta-" and not rowspace:
 
       # lines that we don't check: centered or blank (or .bn info)
       if empty.match(self.wb[k1]) or not "|" in self.wb[k1]:
@@ -7689,6 +7710,8 @@ class Pph(Book):
       self.cssline = {}
 
     def addcss(self, s):
+      if s.endswith("}"):
+        s = s[:-1].rstrip() + " }"
       if s in self.cssline:
         self.cssline[s] += 1
       else:
@@ -9996,7 +10019,7 @@ class Pph(Book):
       if myfsz:                                          # if we have a font-size override
         myfsz = " style='font-size: {}; '".format(myfsz)  # build a style string for it
 
-      self.css.addcss("[1430] div.footnote {}")
+      #self.css.addcss("[1430] div.footnote {}")
       self.css.addcss("[1431] div.footnote > :first-child { margin-top: 1em; }")
       self.css.addcss("[1432] div.footnote p {{ text-indent: 1em; margin-top: {0}em; margin-bottom: {1}em; }}".format(s2,s2))
       self.wb[self.cl] = "<div class='footnote' id='f{}'{}>".format(fnname, myfsz)
@@ -10053,7 +10076,6 @@ class Pph(Book):
   # left margin calculated and applied for epub.
   #
   # s=  summary
-  # o=  options. only one implemented: "wide" for unrestricted width table
 
   def doTable(self): # HTML
 
@@ -10082,7 +10104,7 @@ class Pph(Book):
     def make_tb_border_class(line, data_found):
       classname = 'bb' if (data_found) else 'bt' # first part of class name
       classname += self.valid_html_hrules[line][0] # finish class name
-      border_css = "[1672] ." + classname + ' '
+      border_css = "[1673] ." + classname + ' '
       border_css += self.html_border_names[classname[0:2]]
       key = self.valid_html_hrules[line][1]
       border_css += self.nregs[key] +'; }'
@@ -10094,11 +10116,50 @@ class Pph(Book):
       rule = self.valid_html_vrules[spec]
       classname += rule[0]
       key = rule[1]
-      border_css = "[1672] ." + classname + ' '
+      border_css = "[1673] ." + classname + ' '
       border_css += self.html_border_names[prefix]
       border_css += self.nregs[key] +'; }'
       self.css.addcss(border_css)
       return classname
+
+    # Save the cell style in the cell_styles dictionary and
+    # count how many times that style was used.
+    # Returns: ⓾ + a unique number to allow retrieval of the style value later
+    # Format of dictionary:
+    # key: the style text
+    # value: a list  [x, y] where:
+    #    x is the count of times used
+    #    y is reverse lookup value associated with the style, or when the
+    #      key is "max" the style that has that count.
+    def save_cell_style(style):
+      if style in cell_styles:
+        cell_styles[style][0] += 1
+      else:
+        unique = "⓾" + str(len(cell_styles) + 1)
+        cell_styles[style] = [1, unique]
+        cell_reverse_lookup[unique] = style
+      if cell_styles[style][0] > cell_styles["max"][0]:
+        cell_styles["max"] = [cell_styles[style][0], style]
+      return cell_styles[style][1]
+
+    # Retrieve the style associated with a particular unique value
+    # If retrieving "max", also remove the unique value from the
+    # lookup table
+    def get_cell_style(unique):
+      if unique == "max":
+        style = cell_styles["max"][1]
+        unique = cell_styles[style][1]
+        del cell_reverse_lookup[unique]
+      elif unique in cell_reverse_lookup:
+        style = cell_reverse_lookup[unique]
+      else:
+        style = ""
+      return style
+
+
+    cell_styles = {} # initialize dictionary for the styles
+    cell_styles["max"] = [0, None]
+    cell_reverse_lookup = {}
 
     if self.wb[self.cl] == ".ta-":
       self.crash_w_context(".ta- found outside of table", self.cl)
@@ -10146,6 +10207,19 @@ class Pph(Book):
       if tid:
         tid = " id='{}'".format(tid)
 
+    # pull out bl= (blank line) option, but ignore in HTML except for validation
+    # bl=none (PPer in total control; don't add any blank lines) or
+    #    auto (add a blank line if cell wraps, unless PPer already suppiied one)
+    temp = "y"
+    if "bl=" in self.wb[self.cl]:
+      self.wb[self.cl], temp = self.get_id("bl", self.wb[self.cl])
+      temp = temp.lower()[0] # lower-case and grab first character
+    if temp == "y":
+      add_blank_lines = True
+    elif temp == "n":
+      add_blank_lines = False
+    else:
+      self.warn_w_context("Unexpected bl= value on .ta {} ignored; assuming y".format(temp), self.cl)
 
     # tables forms:
     # .ta r:5 l:20 l:5  => use specified width and wrap if necessary
@@ -10281,8 +10355,6 @@ class Pph(Book):
     # lmarpct = 21  left margin percent. (2 * lmarpct + tablewidth = 100)
     # totalwidth = width of table in characters
 
-    t = []
-
     s = "margin: auto; "  # start building class for table
 
     if self.pvs > 0:  # pending vertical space
@@ -10311,20 +10383,11 @@ class Pph(Book):
     else:
       left_indent_pct = right_indent_pct = epw = 0
 
-    lookup = (s, left_indent_pct, right_indent_pct, epw)
-    try:
-      ix = self.table_list.index(lookup)
-    except ValueError:
-      self.table_list.append(lookup)
-      ix = len(self.table_list) - 1
-      self.css.addcss("[1670] .table{0} {{ {1} }}".format(ix, s))
-      if left_indent_pct or right_indent_pct or epw:
-        self.css.addcss("[1671] @media handheld {{ .table{} {{ margin-left: {}%; margin-right: {}%; width: {}%; }} }}".format(ix,
-                                                                                                                              left_indent_pct,
-                                                                                                                              right_indent_pct,
-                                                                                                                              epw))
+    table_lookup = (s, left_indent_pct, right_indent_pct, epw) # save for later lookup
 
-    t.append("<table class='table{}' summary='{}'{}>".format(ix, tsum, tid))
+    t = []
+    t.append("<table class='table&&&' summary='{}'{}>".format(tsum, tid)) # we'll fill in the &&& later
+    # must be first append to t, or need to change code at the end of the routine.
 
     # set relative widths of columns
     if tw_html != "none":
@@ -10399,8 +10462,10 @@ class Pph(Book):
               align = "text-align: center; "
               self.warn_w_context("<al=h> not supported for centered table lines", self.cl)
           line = line[6:]
-        t.append("  <tr>{} style='{}' colspan='{}'>{}{}</tr>".format(cell_type1, align,
-                                                                      ncols, line, cell_type2))
+
+        style = save_cell_style(align)
+        t.append("  <tr>{} {} colspan='{}'>{}{}</tr>".format(cell_type1, style,
+                                                            ncols, line, cell_type2))
         data_row_found = False
         border_top = ''
         border_bottom = ''
@@ -10477,7 +10542,7 @@ class Pph(Book):
           t1 = v[k]
           t2 = re.sub(r"^ⓢ+","", v[k])
           if len(t1) - len(t2) > 0:
-            if "text-indent:" in caligns[k]: # can't have protected leading spaces and hanging-indent
+            if "text-indent: -" in caligns[k]: # can't have protected leading spaces and hanging-indent
               self.warn_w_context("Protected leading spaces ignored for table cell with hanging indent in column {}".format(k),
                                   self.cl)
             else:
@@ -10512,13 +10577,77 @@ class Pph(Book):
           border_classes = border_classes.strip()
           if border_classes:
             border_classes = "class='{}' ".format(border_classes)
-          t.append("    {} {}style='{}{}{}'{}>".format(cell_type1, border_classes, valigns[k],
-                                                        caligns[k], padding,
-                                                        colspan) + v[k].strip() + cell_type2)
+
+          style = save_cell_style("{}{}{}".format(valigns[k], caligns[k], padding))
+          t.append("    {} {}{}{}>".format(cell_type1, border_classes, style,
+                                           colspan) + v[k].strip() + cell_type2)
       t.append("  </tr>")
       border_top = '' # done with these two borders
       border_bottom = ''
       self.cl += 1
+
+    # Fixup cell styles and finish table name
+    # We'll find the most popular style used for this table and
+    #   define that via CSS for .table<nnn> td allowing us to
+    #   eliminate the specification of a class name in the final
+    #   HTML for that particular style.
+    # However, as that most popular style may have some values we don't want
+    #   for individual cells, we'll have to override them in the new styles
+    #   we're defining by providing override values to set them to their
+    #   usual defaults.
+    popular_style = get_cell_style("max") # get most popular cell style
+    force_text_indent = ""
+    force_pad_left = ""
+    force_pad_right = ""
+    force_v_align = ""
+    if "text-indent" in popular_style:
+      force_text_indent = "text-indent: 0; "
+    if "padding-left" in popular_style:
+      force_pad_left = "padding-left: 0; "
+    if "padding-right" in popular_style:
+      force_pad_right = "padding-right: 0; "
+    if "vertical-align: top" not in popular_style:
+      force_v_align = "vertical-align: top; "
+
+    # Lookup this table's characteristics in the table list to see if we can
+    #   use an existing set of CSS or if we need to define new CSS for this
+    #   table. The lookup uses the basic table characteristics and the values
+    #   of the most popular style, since both factor into the generated CSS.
+    try:
+      ix = self.table_list.index((table_lookup, popular_style))
+    except ValueError:
+      self.table_list.append((table_lookup, popular_style))
+      ix = len(self.table_list) - 1
+      self.css.addcss("[1670] .table{0} {{ {1}}}".format(ix, table_lookup[0]))
+      if left_indent_pct or right_indent_pct or epw:
+        self.css.addcss("[1671] @media handheld {{ .table{} ".format(ix) +
+                        "{{ margin-left: {}%; ".format(left_indent_pct) +
+                        "margin-right: {}%; ".format(right_indent_pct) +
+                        "width: {}%; }}}}".format(epw))
+
+    self.css.addcss("[1672] .table{0} td {{ {1}}}".format(ix, popular_style))
+    t[0] = re.sub("&&&", str(ix), t[0], 1) # fix the class name in the first line of t
+
+    # Now fixup each cell's HTML and specify style values if we're not going to
+    #   inherit the most popular style from the CSS we generated above.
+    for i, line in enumerate(t):
+      if "⓾" in line:
+        m = re.search("(⓾\d+)", line)
+        style = get_cell_style(m.group(0)) # get full style def, or null
+        if style:
+          if "text-indent" not in style: # insert override values if needed
+            style += force_text_indent
+          if "padding-left" not in style:
+            style += force_pad_left
+          if "padding-right" not in style:
+            style += force_pad_right
+          if "vertical-align" not in style:
+            style += force_v_align
+          style = "style='{}'".format(style)
+        t[i] = re.sub(m.group(0), style, line, 1)  # there should only be one occurrence
+        if "<td >" in t[i] or "<th >" in t[i]:
+          t[i] = re.sub("<t([dh]) >", r"<t\1>", t[i], 1)
+
     t.append("</table>")
     self.wb[startloc:self.cl+1] = t
     self.cl = startloc + len(t)
@@ -10554,7 +10683,7 @@ class Pph(Book):
     mbot = mtop
     self.css.addcss("[1920] img.drop-capi { float: left; margin: 0 0.5em 0 0; position: relative; z-index: 1; }")
     if type == "p":
-      self.css.addcss("[1921] p.drop-capi{} {{ text-indent: 0; margin-top: {}em; margin-bottom: {}em}}".format(di["s_adj"],mtop,mbot))
+      self.css.addcss("[1921] p.drop-capi{} {{ text-indent: 0; margin-top: {}em; margin-bottom: {}em; }}".format(di["s_adj"],mtop,mbot))
       self.css.addcss("[1922] p.drop-capi{}:first-letter {{ color: transparent; visibility: hidden; margin-left: -{}em; }}".format(di["s_adj"],d_adj))
       self.css.addcss("[1923] @media handheld {")
       self.css.addcss("[1924]   img.drop-capi { display: none; visibility: hidden; }")
@@ -12293,6 +12422,7 @@ if __name__ == '__main__':
 # \u24fb  ⓻   DOUBLE CIRCLED DIGIT SEVEN # temporary substitute for <strong>
 # \u24fc  ⓼   DOUBLE CIRCLED DIGIT EIGHT # temporary substitute for <cite>
 # \u24fd  ⓽   DOUBLE CIRCLED DIGIT NINE # temporary substitute for <u>
+#\u24fe   ⓾   DOUBLE CIRCLED NUMBER TEN # placeholder for style info in <td> elements of tables
 # \u25ee  ◮   UP-POINTING TRIANGLE WITH RIGHT HALF BLACK # <b> or <strong> (becomes =) (Not used any more; see \u24f6)
 # \u25f8  ◸   UPPER LEFT TRIANGLE # precedes superscripts
 # \u25f9  ◹   UPPER RIGHT TRIANGLE # follows superscripts
@@ -12368,7 +12498,8 @@ if __name__ == '__main__':
 # 1614      something else about image widths (ign)
 # 1670      .table<number> width
 # 1671      .table<number> width in epub
-# 1672      table border class definitions
+# 1672      .table<number> td (used for most common table cell style)
+# 1673      table border class definitions
 # 1873      .nf c: .nf-center
 # 1876             .nf-center-c0 (if indented paragraphs)
 # 1876             .nf-center-c1 (if block paragraphs)
