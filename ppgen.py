@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55k" + with_regex   # 11-Apr-2016
+VERSION="3.55m" + with_regex   # 21-Apr-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
@@ -76,6 +76,15 @@ VERSION="3.55k" + with_regex   # 11-Apr-2016
 #        just before a .il directive.
 #3.55k:
 # HTML:  Fix Python trap that can occur due to a coding error handling a .dv directive has neither a class= nor an fs= operand
+#3.55l:
+#  HTML: Reduce number of class= specifications for <td> elements by keeping track of which style is most common for that table and
+#    refactoring the .cnnn definition into a .table td CSS specification. Note: This may increase the
+#    number of .table<nnn> classes that are generated, including some that will duplicate others, if they
+#    have a different "most popular" cell style.
+#  Text: Allow bl=y (default) or n on .ta to allow or prevent addition of blank lines between rows
+#    when some cell wraps to multiple lines.
+#3.55m:
+#  Revert table changes in HTML introduced by 3.55l as they do not work properly.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -6658,6 +6667,20 @@ class Ppt(Book):
     if "id=" in self.wb[self.cl]:
       self.wb[self.cl] = self.get_id("id", self.wb[self.cl], 1)
 
+    # pull out bl= (blank line) option
+    # bl=none (PPer in total control; don't add any blank lines) or
+    #    auto (add a blank line if cell wraps, unless PPer already suppiied one)
+    temp = "y"
+    if "bl=" in self.wb[self.cl]:
+      self.wb[self.cl], temp = self.get_id("bl", self.wb[self.cl])
+      temp = temp.lower()[0] # lower-case and grab first character
+    if temp == "y":
+      add_blank_lines = True
+    elif temp == "n":
+      add_blank_lines = False
+    else:
+      self.warn_w_context("Unexpected bl= value on .ta {} ignored; assuming y".format(temp), self.cl)
+
     # table forms:
     # .ta r:5 l:20 l:5  => use specified width and wrap if necessary
     # .ta rll  => calculate width of columns, no wrap
@@ -6800,10 +6823,10 @@ class Ppt(Book):
     #self.twrap = textwrap.TextWrapper()
 
     # if any cell wraps, put a vertical gap between rows
-    # except for cases where the PPer supplies a blank line or a horizontal border
+    # except for cases where the PPer supplies a blank line or a horizontal border or specified bl=n
     rowspace = False
     k1 = self.cl
-    while self.wb[k1] != ".ta-" and not rowspace:
+    while add_blank_lines and self.wb[k1] != ".ta-" and not rowspace:
 
       # lines that we don't check: centered or blank (or .bn info)
       if empty.match(self.wb[k1]) or not "|" in self.wb[k1]:
@@ -7689,6 +7712,8 @@ class Pph(Book):
       self.cssline = {}
 
     def addcss(self, s):
+      if s.endswith("}"):
+        s = s[:-1].rstrip() + " }"
       if s in self.cssline:
         self.cssline[s] += 1
       else:
@@ -9996,7 +10021,7 @@ class Pph(Book):
       if myfsz:                                          # if we have a font-size override
         myfsz = " style='font-size: {}; '".format(myfsz)  # build a style string for it
 
-      self.css.addcss("[1430] div.footnote {}")
+      #self.css.addcss("[1430] div.footnote {}")
       self.css.addcss("[1431] div.footnote > :first-child { margin-top: 1em; }")
       self.css.addcss("[1432] div.footnote p {{ text-indent: 1em; margin-top: {0}em; margin-bottom: {1}em; }}".format(s2,s2))
       self.wb[self.cl] = "<div class='footnote' id='f{}'{}>".format(fnname, myfsz)
@@ -10053,7 +10078,6 @@ class Pph(Book):
   # left margin calculated and applied for epub.
   #
   # s=  summary
-  # o=  options. only one implemented: "wide" for unrestricted width table
 
   def doTable(self): # HTML
 
@@ -10146,6 +10170,19 @@ class Pph(Book):
       if tid:
         tid = " id='{}'".format(tid)
 
+    # pull out bl= (blank line) option, but ignore in HTML except for validation
+    # bl=none (PPer in total control; don't add any blank lines) or
+    #    auto (add a blank line if cell wraps, unless PPer already suppiied one)
+    temp = "y"
+    if "bl=" in self.wb[self.cl]:
+      self.wb[self.cl], temp = self.get_id("bl", self.wb[self.cl])
+      temp = temp.lower()[0] # lower-case and grab first character
+    if temp == "y":
+      add_blank_lines = True
+    elif temp == "n":
+      add_blank_lines = False
+    else:
+      self.warn_w_context("Unexpected bl= value on .ta {} ignored; assuming y".format(temp), self.cl)
 
     # tables forms:
     # .ta r:5 l:20 l:5  => use specified width and wrap if necessary
@@ -10554,7 +10591,7 @@ class Pph(Book):
     mbot = mtop
     self.css.addcss("[1920] img.drop-capi { float: left; margin: 0 0.5em 0 0; position: relative; z-index: 1; }")
     if type == "p":
-      self.css.addcss("[1921] p.drop-capi{} {{ text-indent: 0; margin-top: {}em; margin-bottom: {}em}}".format(di["s_adj"],mtop,mbot))
+      self.css.addcss("[1921] p.drop-capi{} {{ text-indent: 0; margin-top: {}em; margin-bottom: {}em; }}".format(di["s_adj"],mtop,mbot))
       self.css.addcss("[1922] p.drop-capi{}:first-letter {{ color: transparent; visibility: hidden; margin-left: -{}em; }}".format(di["s_adj"],d_adj))
       self.css.addcss("[1923] @media handheld {")
       self.css.addcss("[1924]   img.drop-capi { display: none; visibility: hidden; }")
