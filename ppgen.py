@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55m" + with_regex   # 21-Apr-2016
+VERSION="3.55n" + with_regex   # 8-May-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
@@ -85,6 +85,9 @@ VERSION="3.55m" + with_regex   # 21-Apr-2016
 #    when some cell wraps to multiple lines.
 #3.55m:
 #  Revert table changes in HTML introduced by 3.55l as they do not work properly.
+#3.55n:
+#  Fix .bin files so the pngspath variable has the full path name, and so it ends in \\ rather than \ as
+#    seems to be necessary for Guiguts to work properly.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -2004,7 +2007,7 @@ class Book(object):
       temp = os.path.dirname(temp)
       temp = os.path.join(temp, "pngs")
       bb.append(");")  # finish building GG .bin file
-      bb.append("$::pngspath = '{}\\';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      bb.append(r"$::pngspath = '{}\\';".format(os.path.join(os.path.realpath(self.srcfile),"pngs")))
       bb.append("1;")
       binfn = self.srcfile + ".bin"
       f1 = codecs.open(binfn, "w", "ISO-8859-1")
@@ -5725,7 +5728,8 @@ class Ppt(Book):
         else:
           i += 1
       self.bb.append(");")  # finish building GG .bin file
-      self.bb.append("$::pngspath = '{}\\';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      #self.bb.append("$::pngspath = '{}\\';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      self.bb.append(r"$::pngspath = '{}\\';".format(os.path.join(os.path.realpath(self.srcfile),"pngs")))
       self.bb.append("1;")
 
   # -------------------------------------------------------------------------------------
@@ -10769,7 +10773,8 @@ class Pph(Book):
         else:
           i += 1
       self.bb.append(");")
-      self.bb.append("$::pngspath = '{}\\';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      #self.bb.append("$::pngspath = '{}\\';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      self.bb.append(r"$::pngspath = '{}\\';".format(os.path.join(os.path.realpath(self.srcfile),"pngs")))
       self.bb.append("1;")
 
 
