@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55n" + with_regex   # 8-May-2016
+VERSION="3.55o" + with_regex   # 10-May-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
@@ -88,6 +88,10 @@ VERSION="3.55n" + with_regex   # 8-May-2016
 #3.55n:
 #  Fix .bin files so the pngspath variable has the full path name, and so it ends in \\ rather than \ as
 #    seems to be necessary for Guiguts to work properly.
+#3.55o:
+#  Move .bn encoding so it happens before continuation lines are processed, to ensure that raw .bn directive
+#    doesn't appear in the middle of a continued line.
+#  Move .pn checking/encoding so it happens before continuation lines are processed
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1650,7 +1654,9 @@ class Book(object):
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string (null is the same as a Roman numeral 0)
     self.bnmatch = re.compile("^⑱.*?⑱$")  # re to match a .bn line
-    self.pnmatch = re.compile("^⑯.*⑰$")   # re to match a .pn line
+    self.bnsearch = re.compile("⑱.*?⑱")  # re to find .bn info anywhere within a line
+    self.pnmatch = re.compile("^⑯(.*?)⑰$")   # re to match a .pn line
+    self.pnsearch = re.compile("⑯(.*?)⑰") # to find .pn info anywhere within a line
 
 
 
@@ -2832,7 +2838,9 @@ class Book(object):
   def truelen(self,s):
     #self.dprint("entered: {}".format(s))
     if self.bnPresent:
-      s = re.sub("(⑱.*?⑱)", "", s) # remove any bn info before trying to calculate the length
+      #s = re.sub("(⑱.*?⑱)", "", s) # remove any bn info before trying to calculate the length
+      s = self.bnsearch.sub("", s) # remove any bn info before trying to calculate the length
+      s = self.pnsearch.sub("", s) # remove any pn info before trying to calculate the length
     l = len(s) # get simplistic length
     for c in s: # examine each character
       cc = ord(c)
@@ -4377,11 +4385,153 @@ class Book(object):
       # user-defined character mapping complete, now do default mapping to Latin-1
       self.utoLat()
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # .bn (GG-compatible .bin file maintenance)
+    # must happen before continuation lines are processed
+    i = 0
+    self.bnPresent = False
+    image_type = ""
+    while i < len(self.wb):
+      if self.wb[i].startswith(".bn"):
+        m = re.search("(\w+?)\.(png|jpg|jpeg)",self.wb[i])
+        if m:
+          self.bnPresent = True
+          self.wb[i] = "⑱{}⑱".format(m.group(1))
+          temp = ("png" if m.group(2) == "png" else "jpg")
+          if image_type:
+            if image_type != temp:
+              self.warn("Project contains both png and jpg proofing images.\n" +
+                        "     Please check to ensure no high-res illustrations are missing;\n" +
+                        "     if any are missing please contact the PM or db-req for assistance.")
+          else:
+            image_type = temp
+        else:
+          self.crash_w_context("malformed .bn directive", i)
+      i += 1
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # set pnshow, pnlink variables (must happen before page number conversion)
+    # if any .pn numeric is seen, pnshow <- True
+    # override with .pn off
+    override = False
+    self.pnshow = False # generate links and show
+    self.pnlink = False # generate links but do not display
+    i = 0
+    while i < len(self.wb):
+      if self.wb[i].startswith(".pn link"):
+        self.pnlink = True
+        del self.wb[i]
+        continue
+
+      elif self.wb[i].startswith(".pn off"):
+        override = True
+        del self.wb[i]
+        continue
+        
+      elif self.wb[i].startswith(".pn "): # any explicit page number
+        self.pnshow = True
+
+      i += 1
+
+    if override:
+      self.pnshow = False # disable visible page numbers
+
+    # convert page page numbers (outside of .hn, .il) to ⑯number⑰
+    # handle incrementing of page numbers in text or on .hn/.il
+    i = 0
+    while i < len(self.wb):
+
+      # page number increment
+      # convert increment to absolute page number
+      m = re.match(r"\.pn +\+(\d+)", self.wb[i])
+      if m:
+        increment_amount = int(m.group(1))
+        if increment_amount == 0: # can't have duplicate page numbers
+          self.crash_w_context("Invalid .pn increment amount, +0", i)
+        if (self.pageno).isnumeric():
+          self.pageno = "{}".format(int(self.pageno) + increment_amount)
+        else: # Roman, possibly (or maybe null, the default initial value)
+          m = re.match(r"^([iIvVxXlLcCdDmM]+|)$", self.pageno)
+          if not m:
+            self.crash_w_context("Cannot increment non-numeric, non-Roman page number {}".format(self.pageno), i)
+          else:
+            ucRoman = False
+            if not (self.pageno).islower():
+              ucRoman = True # page number has at least 1 upper-case Roman numeral (or is null)
+              self.pageno = (self.pageno).lower()
+            n = self.fromRoman(self.pageno)
+            n += increment_amount
+            self.pageno = self.toRoman(n)
+            if ucRoman:
+              self.pageno = (self.pageno).upper()
+        if self.pnshow or self.pnlink:
+          self.wb[i] = "⑯{}⑰".format(self.pageno)
+        else:
+          del self.wb[i]
+        continue
+
+      # page number is explicit
+      m = re.match(r"\.pn +[\"']?(.+?)($|[\"'])", self.wb[i])
+      if m:
+        self.pageno = m.group(1)
+
+        if self.pnshow or self.pnlink:
+          self.wb[i] = "⑯{}⑰".format(self.pageno)
+        else:
+          del self.wb[i]
+        continue
+
+      # a numeric page number incremented in a heading or .il directive
+      m = re.match(r"\.((h[1-6])|il).*?pn=\+(\d+)($|\s)", self.wb[i])
+      if m:
+        increment_amount = int(m.group(3))
+        if increment_amount == 0: # can't have duplicate page numbers
+          self.crash_w_context("Invalid pn= increment amount, +0", i)
+        if (self.pageno).isnumeric():
+          self.pageno = "{}".format(int(self.pageno) + increment_amount)
+        else: # Roman, possibly
+          m = re.match(r"^([iIvVxXlLcCdDmM]+|)$", self.pageno)
+          if not m:
+            self.crash_w_context("Cannot increment non-numeric, non-Roman page number {}".format(self.pageno), i)
+          else:
+            ucRoman = False
+            if not (self.pageno).islower():
+              ucRoman = True # page number has at least 1 upper-case Roman numeral
+              self.pageno = (self.pageno).lower()
+            n = self.fromRoman(self.pageno)
+            n += increment_amount
+            self.pageno = self.toRoman(n)
+            if ucRoman:
+              self.pageno = (self.pageno).upper()
+        if self.pnshow or self.pnlink:
+          self.wb[i] = re.sub(r"pn=\+\d+", "pn={}".format(self.pageno), self.wb[i])
+        else:
+          self.wb[i] = re.sub(r"pn=\+\d+", "", self.wb[i])
+        i += 1
+        continue
+
+      # an arbitrary page "number" set in a heading or .il directive
+      m = re.match(r"\.((h[1-6])|il).*?pn=[\"']?(.+?)[\"']?($|\s)", self.wb[i])
+      if m:
+        self.pageno = m.group(3)
+        m = re.match(r"\d+|[iIvVxXlLcCdDmM]+$", self.pageno)
+        if not m:
+          self.warn_w_context("Non-numeric, non-Roman page number {} specified: {}".format(self.pageno, self.wb[i]), i)
+        if not self.pnshow and not self.pnlink:
+          self.wb[i] = re.sub(r"pn=[\"']?(.+?)[\"']?($|/s)", "", self.wb[i])
+        i += 1
+        continue
+
+      i += 1
+
 
     # long lines of any kind may end with a single backslash. The backslash will be replaced by a blank, and
     # the next line will be concatenated to it.
     # Note: .de is exempted here as it needs separate processing.
     # Note: If a line ends with multiple \ characters they are all deleted and replaced by a single blank.
+    # Note: A continued dot directive may not be immediately followed by a converted .bn or .pn. However, if
+    #       some other line is continued, and it is immediately followed by a converted .bn or .pn the converted
+    #      .bn/.pn will be wrapped into the continued line and assumed to be continued, itself. 
     i = 0
     inde = False
     while i < (len(self.wb) - 1):
@@ -4389,6 +4539,25 @@ class Book(object):
         inde = True
       elif self.wb[i].endswith("\\"):
         if not inde:
+
+          # look for illegal condition: a continued dot directive is followed by a .bn or .pn
+          if (self.wb[i].startswith(".") and 
+                (self.wb[i+1].startswith("⑱") or self.wb[i+1].startswith("⑯"))):
+            if (re.match("\.[a-z]", self.wb[i]) and
+                  (self.bnmatch.match(self.wb[i+1]) or
+                   self.pnmatch.match(self.wb[i+1]))):
+              self.crash_w_context("Continued dot directive cannot be followed by .pn or .bn", i)
+
+          # now see if next line is a .bn or .pn and if so,
+          #   concatenate it to the current line directly (without a blank),
+          #   and put a \ at the end to continue it
+          # (this makes the presence of the .pn or .bn transparent to continuation processing)
+          elif self.wb[i+1].startswith("⑱") or self.wb[i+1].startswith("⑯"):
+            if self.bnmatch.match(self.wb[i+1]) or self.pnmatch.match(self.wb[i+1]):
+              self.wb[i] = re.sub(r"\\$", "", self.wb[i]) + self.wb[i+1] + '\\'
+              del self.wb[i+1]
+              continue
+
           self.wb[i] = re.sub(r"\\$", "", self.wb[i]) + " " + self.wb[i+1]
           del self.wb[i+1]
           continue
@@ -4579,28 +4748,6 @@ class Book(object):
         i -= 1
       i += 1
 
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # .bn (GG-compatible .bin file maintenance)
-    i = 0
-    self.bnPresent = False
-    image_type = ""
-    while i < len(self.wb):
-      if self.wb[i].startswith(".bn"):
-        m = re.search("(\w+?)\.(png|jpg|jpeg)",self.wb[i])
-        if m:
-          self.bnPresent = True
-          self.wb[i] = "⑱{}⑱".format(m.group(1))
-          temp = ("png" if m.group(2) == "png" else "jpg")
-          if image_type:
-            if image_type != temp:
-              self.warn("Project contains both png and jpg proofing images.\n" +
-                        "     Please check to ensure no high-res illustrations are missing;\n" +
-                        "     if any are missing please contact the PM or db-req for assistance.")
-          else:
-            image_type = temp
-        else:
-          self.crash_w_context("malformed .bn directive", i)
-      i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # superscripts, subscripts
@@ -4689,26 +4836,6 @@ class Book(object):
         self.wb[i] = self.wb[i].replace("<b","<B")
         self.wb[i] = self.wb[i].replace("</b","</B")
       i += 1
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # set pnshow, pnlink variables
-    # if any .pn numeric is seen, pnshow <- True
-    # override with .pn off
-    override = False
-    self.pnshow = False # generate links and show
-    self.pnlink = False # generate links but do not display
-    for i,t in enumerate(self.wb):
-      if self.wb[i].startswith(".pn link"):
-        self.pnlink = True
-        self.wb[i] = ""
-      if self.wb[i].startswith(".pn off"):
-        override = True
-        self.wb[i] = ""
-      # if re.match(".pn \d", self.wb[i]): # any numeric explicit page number
-      if re.match(".pn (.+)", self.wb[i]): # any explicit page number
-        self.pnshow = True
-    if override:
-      self.pnshow = False # disable visible page numbers
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # Examine footnote markers (.fm)
@@ -5004,6 +5131,7 @@ class Ppt(Book):
 
   # Squash repeated spaces inside a string, preserving any leading spaces
   def squashBlanks(self, s):
+    s = self.pnsearch.sub("", s) # treat pn info as blanks
     i = 0
     while i < len(s) and s[i] == ' ': # preserve leading spaces
       i += 1
@@ -5188,11 +5316,20 @@ class Ppt(Book):
 
 
     # all page numbers deleted in text version
+    # Note: Page numbers have been encoded by previous processing. 
+    #   They may be stand-alone, in which case we delete the complete
+    #   line, or (due to continuation) they may be embedded within a
+    #   line. In that case we just remove the encoded page number
     i = 0
     while i < len(self.wb): # switch order if pn followed by blank line
-      if re.match(r"\.pn", self.wb[i]):
+      if self.pnmatch.match(self.wb[i]):
         del self.wb[i]
-        i -= 1
+        continue
+        
+      else:
+        if self.pnsearch.search(self.wb[i]):
+          self.wb[i] = self.pnsearch.sub("", self.wb[i])
+
       i += 1
 
     # autonumbered footnotes are assigned numbers
@@ -7914,101 +8051,12 @@ class Pph(Book):
         i -= 1
       i += 1
 
-    # page numbers
-    i = 0
-    while i < len(self.wb):
-
-      # page number increment
-      # convert increment to absolute page number
-      m = re.match(r"\.pn \+(\d+)", self.wb[i])
-      if m:
-        increment_amount = int(m.group(1))
-        if increment_amount == 0: # can't have duplicate page numbers
-          self.crash_w_context("Invalid .pn increment amount, +0", i)
-        if (self.pageno).isnumeric():
-          self.pageno = "{}".format(int(self.pageno) + increment_amount)
-        else: # Roman, possibly (or maybe null, the default initial value)
-          m = re.match(r"^([iIvVxXlLcCdDmM]+|)$", self.pageno)
-          if not m:
-            self.crash_w_context("Cannot increment non-numeric, non-Roman page number {}".format(self.pageno), i)
-          else:
-            ucRoman = False
-            if not (self.pageno).islower():
-              ucRoman = True # page number has at least 1 upper-case Roman numeral (or is null)
-              self.pageno = (self.pageno).lower()
-            n = self.fromRoman(self.pageno)
-            n += increment_amount
-            self.pageno = self.toRoman(n)
-            if ucRoman:
-              self.pageno = (self.pageno).upper()
-        if self.pnshow or self.pnlink:
-          self.wb[i] = "⑯{}⑰".format(self.pageno)
-        else:
-          del self.wb[i]
-        continue
-
-      # page number is explicit
-      m = re.match(r"\.pn [\"']?(.+?)($|[\"'])", self.wb[i])
-      if m:
-        self.pageno = m.group(1)
-        #m = re.match(r"(\d+$)|([iIvVxXlLcCdDmM]+$)", self.pageno)
-        #if not m:
-        #  self.warn("Non-numeric, non-Roman page number {} specified: {}".format(self.pageno, self.wb[i]))
-        if self.pnshow or self.pnlink:
-          self.wb[i] = "⑯{}⑰".format(self.pageno)
-        else:
-          del self.wb[i]
-        continue
-
-      # a numeric page number incremented in a heading or .il directive
-      m = re.match(r"\.((h[1-6])|il).*?pn=\+(\d+)($|\s)", self.wb[i])
-      if m:
-        increment_amount = int(m.group(3))
-        if increment_amount == 0: # can't have duplicate page numbers
-          self.crash_w_context("Invalid pn= increment amount, +0", i)
-        if (self.pageno).isnumeric():
-          self.pageno = "{}".format(int(self.pageno) + increment_amount)
-        else: # Roman, possibly
-          m = re.match(r"^([iIvVxXlLcCdDmM]+|)$", self.pageno)
-          if not m:
-            self.crash_w_context("Cannot increment non-numeric, non-Roman page number {}".format(self.pageno), i)
-          else:
-            ucRoman = False
-            if not (self.pageno).islower():
-              ucRoman = True # page number has at least 1 upper-case Roman numeral
-              self.pageno = (self.pageno).lower()
-            n = self.fromRoman(self.pageno)
-            n += increment_amount
-            self.pageno = self.toRoman(n)
-            if ucRoman:
-              self.pageno = (self.pageno).upper()
-        if self.pnshow or self.pnlink:
-          self.wb[i] = re.sub(r"pn=\+\d+", "pn={}".format(self.pageno), self.wb[i])
-        else:
-          self.wb[i] = re.sub(r"pn=\+\d+", "", self.wb[i])
-        i += 1
-        continue
-
-      # an arbitrary page "number" set in a heading or .il directive
-      m = re.match(r"\.((h[1-6])|il).*?pn=[\"']?(.+?)[\"']?($|\s)", self.wb[i])
-      if m:
-        self.pageno = m.group(3)
-        m = re.match(r"\d+|[iIvVxXlLcCdDmM]+$", self.pageno)
-        if not m:
-          self.warn_w_context("Non-numeric, non-Roman page number {} specified: {}".format(self.pageno, self.wb[i]), i)
-        if not self.pnshow and not self.pnlink:
-          self.wb[i] = re.sub(r"pn=[\"']?(.+?)[\"']?($|/s)", "", self.wb[i])
-        i += 1
-        continue
-
-      i += 1
-
     # merge page numbers (down) into text
     # ⑯14⑰ moves into next paragraph down or into a heading
     # 21-Jun-2014: handle consecutive .pn +1
     i = 0
     while i < len(self.wb):
-      m = re.match(r"⑯(.+)⑰", self.wb[i])
+      m = self.pnmatch.match(self.wb[i])
       if m:
         pnum = m.group(1) # string
         del self.wb[i]
@@ -8073,6 +8121,7 @@ class Pph(Book):
           i += 1 # keep looking
       else:       # only increment if first match above failed
         i += 1    # as if it worked we deleted the matching line
+
 
     # convert any <br> outside of .li blocks to <br />
     i = 0
