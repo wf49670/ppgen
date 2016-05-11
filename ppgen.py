@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55o" + with_regex   # 10-May-2016
+VERSION="3.55p" + with_regex   # 10-May-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
@@ -92,6 +92,10 @@ VERSION="3.55o" + with_regex   # 10-May-2016
 #  Move .bn encoding so it happens before continuation lines are processed, to ensure that raw .bn directive
 #    doesn't appear in the middle of a continued line.
 #  Move .pn checking/encoding so it happens before continuation lines are processed
+#3.55p:
+#  Add -de command line option to force all messages to stderr to simplify regression testing
+#  Add a warning if a continued line is followed by an apparent dot directive (other than .pn, .bn)
+
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -1568,6 +1572,7 @@ class Book(object):
   #                    '\u039C\u039D\u039E\u039F\u03A0\u03A1\u03A3\u03A4\u03A5\u03A6\u03A7' +
   #                    '\u03A8\u03A9')
 
+  # Initialization routine for class Book
   def __init__(self, args, renc, config, sout, serr):
 
     self.stdout = sout
@@ -3554,13 +3559,20 @@ class Book(object):
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # Remove comments and un-escape any escaped / characters in the text (\/ becomes /)
     #
+    # Note: I've implemented, but commented out, a warning for continued // and continued .ig
+    #       as the warning for // can trigger on the -----File: ... p1\p2\p3\f1\f2\ lines if
+    #       the PPer leaves them in as comments.
     def uncomment(buffer):
       i = 0
       while i < len(buffer):
         if  re.match(r"\/\/", buffer[i]): # entire line is a comment
+          #if buffer[i].endswith("\\"):
+          #  self.warn("Continuation \ ignored following //: {}".format(buffer[i]))
           del buffer[i]
           continue
         if re.search(r"\/\/.*$", buffer[i]):
+          #if buffer[i].endswith("\\"):
+          #  self.warn("Continuation \ ignored following //: {}".format(buffer[i]))
           buffer[i] = re.sub(r"\/\/.*$", "", buffer[i])
         #
         # convert escaped / characters
@@ -3579,6 +3591,8 @@ class Book(object):
           self.crash_w_context("Extraneous .ig-; no matching .ig", i)
         # one line
         elif re.match(r"\.ig ",self.wb[i]): # single line
+          #if self.wb[i].endswith("\\"):
+          #  self.warn("Continuation \ ignored on single-line .ig directive: {}".format(self.wb[i]))
           del self.wb[i]
         elif ".ig" == self.wb[i]: # multi-line
           del self.wb[i]
@@ -4524,14 +4538,14 @@ class Book(object):
 
       i += 1
 
-
-    # long lines of any kind may end with a single backslash. The backslash will be replaced by a blank, and
-    # the next line will be concatenated to it.
+    # Handle continuation:
+    #   Long lines of any kind may end with a single backslash. The backslash will be replaced by a blank, and
+    #   the next line will be concatenated to it.
     # Note: .de is exempted here as it needs separate processing.
     # Note: If a line ends with multiple \ characters they are all deleted and replaced by a single blank.
     # Note: A continued dot directive may not be immediately followed by a converted .bn or .pn. However, if
     #       some other line is continued, and it is immediately followed by a converted .bn or .pn the converted
-    #      .bn/.pn will be wrapped into the continued line and assumed to be continued, itself. 
+    #      .bn/.pn will be wrapped into the continued line and assumed to be continued, itself.
     i = 0
     inde = False
     while i < (len(self.wb) - 1):
@@ -4557,6 +4571,10 @@ class Book(object):
               self.wb[i] = re.sub(r"\\$", "", self.wb[i]) + self.wb[i+1] + '\\'
               del self.wb[i+1]
               continue
+
+          # now see if the next line is some other dot directive, and warn if so as this is probably not intended
+          elif self.wb[i+1].startswith(".") and re.match("\.[a-z]", self.wb[i+1]):
+            self.warn_w_context("Possible continuation problem: next line looks like a dot directive.", i)
 
           self.wb[i] = re.sub(r"\\$", "", self.wb[i]) + " " + self.wb[i+1]
           del self.wb[i+1]
@@ -12240,8 +12258,9 @@ def main():
   parser.add_argument('-i', '--infile', help='UTF-8 or Latin-1 input file')
   parser.add_argument('-l', '--log', help="display Latin-1, diacritic, and Greek conversion logs",
                       action="store_true")
-  parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r,l,x)')
+  parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r,l,x,e)')
   # debug "x" forces "title" style for page numbering, rather than "content"
+  # debug "e" forces all messages to stderr, even informational ones
   parser.add_argument('-o', '--output_format', default="hu",
                       help='output format (HTML:h, text:t, u or l)')
   parser.add_argument('-a', '--anonymous', action='store_true',
@@ -12262,37 +12281,42 @@ def main():
                       help="create report of unused image files")
   parser.add_argument("-ini", "--ini_file",
                       help="ini file suffix (or none)")
+  parser.add_argument("-std", "--stdout", action="store_true",
+                      help="force all messages to stdout (useful for testing)")
 
 
   args = parser.parse_args()
 
+  #setup stdout and stderr so they can handle UTF-8 output on Windows
+  ppgen_stderr = open(sys.stderr.fileno(), mode='w', encoding='utf-8', buffering=1)
+  if 'e' in args.debug:
+    ppgen_stdout = ppgen_stderr
+  else:
+    ppgen_stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
+
   # version request. print and exit
   if args.version:
-    print("{}".format(VERSION))
+    ppgen_stdout.write("{}".format(VERSION) + '\n')
     exit(1)
 
-  print("ppgen {}".format(VERSION))
+  ppgen_stdout.write("ppgen {}".format(VERSION) + '\n')
 
   if 'p' in args.debug:
-    print("running on {}".format(platform.system()))
+    ppgen_stdout.write("running on {}".format(platform.system()) + '\n')
 
   # -f and -sbin are mutually exclusive
   if args.filter and args.srcbin:
-    print("Error: Both -f (--filter) and -sbin (--srcbin) specified; terminating")
+    ppgen_stderr.write("Error: Both -f (--filter) and -sbin (--srcbin) specified; terminating" + '\n')
     exit(1)
 
   # infile of mystery-src.txt will generate mystery.txt and mystery.html
 
   if not args.listcvg and (args.infile == None or not args.infile):
-    print("infile must be specified. use \"--help\" for help")
+    ppgen_stderr.write("infile must be specified. use \"--help\" for help" + '\n')
     exit(1)
 
   # Handle config file (ppgen.ini)
   config = loadConfig(args.ini_file)
-
-  #setup stdout and stderr so they can handle UTF-8 output on Windows
-  ppgen_stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
-  ppgen_stderr = open(sys.stderr.fileno(), mode='w', encoding='utf-8', buffering=1)
 
   # if PPer did not explicitly ask for utf-8, only create it if input is encoded in utf-8
   if 't' in args.output_format:
@@ -12316,11 +12340,11 @@ def main():
 
 
   if 'h' in args.output_format:
-    print("creating HTML version")
+    ppgen_stdout.write("creating HTML version" + '\n')
     pph = Pph(args, "h", config, ppgen_stdout, ppgen_stderr)
     pph.run()
 
-  print("done.")
+  ppgen_stdout.write("done." + '\n')
 
 if __name__ == '__main__':
     main()
