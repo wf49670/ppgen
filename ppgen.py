@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55p" + with_regex   # 10-May-2016
+VERSION="3.55q" + with_regex   # 1-Jun-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
@@ -95,6 +95,12 @@ VERSION="3.55p" + with_regex   # 10-May-2016
 #3.55p:
 #  Add -de command line option to force all messages to stderr to simplify regression testing
 #  Add a warning if a continued line is followed by an apparent dot directive (other than .pn, .bn)
+#3.55q:
+#  Text: Properly calculate the length of text strings that have encoded super/subscripted text within them.
+#    This affects things like wrapping but also (and especially) the calculation of widths for table cells
+#    in the text output, since the number of characters in the string changes after decoding the super/subscripts.
+#  Text: Fix bug in handling horizontal table rules. If the table did not have a top rule, then the first 
+#    horizontal rule in the table was not connected properly to the vertical rules.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -2839,13 +2845,34 @@ class Book(object):
         self.stderr.write("   {}\n".format(s))
     self.stderr.write(" -----\n")
 
-  # Calculate "true" length of a string, accounting for <lang> markup and combining or non-spacing characters in Hebrew
-  def truelen(self,s):
+  # Expand encoded superscripts and subscripts
+  def expand_supsub(self, s):
+    # superscripts
+    m = re.search(r"◸(.*?)◹", s)
+    while m:
+      supstr = m.group(1)
+      if len(supstr) == 1:
+        s = re.sub(r"◸.◹", "^"+supstr, s, 1)
+      else:
+        s = re.sub(r"◸.*?◹", "^{" + supstr + "}", s, 1)
+      m = re.search(r"◸(.*?)◹", s)
+    # subscripts
+    s = s.replace("◺", "_{")
+    s = s.replace("◿", "}")
+    return s
+
+
+  # Calculate "true" length of a string, accounting for <lang> markup and combining or non-spacing characters in Hebrew, etc.
+  # Also, take into account text encoded for super/subscripts, since the eventual decoding will change the text length.
+  def truelen(self, s):
     #self.dprint("entered: {}".format(s))
     if self.bnPresent:
-      #s = re.sub("(⑱.*?⑱)", "", s) # remove any bn info before trying to calculate the length
       s = self.bnsearch.sub("", s) # remove any bn info before trying to calculate the length
       s = self.pnsearch.sub("", s) # remove any pn info before trying to calculate the length
+
+    if "◸" in s or "◺" in s:
+      s = self.expand_supsub(s)
+
     l = len(s) # get simplistic length
     for c in s: # examine each character
       cc = ord(c)
@@ -5693,18 +5720,9 @@ class Ppt(Book):
       self.eb[i] = re.sub("ⓥ|Ⓥ", " ", self.eb[i]) # thick space
       # ampersand
       self.eb[i] = self.eb[i].replace("Ⓩ", "&")
-      # superscripts
-      m = re.search(r"◸(.*?)◹", self.eb[i])
-      while m:
-        supstr = m.group(1)
-        if len(supstr) == 1:
-          self.eb[i] = re.sub(r"◸.◹", "^"+supstr, self.eb[i],1)
-        else:
-          self.eb[i] = re.sub(r"◸.*?◹", "^{" + supstr + "}", self.eb[i],1)
-        m = re.search(r"◸(.*?)◹", self.eb[i])
-      # subscripts
-      self.eb[i] = self.eb[i].replace("◺", "_{")
-      self.eb[i] = self.eb[i].replace("◿", "}")
+      # superscripts and subscripts
+      if "◸" in self.eb[i] or "◺" in self.eb[i]:
+        self.eb[i] = self.expand_supsub(self.eb[i])
 
       # unprotect temporarily protected characters from Greek strings
       self.eb[i] = self.eb[i].replace("⑩", r"\|") # restore temporarily protected \| and \(space)
@@ -5832,8 +5850,6 @@ class Ppt(Book):
     # put in the final characters for <b>, <i>, etc. as requested by PPer
     for t in tag_finalize:
       if t[0]:
-        aaatagchar = t[1]
-        aaarepchar = t[2]
         s = s.replace(t[1], self.nregs[t[2]])
 
     self.eb = s.split('\n')
@@ -7008,7 +7024,7 @@ class Ppt(Book):
               w1 += widths[j]
             else:
               break
-          if len(t1) > w1:
+          if self.truelen(t1) > w1:
             k2 = self.wrap_para(t1, 0, w1, 0, warn=True) # should handle combining characters properly
             if len(k2) > 1:
               rowspace = True
@@ -7016,6 +7032,7 @@ class Ppt(Book):
 
     # process each row of table
     hrules = list() # keep track of horizontal rules the PPer generates (by line number in self.eb)
+    table_start = len(self.eb)
     while self.wb[self.cl] != ".ta-":
 
       # horizontal border
@@ -7113,7 +7130,7 @@ class Ppt(Book):
             break
          # don't bother wrapping a <span> column or one whose naive length is short enough to fit, unless
          # if contains a <br>
-        if (cell_text == "<span>" or len(cell_text) < w1) and (cell_text.find("<br>") == -1):
+        if (cell_text == "<span>" or self.truelen(cell_text) < w1) and (cell_text.find("<br>") == -1):
           w[i] = [cell_text]
         elif caligns[i] != 'h': # if not hanging indent, wrap normally
           w[i] = self.wrap_para(cell_text, 0, w1, 0, warn=True) # should handle combining characters properly
@@ -7184,10 +7201,20 @@ class Ppt(Book):
     # r = self.eb line number of this horizontal rule
 
     for i, r in enumerate(hrules):
-      p = r - 1 if (i > 0) else -1
+      p = r - 1 if (i > 0 or r > table_start) else -1
       n = r + 1 if (r < len(self.eb) - 1) else -1
 
-      if p == -1 and n != -1: # handle top rule
+      # Deal with encoded .bn lines, which are shorter than other table lines and
+      # not indented (for centering) as they are. We must totally ignore such
+      # lines and reset p and n to pretend they are not present as needed.
+      if self.bnPresent:
+        while p != -1 and self.is_bn_line(self.eb[p]):
+          p = p - 1 if (p > 0) else -1
+        while n != -1 and self.is_bn_line(self.eb[n]):
+          n = n + 1 if (n < len(self.eb) - 1) else -1
+
+      # handle top rule
+      if p == -1 and n != -1:
         #key = 'ludr'
         kl = '*' # no left to begin with
         ku = '*' # no up at all for this row
@@ -7206,7 +7233,8 @@ class Ppt(Book):
           kl = temp # set next "left" character from remembered first character of the rule
         self.eb[r] = line
 
-      elif p != -1 and n != -1: # handle a middle rule
+      # handle a middle rule
+      elif p != -1 and n != -1:
         #key = 'ludr'
         kl = '*' # no left to begin with
         line = rindent * ' '
@@ -7227,7 +7255,8 @@ class Ppt(Book):
           kl = temp # set next "left" character from remembered first character of rule
         self.eb[r] = line
 
-      elif p != -1 and n == -1: # handle last rule
+      # handle last rule
+      elif p != -1 and n == -1:
         #key = 'ludr'
         kl = '*' # no left to begin with
         kd = '*' # no down at all for this row
@@ -7244,6 +7273,8 @@ class Ppt(Book):
           else:
             line += temp
           kl = temp # set next "left" character from remembered character
+
+        # replace horizontal border with modified rule
         self.eb[r] = line
 
     self.eb.append(".RS c")  # request blank line below table (special flag for .ul/.ol/.it processing)
@@ -8333,9 +8364,6 @@ class Pph(Book):
               sstart += s
             m = re.match(r"( *)(.*)", self.wb[i])
             if m:
-              aadbg0 = self.wb[i]
-              aadbg1 = m.group(1)
-              aadbg2 = m.group(2)
               self.wb[i] = m.group(1) + sstart + m.group(2) # put start tags after blanks (if any)
             else: # should not happen?
               self.dprint("tagstack code problem?\ni = {}\nline = >>{}<<".format(i, self.wb[i]))
