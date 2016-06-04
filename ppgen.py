@@ -30,9 +30,83 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55" + with_regex   # 29-Feb-2016
+VERSION="3.55r" + with_regex   # 2-Jun-2016
 #3.55:
 #  Incorporate 3.54o into production
+#3.55a:
+#  Include the .di (drop image) directive in the image-checking process to avoid false warning messages and to
+#    perform the additional diagnostic checks on them.
+#3.55b:
+#  Text: When using alt= tag as an illo caption, don't turn single quotes into HTML entities.
+#  Text: Table problem with incorrect right-border on lines that end with <span>
+#3.55c:
+#  Revise handling of stdout and stderr. Previously, to avoid problems on Windows systems when running ppgen in a command
+#    window, ppgen translated any characters with values > x80 to *. With this enhancement ppgen encodes stdout and stderr
+#    as UTF-8 files, and sends all message characters directly. In a Windows console message this may show garbage for the
+#    UTF-8 characters, but no errors will occur. If stdout/stderr are piped to files the files will be UTF-8 encoded and
+#    will show all characters properly. Also, Linux and Mac consoles should show all the characters properly in the error
+#    messages without piping.
+#  Text: Recognize long "centered" table lines (lines without a | to split them into cells) and wrap them to stay within the
+#    edges of the table. Also make sure that any such lines that specify <al=l> or <al=r> stay within the table edges.
+#3.55d:
+#  HTML: Fix issue with vertical placement of sidenotes (.sn) in relation to the text that follows them, when the sidenote
+#    is preceded by a .sp directive.
+#3.55e:
+#  HTML: Fix Python failure when using .dl with .fs in effect.
+#3.55f:
+#  Fix Python trap during macro processing (.pm) when macro argument contains regular-expression meta-characters. We may still
+#    terminate, but with a better error message.
+#  When combining long lines continued by a \ character, if the line ended with multiple \ characters ppgen was using a non-breaking
+#    space rather than a regular space. That has been fixed. Also, all the trailing \ characters will be deleted.
+#  Removed unnecessary code for handling continuations, now that it has been centralized.
+#3.55g:
+#  Allow macros to be invoked by <pm name parms> as long as they return only 1 line of output.
+#  Allow <pm ...> tags inside of [Greek: ...] tags in some situations.
+#  Fix major Greek processing issue when keep=a or b is specified.
+#  Move uncomment, .ig, and .if processing before doGreek so Greek processing won't be performed on lines that will be ignored anyway
+#    (Note: Uncommenting, etc. still happens only when ppgen is not operating in filter mode.)
+#3.55h:
+#  Eliminate .table### duplication in the CSS when the table classes have the same characteristics
+#3.55i:
+#  Exempt <g> and </g> from Greek processing so they can be used for emphasis in Greek strings.
+#  Minor rewording of imagecheck warning messages
+#3.55j:
+#  HTML: Fix issue with .pn off (no page visible numbers) where ppgen creates page numbers anyway for illustrations.
+#        Also ensure that a page number link is generated on the illustration if a .pn directive occurs
+#        just before a .il directive.
+#3.55k:
+# HTML:  Fix Python trap that can occur due to a coding error handling a .dv directive has neither a class= nor an fs= operand
+#3.55l:
+#  HTML: Reduce number of class= specifications for <td> elements by keeping track of which style is most common for that table and
+#    refactoring the .cnnn definition into a .table td CSS specification. Note: This may increase the
+#    number of .table<nnn> classes that are generated, including some that will duplicate others, if they
+#    have a different "most popular" cell style.
+#  Text: Allow bl=y (default) or n on .ta to allow or prevent addition of blank lines between rows
+#    when some cell wraps to multiple lines.
+#3.55m:
+#  Revert table changes in HTML introduced by 3.55l as they do not work properly.
+#3.55n:
+#  Fix .bin files so the pngspath variable has the full path name, and so it ends in \\ rather than \ as
+#    seems to be necessary for Guiguts to work properly.
+#3.55o:
+#  Move .bn encoding so it happens before continuation lines are processed, to ensure that raw .bn directive
+#    doesn't appear in the middle of a continued line.
+#  Move .pn checking/encoding so it happens before continuation lines are processed
+#3.55p:
+#  Add -de command line option to force all messages to stderr to simplify regression testing
+#  Add a warning if a continued line is followed by an apparent dot directive (other than .pn, .bn)
+#3.55q:
+#  Text: Properly calculate the length of text strings that have encoded super/subscripted text within them.
+#    This affects things like wrapping but also (and especially) the calculation of widths for table cells
+#    in the text output, since the number of characters in the string changes after decoding the super/subscripts.
+#  Text: Fix bug in handling horizontal table rules. If the table did not have a top rule, then the first 
+#    horizontal rule in the table was not connected properly to the vertical rules.
+#  Text: Fix bug in handling horizontal table rules when the rule is immediately preceded or followed by a
+#    .bn directive.
+#3.55r:
+#  HTML: Fix bug causing .sp to be ineffective if it occurs just before a footnote that is captured for processing
+#    by a remote landing zone. Also, properly handle .sp that occurs just before a footnote when .pi (indented
+#    paragraphs) are in effect.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -106,6 +180,7 @@ class Book(object):
   nfstack = [] # block stack
   dvstack = [] # stack for nested .dv blocks
   fsstack = [] # stack for .fs push
+  fn_pvs_stack = [] # stack for HTML .fn processing to save pvs value
   blkfszstack = [] # stack for font-sizes across footnotes, divs, and lists
   liststack = [] # ul/ol stack
   list_type = None   # no list in progress
@@ -124,13 +199,13 @@ class Book(object):
   dotcmdstack = [] # stack for valid dotcmds
   warnings = [] # warnings displayed
   cl = 0 # current line number
-  tcnt = 0 # table counter
   pindent = False
   pnshow = False # set to True if page numbering found in source file
   pnlink = False # create links but do not show page number
   csslc = 3000 # CSS line counter for user defined classes
   dtitle = "" # display title for HTML
   cimage = "cover.jpg" # default cover image
+  bnPresent = False
 
   nregs = {} # named registers
   nregsusage = {} # usage counters for selected named registers
@@ -696,6 +771,8 @@ class Book(object):
      ('q',        '\u03DF', 'q (qoppa)'),
      ('C',        '\u03E0', 'C (Sampi)'),
      ('c',        '\u03E1', 'c (sampi)'),
+     ('<γ>',      '<g>',    '<g> (gesperrt emphasis)'),
+     ('</γ>',     '</g>',   '</g> (gesperrt emphasis)'),
     ]
 
   # Format of diacritic table:
@@ -1508,7 +1585,11 @@ class Book(object):
   #                    '\u039C\u039D\u039E\u039F\u03A0\u03A1\u03A3\u03A4\u03A5\u03A6\u03A7' +
   #                    '\u03A8\u03A9')
 
-  def __init__(self, args, renc, config):
+  # Initialization routine for class Book
+  def __init__(self, args, renc, config, sout, serr):
+
+    self.stdout = sout
+    self.stderr = serr
 
     del self.wb[:]
     del self.eb[:]
@@ -1535,7 +1616,6 @@ class Book(object):
     self.forceutf8 = (True) if (renc == "U") else (False)
     self.debug = args.debug
     self.srcfile = args.infile
-    self.imgcheck = args.imagecheck
     self.anonymous = args.anonymous
     self.log = args.log
     self.listcvg = args.listcvg
@@ -1592,7 +1672,9 @@ class Book(object):
     self.encoding = "" # input file encoding
     self.pageno = "" # page number stored as string (null is the same as a Roman numeral 0)
     self.bnmatch = re.compile("^⑱.*?⑱$")  # re to match a .bn line
-    self.pnmatch = re.compile("^⑯.*⑰$")   # re to match a .pn line
+    self.bnsearch = re.compile("⑱.*?⑱")  # re to find .bn info anywhere within a line
+    self.pnmatch = re.compile("^⑯(.*?)⑰$")   # re to match a .pn line
+    self.pnsearch = re.compile("⑯(.*?)⑰") # to find .pn info anywhere within a line
 
 
 
@@ -1726,7 +1808,7 @@ class Book(object):
     for k in self.config['Nregs']:
       if k in self.nregs:
         self.nregs[k] = self.config['Nregs'][k]
-        print("setting self.nregs[{}] via .ini file: {}".format(k, self.nregs[k]))
+        self.print_msg("setting self.nregs[{}] via .ini file: {}".format(k, self.nregs[k]))
       else:
         self.warn("Ignoring unsupported Nregs key {} from .ini file".format(k))
 
@@ -1885,7 +1967,7 @@ class Book(object):
       t = t.replace("⑮", r"\ ")
       f1.write( "{:s}\r\n".format(t.rstrip()) )
     f1.close()
-    print("Terminating as requested after .cv/.gk processing.\n\tOutput file: {}".format(bailfn))
+    self.print_msg("Terminating as requested after .cv/.gk processing.\n\tOutput file: {}".format(bailfn))
     exit(1)
 
   # create a ppqt2 metadata file entry
@@ -1917,7 +1999,7 @@ class Book(object):
       for index,t in enumerate(self.ppqt):
         f1.write("{:s}\r\n".format(t))
       f1.close()
-      print("PPQTv2 metadata file {} created".format(ppqtfn))
+      self.print_msg("PPQTv2 metadata file {} created".format(ppqtfn))
 
   # Create a -src.txt.bin file based on the input file to facilitate using GG
   # or PPQTv1 to work on this ppgen project
@@ -1949,16 +2031,16 @@ class Book(object):
       temp = os.path.dirname(temp)
       temp = os.path.join(temp, "pngs")
       bb.append(");")  # finish building GG .bin file
-      bb.append("$::pngspath = '{}\\';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      bb.append(r"$::pngspath = '{}\\';".format(os.path.join(os.path.realpath(self.srcfile),"pngs")))
       bb.append("1;")
       binfn = self.srcfile + ".bin"
       f1 = codecs.open(binfn, "w", "ISO-8859-1")
       for index,t in enumerate(bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
-      print("Terminating as requested after creating -src.txt.bin file: {}".format(binfn))
+      self.print_msg("Terminating as requested after creating -src.txt.bin file: {}".format(binfn))
     else:
-      print("Terminating after -sbin processing, but no .bn commands found;\n" +
+      self.print_msg("Terminating after -sbin processing, but no .bn commands found;\n" +
             "-src.txt.bin file not generated.")
     exit(1)
 
@@ -2041,7 +2123,7 @@ class Book(object):
   def check_for_pppgen_special_characters(self):
     s = '\n'.join(self.wb)  # make a text blob
     pattern = r"(.*?)([ᒪᒧⓓⓢ①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳ⓈⓉⓊⓋⓏⓣⓤⓥ⓪⓫⓬⓭⓵⓶⓷⓸⓹⓺⓻⓼⓽◮◸◹◺◿⫉])"
-    
+
     values = {'ᒪ': '\\u14aa',  #  ᒪ   CANADIAN SYLLABICS MA # precedes lang= info
               'ᒧ': '\\u14a7',  #  ᒧ   CANADIAN SYLLABICS MO # follows lang= info
               'ⓓ': '\\u24d3',  #  ⓓ   CIRCLED LATIN SMALL LETTER D # four dot ellipsis
@@ -2169,27 +2251,31 @@ class Book(object):
   # log print
   def lprint(self, msg):
     if self.log:
-      print(msg)
+      self.print_msg(msg)
 
   def rp(self, flag, msg):
-    print("=> {} {}".format(flag,msg))
+    self.print_msg("=> {} {}".format(flag,msg))
 
   # display error message and exit
   def fatal(self, message):
-    s = self.umap(message)
-    sys.stderr.write("FATAL: " + s + "\n")
+    #s = self.umap(message)
+    self.stderr.write("FATAL: " + message + "\n")
     exit(1)
 
   # display warning
   def warn(self, message):
-    s = self.umap(message)
-    if s not in self.warnings: # don't give exact same warning more than once.
-      self.warnings.append(s)
-      sys.stderr.write("**warning: " + s + "\n")
+    #s = self.umap(message)
+    if message not in self.warnings: # don't give exact same warning more than once.
+      self.warnings.append(message)
+      self.stderr.write("**warning: " + message + "\n")
 
   # display informational message
   def info(self, message):
-    sys.stderr.write("  info: " + message + "\n")
+    self.stderr.write("  info: " + message + "\n")
+
+  # print a message
+  def print_msg(self, message):
+    self.stdout.write(message + "\n")
 
   class DefList(object):
     # Definition List Class (Base definition)
@@ -2415,7 +2501,7 @@ class Book(object):
 
     # Print debug info if requested
     def print_debug(self, info): # Ppt and Pph will override this
-      print(info)
+      self.print_msg(info)
 
     # Format debug info if requested
     def format_debug(self): # Basic data gathering.
@@ -2557,11 +2643,11 @@ class Book(object):
         #
         b.list_item_active = True
         i = b.cl
-        while i < (len(b.wb) - 1) and b.wb[i].endswith("\\"): # handle continued lines
-          b.wb[i] = b.wb[i][:-1] + " " + b.wb[i+1]
-          del b.wb[i+1]
-        if b.wb[i].endswith("\\"):
-          b.crash_w_context("File ends with continued definition line: {}".format(b.wb[i]), i)
+        #while i < (len(b.wb) - 1) and b.wb[i].endswith("\\"): # handle continued lines
+        #  b.wb[i] = b.wb[i][:-1] + " " + b.wb[i+1]
+        #  del b.wb[i+1]
+        #if b.wb[i].endswith("\\"):
+        #  b.crash_w_context("File ends with continued definition line: {}".format(b.wb[i]), i)
 
         # check for a blank line, which terminates any combining paragraph
         if b.wb[b.cl] == "":
@@ -2738,37 +2824,62 @@ class Book(object):
 
   # Issue error message, show context, and terminate
   def crash_w_context(self, msg, i, r=5):
-    sys.stderr.write("\nERROR: {}\ncontext:\n".format(self.umap(msg)))
+    self.stderr.write("\nERROR: {}\ncontext:\n".format(msg))
     startline = max(0,i-r)
     endline = min(len(self.wb),i+r)
-    sys.stderr.write(" -----\n")
+    self.stderr.write(" -----\n")
     for j in range(startline,endline):
-      s = self.umap(self.wb[j])
+      #s = self.umap(self.wb[j])
+      s = self.wb[j]
       if j == i:
-        sys.stderr.write(">> {}\n".format(s))
+        self.stderr.write(">> {}\n".format(s))
       else:
-        sys.stderr.write("   {}\n".format(s))
-    sys.stderr.write(" -----\n")
+        self.stderr.write("   {}\n".format(s))
+    self.stderr.write(" -----\n")
     exit(1)
 
   def warn_w_context(self, msg, i, r=5):
-    sys.stderr.write("\n**warning: {}\ncontext:\n".format(self.umap(msg)))
+    self.stderr.write("\n**warning: {}\ncontext:\n".format(msg))
     startline = max(0,i-r)
     endline = min(len(self.wb),i+r)
-    sys.stderr.write(" -----\n")
+    self.stderr.write(" -----\n")
     for j in range(startline,endline):
-      s = self.umap(self.wb[j])
+      #s = self.umap(self.wb[j])
+      s = self.wb[j]
       if j == i:
-        sys.stderr.write(">> {}\n".format(s))
+        self.stderr.write(">> {}\n".format(s))
       else:
-        sys.stderr.write("   {}\n".format(s))
-    sys.stderr.write(" -----\n")
+        self.stderr.write("   {}\n".format(s))
+    self.stderr.write(" -----\n")
 
-  # Calculate "true" length of a string, accounting for <lang> markup and combining or non-spacing characters in Hebrew
-  def truelen(self,s):
+  # Expand encoded superscripts and subscripts
+  def expand_supsub(self, s):
+    # superscripts
+    m = re.search(r"◸(.*?)◹", s)
+    while m:
+      supstr = m.group(1)
+      if len(supstr) == 1:
+        s = re.sub(r"◸.◹", "^"+supstr, s, 1)
+      else:
+        s = re.sub(r"◸.*?◹", "^{" + supstr + "}", s, 1)
+      m = re.search(r"◸(.*?)◹", s)
+    # subscripts
+    s = s.replace("◺", "_{")
+    s = s.replace("◿", "}")
+    return s
+
+
+  # Calculate "true" length of a string, accounting for <lang> markup and combining or non-spacing characters in Hebrew, etc.
+  # Also, take into account text encoded for super/subscripts, since the eventual decoding will change the text length.
+  def truelen(self, s):
     #self.dprint("entered: {}".format(s))
     if self.bnPresent:
-      s = re.sub("(⑱.*?⑱)", "", s) # remove any bn info before trying to calculate the length
+      s = self.bnsearch.sub("", s) # remove any bn info before trying to calculate the length
+      s = self.pnsearch.sub("", s) # remove any pn info before trying to calculate the length
+
+    if "◸" in s or "◺" in s:
+      s = self.expand_supsub(s)
+
     l = len(s) # get simplistic length
     for c in s: # examine each character
       cc = ord(c)
@@ -2839,6 +2950,7 @@ class Book(object):
       var["hint"] = srrHint    # the string after the macro name in the replace expression, or None
       var["out"] = [] # place for macro to put its output
       var["type"] = self.booktype # text or html
+      var["style"] = ".sr"
       # below 3 lines don't make sense during .sr
       #var["ll"] = self.regLL  # specified line length
       #var["in"] = self.regIN  # specified
@@ -2861,7 +2973,7 @@ class Book(object):
         else:
           macro_line = "not available"
         mac_info = "Exception occurred running Python macro {} during .sr at\n       Source line {}\n".format(srrMacname,
-                                                                                                              self.umap(macro_line))
+                                                                                                              macro_line)
         trace_info = traceback.format_exception(*sys.exc_info())
         self.fatal(mac_info + "\n".join(trace_info))
 
@@ -2906,7 +3018,7 @@ class Book(object):
           self.fatal("Error occurred searching for {} in complete text blob".format(self.srs[srnum]))
       if m:                                             # if found
         if 'r' in self.debug:
-          print(self.umap("Search string {}:{} found in complete text blob".format(srnum+1, self.srs[srnum])))
+          self.print_msg("Search string {}:{} found in complete text blob".format(srnum+1, self.srs[srnum]))
         try:
           text, l = re.subn(self.srs[srnum], self.srr[srnum], text) # replace all occurrences in the blob
           ll += l
@@ -2917,9 +3029,9 @@ class Book(object):
           else:
             self.fatal("Error occurred replacing:{}\n  with {}\n  in complete text blob".format(self.srs[srnum], self.srr[srnum]))
         if 'r' in self.debug:
-          print(self.umap("Replaced with {}".format(self.srr[srnum])))
-      print(self.umap("Search string {}:{} matched in complete text and replaced {} times.".format(srnum+1,
-            self.srs[srnum], ll)))
+          self.print_msg("Replaced with {}".format(self.srr[srnum]))
+      self.print_msg("Search string {}:{} matched in complete text and replaced {} times.".format(srnum+1,
+            self.srs[srnum], ll))
       buffer[:] = text.splitlines() # break blob back into individual lines
       text = ""
 
@@ -2939,17 +3051,17 @@ class Book(object):
         if m:                                   # if found
           k += 1
           if 'r' in self.debug or 'p' in self.srw[srnum]: # if debugging, or if prompt requested
-            print(self.umap("Search string {}:{} found in:\n    {}".format(srnum+1,
-                  self.srs[srnum], buffer[j])))
+            self.print_msg("Search string {}:{} found in:\n    {}".format(srnum+1,
+                  self.srs[srnum], buffer[j]))
           try:
             if 'p' in self.srw[srnum]:                                           # prompting requested?
               l = 0
               temp = re.sub(self.srs[srnum], self.srr[srnum], buffer[j])
-              print(self.umap("replacement will be:\n    {}".format(temp)))
+              self.print_msg("replacement will be:\n    {}".format(temp))
               try:
                 reply = input("replace? (y/n/q/r)")
               except EOFError:
-                print("EOF received on prompt; assuming q")
+                self.print_msg("EOF received on prompt; assuming q")
                 reply = "q"
               good_reply = False
               while not good_reply:
@@ -2963,10 +3075,10 @@ class Book(object):
                   self.srw[srnum] = self.srw[srnum].replace("p","")                      # and stop prompting
                   good_reply = True
                 elif reply == "n":                                             # else if user replied n (no)
-                  print("skipping that one")
+                  self.print_msg("skipping that one")
                   good_reply = True
                 elif reply == "q":                                             # else if user replied q (quit)
-                  print("exiting at user request")
+                  self.print_msg("exiting at user request")
                   good_reply = True
                   quit = True
             else:                                                            # not prompting
@@ -2985,14 +3097,14 @@ class Book(object):
             else:
               self.fatal("Error occurred replacing:{}\n  with {}\n  in: {}".format(self.srs[srnum], self.srr[srnum], buffer[j]))
           if 'r' in self.debug:
-            print(self.umap("Replaced: {}".format(buffer[j])))
+            self.print_msg("Replaced: {}".format(buffer[j]))
 
         j += linecnt # bump past the line we worked on, or that line plus others we inserted
 
       if quit:
         exit(1)
-      print(self.umap("Search string {}:{} matched in {} lines, replaced {} times.".format(srnum+1,
-            self.srs[srnum], k, ll)))
+      self.print_msg("Search string {}:{} matched in {} lines, replaced {} times.".format(srnum+1,
+            self.srs[srnum], k, ll))
       if restore_srr:    # if we had a Python macro as replace string, restore original replace string
         self.srr[srnum] = restore_srr
 
@@ -3368,11 +3480,24 @@ class Book(object):
       gkstring = gkmatch.group(1)
       if self.log:
         try:
-          print("Processing: {}".format(gkstring))
+          self.print_msg("Processing: {}".format(gkstring))
         except:
-          print(self.umap("Processing: {}".format(gkstring)))
+          print("Processing: {}".format(gkstring))
       count = 0 # count of built-in Greek characters converted
       count1 = 0 # count of PPer-provided Greek characters converted
+
+      # Protect any <pm> tags within the Greek string by saving the pm and macro name, then replacing
+      #   them with \u2ac9
+      # Later we will restore each saved value.
+      pm_found = False
+      pm_list = []
+      m = re.search(r"(^|[^\\])<(pm +[^ >]+)( .*?[^\\])>", gkstring)
+      while m:
+        pm_found = True
+        pm_list.append(m.group(2))
+        gkstring = re.sub(m.group(0), m.group(1) + "<\u2ac9" + m.group(3) + ">", gkstring, 1)
+        m = re.search(r"(^|[^\\])<(pm +[^ >]+)( .*?[^\\])>", gkstring)
+
       if len(self.gk_user) > 0:   # if PPer provided any additional Greek mappings apply them first
         for s in self.gk_user:
           try:
@@ -3380,9 +3505,9 @@ class Book(object):
             count1 += count2
             if count2 > 0 and 'l' in self.debug:
               try:
-                print("Replaced PPer-provided Greek character {} {} times.".format(s[0], count2))
+                self.print_msg("Replaced PPer-provided Greek character {} {} times.".format(s[0], count2))
               except:
-                print(self.umap("Replaced PPer-provided Greek character {} {} times.".format(s[0], count2)))
+                self.print_msg("Replaced PPer-provided Greek character {} {} times.".format(s[0], count2))
           except:
             self.warn("Error occurred trying to replace PPer-provided Greek character " +
                       "{} with {}. Check replacement value".format(s[0], s[1]))
@@ -3391,14 +3516,20 @@ class Book(object):
         count += count2
         if count2 > 0 and 'l' in self.debug:
           try:
-            print("Replaced Greek {} {} times.".format(s[0], count2))
+            self.print_msg("Replaced Greek {} {} times.".format(s[0], count2))
           except:
-            print(self.umap("Replaced Greek {} {} times.".format(s[0], count2)))
+            self.print_msg("Replaced Greek {} {} times.".format(s[0], count2))
       if self.log:
         if len(self.gk_user) > 0:
-          print("Replaced {} PPer-provided Greek characters and {} built-in Greek characters".format(count1, count))
+          self.print_msg("Replaced {} PPer-provided Greek characters and {} built-in Greek characters".format(count1, count))
         else:
-          print("Replaced {} built-in Greek characters".format(count))
+          self.print_msg("Replaced {} built-in Greek characters".format(count))
+
+      # Restore any protected <pm> tags
+      if pm_found:
+        for i, pm_string in enumerate(pm_list):
+          gkstring = re.sub("\u2ac9", pm_string, gkstring, 1)
+
       gkorigb = ""
       gkoriga = ""
       if self.gkkeep.lower().startswith("b"): # original before?
@@ -3408,12 +3539,15 @@ class Book(object):
       gkfull = gkorigb + self.gkpre + gkstring + self.gksuf + gkoriga
 
       # Check for errant accent marks within the substituted Greek
-      m = re.search(r"[~=_)(/\\|+]", gkstring)
+      temp_gkstring = gkstring
+      if "</g>" in temp_gkstring: # make sure that </g> doesn't trigger the warning
+        temp_gkstring = re.sub("</?g>", "", temp_gkstring)
+      m = re.search(r"[~=_)(/\\|+]", temp_gkstring)
       if m:
         self.warn("Possible accent problem in Greek string {} with result {}".format(gkmatch.group(0), gkstring))
 
       gkfull = gkfull.replace(r"\|", "⑩") # temporarily protect \| and \(space) so they
-      gkfull = gkfull.replace(r"\ ", "⑮") # retain their special meaning within [Greek: ...] tags
+      gkfull = gkfull.replace(r"\ ", "⑮") # retain their special meaning within [Greek: ...] tags in case keep was specified
       gkfull = gkfull.replace(r"\]", "\④") # also \] needs to become protected here, but with an added \
 
       return gkfull
@@ -3459,13 +3593,20 @@ class Book(object):
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # Remove comments and un-escape any escaped / characters in the text (\/ becomes /)
     #
+    # Note: I've implemented, but commented out, a warning for continued // and continued .ig
+    #       as the warning for // can trigger on the -----File: ... p1\p2\p3\f1\f2\ lines if
+    #       the PPer leaves them in as comments.
     def uncomment(buffer):
       i = 0
       while i < len(buffer):
         if  re.match(r"\/\/", buffer[i]): # entire line is a comment
+          #if buffer[i].endswith("\\"):
+          #  self.warn("Continuation \ ignored following //: {}".format(buffer[i]))
           del buffer[i]
           continue
         if re.search(r"\/\/.*$", buffer[i]):
+          #if buffer[i].endswith("\\"):
+          #  self.warn("Continuation \ ignored following //: {}".format(buffer[i]))
           buffer[i] = re.sub(r"\/\/.*$", "", buffer[i])
         #
         # convert escaped / characters
@@ -3474,17 +3615,90 @@ class Book(object):
         buffer[i] = buffer[i].rstrip()
         i += 1
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # ignored text removed in preprocessor
+    def handle_ig():
+      i = 0
+      while i < len(self.wb):
+        # detect misplaced .ig-
+        if ".ig-" == self.wb[i]:
+          self.crash_w_context("Extraneous .ig-; no matching .ig", i)
+        # one line
+        elif re.match(r"\.ig ",self.wb[i]): # single line
+          #if self.wb[i].endswith("\\"):
+          #  self.warn("Continuation \ ignored on single-line .ig directive: {}".format(self.wb[i]))
+          del self.wb[i]
+        elif ".ig" == self.wb[i]: # multi-line
+          del self.wb[i]
+          while i < len(self.wb) and self.wb[i] != ".ig-":
+            if self.wb[i].startswith(".ig"): # hit a .ig while looking for a .ig-?
+              self.crash_w_context("Missing .ig- directive: found another .ig inside a .ig block", i)
+            del self.wb[i]
+          if i < len(self.wb):
+            del self.wb[i] # the ".ig-"
+          else:
+            self.fatal("unterminated .ig command")
+        else:
+          i += 1
+
+    # .if conditionals (moved to preProcessCommon 28-Aug-2014)
+    def handle_if():
+      text = []
+      keep = True
+      inIf = False
+      for i, line in enumerate(self.wb):
+
+        m = re.match(r"\.if (\w)", line)  # start of conditional
+        if m:
+          if inIf:
+            self.crash_w_context("Nested .if not supported", i)
+          inIf = True
+          ifloc = i
+          keep = False
+          keepType = m.group(1)
+          if m.group(1) == 't' and self.renc in "lut":
+            keep = True
+          elif m.group(1) == 'h' and self.renc == "h":
+            keep = True
+          continue
+
+        if line == ".if-":
+          if not inIf:
+            self.crash_w_context(".if- has no matching .if", i)
+          keep = True
+          keepType = None
+          inIf = False
+          continue
+
+        if keep:
+          text.append(line)
+        elif line.startswith(".sr"):
+          m2 = re.match(r"\.sr (\w+)", line)
+          if m2:
+            if keepType == 't' and "h" in m2.group(1):
+              self.warn(".sr command for HTML skipped by .if t: {}".format(line))
+            elif keepType == 'h':
+              m3 = re.match(r"h*[ult]", m2.group(1))
+              if m3:
+                self.warn(".sr command for text skipped by .if h: {}".format(line))
+
+      if inIf: # unclosed .if?
+        self.crash_w_context("Unclosed .if directive", ifloc)
+      self.wb = text
+      text = []
+
+
     def doGreek():
 
       def findGreek(text, start):
         found = False
         i = end = newstart = len(text)
-        m = re.search(r"\[Greek: ?", text[start:end], flags=re.DOTALL)
+        m = re.search(r"(^|[^\\])(\[Greek: ?)", text[start:end], flags=re.DOTALL)
         if m:
           found = True
-          newstart = m.start()
-          i = start + m.end() # bump past [Greek:
-          end = len(text)
+          newstart = start + m.start(2)
+          i = start + m.end(2) # bump past [Greek:
+          #end = len(text)
           nest = 0
           done = False
           while i < end and not done:
@@ -3660,14 +3874,14 @@ class Book(object):
         # Correct diacritics with <i> markup in them if requested
         #
         if dia_italic.lower().startswith("y"):
-          print("Checking for <i> within diacritic markup and correcting")
+          self.print_msg("Checking for <i> within diacritic markup and correcting")
           for s in self.diacritics_user:
             si = "[<i>" + s[0][1:-1] + "</i>]"
             so = "<i>" + s[0] + "</i>"
             try:
               text, count = re.subn(re.escape(si), so, text)
               if count:
-                print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+                self.print_msg("Replaced {} with {} {} times".format(si, so, count))
             except:
               self.warn("Error occurred trying to replace {} with {}.".format(si, so))
           for s in self.diacritics:
@@ -3676,18 +3890,18 @@ class Book(object):
             try:
               text, count = re.subn(re.escape(si), so, text)
               if count:
-                print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+                self.print_msg("Replaced {} with {} {} times".format(si, so, count))
             except:
               self.warn("Error occurred trying to replace {} with {}.".format(si, so))
         if dia_bold.lower().startswith("y"):
-          print("Checking for <b> within diacritic markup and correcting")
+          self.print_msg("Checking for <b> within diacritic markup and correcting")
           for s in self.diacritics_user:
             si = "[<b>" + s[0][1:-1] + "</b>]"
             so = "<b>" + s[0] + "</b>"
             try:
               text, count = re.subn(re.escape(si), so, text)
               if count:
-                print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+                self.print_msg("Replaced {} with {} {} times".format(si, so, count))
             except:
               self.warn("Error occurred trying to replace {} with {}.".format(si, so))
           for s in self.diacritics:
@@ -3696,7 +3910,7 @@ class Book(object):
             try:
               text, count = re.subn(re.escape(si), so, text)
               if count:
-                print(self.umap("Replaced {} with {} {} times".format(si, so, count)))
+                self.print_msg("Replaced {} with {} {} times".format(si, so, count))
             except:
               self.warn("Error occurred trying to replace {} with {}.".format(si, so))
       if self.dia_requested and (self.renc == "u" or self.renc == "h" or self.cvgfilter):
@@ -3708,14 +3922,14 @@ class Book(object):
             for s in self.diacritics_user:
               try:
                 text, count = re.subn(re.escape(s[0]), s[1], text)
-                print(self.umap("Replaced PPer-provided diacritic {} {} times.".format(s[0], count)))
+                self.print_msg("Replaced PPer-provided diacritic {} {} times.".format(s[0], count))
               except:
                 self.warn("Error occurred trying to replace PPer-provided diacritic " +
                           "{} with {}. Check replacement value".format(s[0], s[1]))
           for s in self.diacritics:
             text, count = re.subn(re.escape(s[0]), s[1], text)
             if count > 0:
-              print("Replaced {} {} times.".format(s[0], count))
+              self.print_msg("Replaced {} {} times.".format(s[0], count))
               if s[3]:
                 self.warn("{} is a non-standard markup for {}. Please examine images to confirm character is correct".format(s[0], s[1]))
         else:
@@ -3730,7 +3944,7 @@ class Book(object):
               repl = diaorigb + diapre + s[1] + diasuf + diaoriga
               try:
                 text, count = re.subn(re.escape(s[0]), repl, text)
-                print(self.umap("Replaced PPer-provided diacritic {} {} times.".format(s[0], count)))
+                self.print_msg("Replaced PPer-provided diacritic {} {} times.".format(s[0], count))
               except:
                 self.warn("Error occurred trying to replace PPer-provided Greek character" +
                           "{} with {}. Check replacement value".format(s[0], s[1]))
@@ -3744,7 +3958,7 @@ class Book(object):
             repl = diaorigb + diapre + s[1] + diasuf + diaoriga
             text, count = re.subn(re.escape(s[0]), repl, text)
             if count > 0:
-              print("Replaced {} {} times.".format(s[0], count))
+              self.print_msg("Replaced {} {} times.".format(s[0], count))
               if s[3]:
                 self.warn("{} is a non-standard markup for {}. Please examine images to confirm character is correct".format(s[0], s[1]))
         if self.log:
@@ -3757,15 +3971,15 @@ class Book(object):
             text2, count = re.subn(re.escape(m.group(0)), "", text2)
             if count > 0 and not inner.isdigit():
               if header_needed:
-                print("Potential diacritics not converted:")
+                self.print_msg("Potential diacritics not converted:")
                 header_needed = False
               try:
-                print(" {} occurred {} times.".format(m.group(0), count))
+                self.print_msg(" {} occurred {} times.".format(m.group(0), count))
               except:
-                print(self.umap("**{} occurred {} times. (Safe-printed due to error.)".format(m.group(0), count)))
+                self.print_msg("**{} occurred {} times. (Safe-printed due to error.)".format(m.group(0), count))
             m = re.search(r"\[([^*\]].{1,7}?)]", text2)
           if header_needed:
-            print("No unconverted diacritics seem to remain after conversion.")
+            self.print_msg("No unconverted diacritics seem to remain after conversion.")
           del text2
 
       if dia_blobbed:
@@ -3839,6 +4053,90 @@ class Book(object):
         self.srs = []
         self.srr = []
 
+    # Guts of .pm macro processing(so we can also use for <pm processing)
+    #
+    def pm_guts(line, line_num):
+      i = line_num
+      try:
+        tlex = shlex.split(line)  # ".pm" "tnote" "a" "<li>"
+      except:
+        if 'd' in self.debug:
+          traceback.print_exc()
+          self.crash_w_context("Above error occurred while processing macro invocation: {}".format(line), i)
+        else:
+          self.crash_w_context("Error occurred parsing macro arguments for: {}".format(line), i)
+
+      macroid = tlex[1]  # "tnote"
+      if not macroid in self.macro:
+        self.crash_w_context("undefined macro {}: ".format(macroid), i)
+
+      if self.macro[macroid][0] == "n": # "native" ppgen macro?
+        t = list(self.macro[macroid][1]) # all the lines in this macro as previously defined
+        for j,line in enumerate(t): # for each line
+          m = re.search(r'\$(\d{1,2})', t[j]) # is there a substitution?
+          while m:
+            pnum = int(m.group(1))
+            subst = r"\${}".format(pnum)
+            if pnum < len(tlex) - 1:
+              try:
+                t[j] = re.sub(subst, tlex[pnum+1], t[j], 1)
+              except:
+                if 'd' in self.debug:
+                  traceback.print_exc()
+                  self.crash_w_context("Above error occurred while substituting parameter number {} in {}".format(pnum, line), i)
+                else:
+                  self.crash_w_context("Error occurred while substituting parameter number {} in {}".format(pnum, line), i)
+            else:
+              self.warn_w_context("Incorrect macro invocation (argument ${} missing): {}".format(pnum, line), i)
+              t[j] = re.sub(subst, "***missing***", t[j], 1)
+            m = re.search(r'\$(\d{1,2})', t[j]) # another substitution on same line
+
+      else: # python format macro
+        if not self.pmcount: # if first python macro this pass, initialize a dictionary
+          self.savevar = {}  # to allow macros to communicate
+        self.pmcount += 1
+        var = {}
+        var["count"] = len(tlex) - 2 # count of input variables
+        for j in range(2, len(tlex)):
+          var[j-2] = tlex[j]
+        var["name"] = macroid # the name of the macro, in case the macro cares for some reason
+        var["out"] = [] # place for macro to put its output
+        var["type"] = self.booktype # text or html
+        var["style"] = ".pm" if tlex[0].startswith(".") else "<pm>"
+        # below 3 lines don't make sense for .pm as the phase is too early
+        #var["ll"] = self.regLL  # specified line length
+        #var["in"] = self.regIN  # specified
+        #var["nr-nfl"] = self.nregs["nfl"] # .nr nfl value
+        macglobals = __builtins__.__dict__
+        macglobals["var"] = var # make macro variables available
+        macglobals["re"] = re # make re module available
+        macglobals["toRoman"] = self.toRoman2
+        macglobals["fromRoman"] = self.fromRoman
+        macglobals["debugging"] = [self.bailout, self.wb, i]
+        macglobals["savevar"] = self.savevar # make communication dictionary available
+        maclocals = {"__builtins__":None}
+
+        try: # exec the macro
+          exec(self.macro[macroid][1], macglobals, maclocals)
+        except:
+          where = traceback.extract_tb(sys.exc_info()[2])[-1]
+          if where[0] == "<macro {}>".format(macroid):
+            macro_line = "{}:".format(where[1]-1) + self.macro[macroid][3][where[1]-1]
+          else:
+            macro_line = "not available"
+          mac_info = "Exception occurred running Python macro {} at\n       Source line {}\n".format(macroid, macro_line)
+          trace_info = traceback.format_exception(*sys.exc_info())
+          self.crash_w_context(mac_info + "\n".join(trace_info), i)
+
+        try: # try to grab its output
+          t = var["out"][:]
+        except:
+          traceback.print_exc()
+          self.crash_w_context("Above error occurred trying to copy output from Python macro {}".format(macroid), i)
+
+      return t
+
+
     #
     # Begin Pre-process Common
     #
@@ -3848,7 +4146,7 @@ class Book(object):
       loadFilter()
 
     # This ends up causing problems for Greek with \], and now that Greek processing properly finds the end
-    # of the [GreekL ...] tag we don't need to have this done early any more.
+    # of the [Greek: ...] tag we don't need to have this done early any more.
     ## Handle some escaped characters
     #for i, line in enumerate(self.wb):
     #  # some escaped characters
@@ -3863,6 +4161,16 @@ class Book(object):
     #  self.wb[i] = self.wb[i].replace(r"\-", "⑨")
     #  self.wb[i] = self.wb[i].replace(r"\#", "⓪")
 
+
+    # Remove commented/ignored stuff if not in filter mode
+    #   so they don't impact Greek/Diacritic processing
+    # (Also un-escapes any escaped / characters (\/ becomes /)
+    if not self.cvgfilter:
+      uncomment(self.wb)
+      handle_ig()
+      handle_if()
+
+
     # Handle Greek, Diacritics, .sr for filtering, and terminate with cvg-bailout text if filtering or user requested it
     doGreek()
     doDiacritics()
@@ -3870,81 +4178,6 @@ class Book(object):
       doFilterSR()
     if self.gk_quit.lower().startswith("y") or self.dia_quit.lower().startswith("y") or self.cvgfilter:
       self.cvgbailout()  # bail out after .cv/.gk or filter processing if user requested early termination
-
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # Remove comments in pre-processor
-    # Also un-escape any escaped / characters in the text (\/ becomes /)
-    #
-    uncomment(self.wb)
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # ignored text removed in preprocessor
-    i = 0
-    while i < len(self.wb):
-      # detect misplaced .ig-
-      if ".ig-" == self.wb[i]:
-        self.crash_w_context("Extraneous .ig-; no matching .ig", i)
-      # one line
-      elif re.match(r"\.ig ",self.wb[i]): # single line
-        del self.wb[i]
-      elif ".ig" == self.wb[i]: # multi-line
-        del self.wb[i]
-        while i < len(self.wb) and self.wb[i] != ".ig-":
-          if self.wb[i].startswith(".ig"): # hit a .ig while looking for a .ig-?
-            self.crash_w_context("Missing .ig- directive: found another .ig inside a .ig block", i)
-          del self.wb[i]
-        if i < len(self.wb):
-          del self.wb[i] # the ".ig-"
-        else:
-          self.fatal("unterminated .ig command")
-      else:
-        i += 1
-
-    # .if conditionals (moved to preProcessCommon 28-Aug-2014)
-    text = []
-    keep = True
-    inIf = False
-    for i, line in enumerate(self.wb):
-
-      m = re.match(r"\.if (\w)", line)  # start of conditional
-      if m:
-        if inIf:
-          self.crash_w_context("Nested .if not supported", i)
-        inIf = True
-        ifloc = i
-        keep = False
-        keepType = m.group(1)
-        if m.group(1) == 't' and self.renc in "lut":
-          keep = True
-        elif m.group(1) == 'h' and self.renc == "h":
-          keep = True
-        continue
-
-      if line == ".if-":
-        if not inIf:
-          self.crash_w_context(".if- has no matching .if", i)
-        keep = True
-        keepType = None
-        inIf = False
-        continue
-
-      if keep:
-        text.append(line)
-      elif line.startswith(".sr"):
-        m2 = re.match(r"\.sr (\w+)", line)
-        if m2:
-          if keepType == 't' and "h" in m2.group(1):
-            self.warn(".sr command for HTML skipped by .if t: {}".format(self.umap(line)))
-          elif keepType == 'h':
-            m3 = re.match(r"h*[ult]", m2.group(1))
-            if m3:
-              self.warn(".sr command for text skipped by .if h: {}".format(self.umap(line)))
-
-    if inIf: # unclosed .if?
-      self.crash_w_context("Unclosed .if directive", ifloc)
-    self.wb = text
-    text = []
 
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -4021,6 +4254,11 @@ class Book(object):
     # macro line 1
     # macro line 2
     # .dm-
+    # Notes:
+    #    (1) .if processing has already occurred, and has "pruned" macro content to the appropriate statements
+    #        for the phase (text, HTML) that we're in.
+    #    (2) This implies that a macro definition must include a complete .if block; you cannot start a .if in one
+    #        macro and have the .if- in a subsequent macro.
     i = 0
     while i < len(self.wb):
       if self.wb[i].startswith(".dm "):
@@ -4054,19 +4292,19 @@ class Book(object):
           self.macro[macroid] = ["n", t, len(tlex)-2] # store as a "native" macro
         else: # python macro
           if not Book.python_macros_allowed: # has user authorized use of Python macros?
-            print("Warning: Macro(s) contain Python code.")
+            self.print_msg("Warning: Macro(s) contain Python code.")
             good_warn_reply = False
             while not good_warn_reply:
               try:
                 answer = input("Allow? (y/n)")
               except EOFError:
-                print("EOF received on prompt; assuming n")
+                self.print_msg("EOF received on prompt; assuming n")
                 answer = "n"
               if answer == "y":
                 good_warn_reply = True
                 Book.python_macros_allowed = True
               elif answer == "n":
-                print("Python macros not allowed; quitting")
+                self.print_msg("Python macros not allowed; quitting")
                 exit(1)
           try: # compile the macro
             s = "\n".join(t)
@@ -4078,92 +4316,62 @@ class Book(object):
         i -= 1
       i += 1
 
+
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # play macro
-    # .pm name
+    # play macro (dot directive, .pm)
+    # format:
+    #  .pm name parameters
     i = 0
     self.pmcount = 0 # number of python macros executed in this phase
     while i < len(self.wb):
       if self.wb[i].startswith(".pm"):
         while (i < len(self.wb) - 1) and self.wb[i].endswith("\\"):   # allow continuation via ending \ for .pm
-          self.wb[i] = re.sub(r"\\$", "", self.wb[i]) + self.wb[i+1]
+          self.wb[i] = re.sub(r"\\$", "", self.wb[i]) + " " + self.wb[i+1]
           del self.wb[i+1]
         if self.wb[i].endswith("\\"):
           self.fatal("file ends with continued .pm")
-        try:
-          tlex = shlex.split(self.wb[i])  # ".pm" "tnote" "a" "<li>"
-        except:
-          if 'd' in self.debug:
-            traceback.print_exc()
-            self.fatal("Above error occurred while processing line: {}".format(self.wb[i]))
-          else:
-            self.fatal("Error occurred parsing .pm arguments for: {}".format(self.wb[i]))
 
-        macroid = tlex[1]  # "tnote"
-        if not macroid in self.macro:
-          self.fatal("undefined macro {}: ".format(macroid, self.wb[i]))
+        t = pm_guts(self.wb[i], i) # go play the macro
+        self.wb[i:i+1] = t
 
-        if self.macro[macroid][0] == "n": # "native" ppgen macro?
-          t = list(self.macro[macroid][1]) # all the lines in this macro as previously defined
-          for j,line in enumerate(t): # for each line
-            m = re.search(r'\$(\d{1,2})', t[j]) # is there a substitution?
-            while m:
-              pnum = int(m.group(1))
-              subst = r"\${}".format(pnum)
-              if pnum < len(tlex) - 1:
-                t[j] = re.sub(subst, tlex[pnum+1], t[j], 1)
-              else:
-                self.warn("Incorrect macro invocation (argument ${} missing): {}".format(pnum, self.wb[i]))
-                t[j] = re.sub(subst, "***missing***", t[j], 1)
-              m = re.search(r'\$(\d{1,2})', t[j]) # another substitution on same line
-          self.wb[i:i+1] = t
-
-        else: # python format macro
-          if not self.pmcount: # if first python macro this pass, initialize a dictionary
-            self.savevar = {}  # to allow macros to communicate
-          self.pmcount += 1
-          var = {}
-          var["count"] = len(tlex) - 2 # count of input variables
-          for j in range(2, len(tlex)):
-            var[j-2] = tlex[j]
-          var["name"] = macroid # the name of the macro, in case the macro cares for some reason
-          var["out"] = [] # place for macro to put its output
-          var["type"] = self.booktype # text or html
-          # below 3 lines don't make sense for .pm as the phase is too early
-          #var["ll"] = self.regLL  # specified line length
-          #var["in"] = self.regIN  # specified
-          #var["nr-nfl"] = self.nregs["nfl"] # .nr nfl value
-          macglobals = __builtins__.__dict__
-          macglobals["var"] = var # make macro variables available
-          macglobals["re"] = re # make re module available
-          macglobals["toRoman"] = self.toRoman2
-          macglobals["fromRoman"] = self.fromRoman
-          macglobals["debugging"] = [self.bailout, self.wb, i]
-          macglobals["savevar"] = self.savevar # make communication dictionary available
-          maclocals = {"__builtins__":None}
-
-          try: # exec the macro
-            exec(self.macro[macroid][1], macglobals, maclocals)
-          except:
-            where = traceback.extract_tb(sys.exc_info()[2])[-1]
-            if where[0] == "<macro {}>".format(macroid):
-              macro_line = "{}:".format(where[1]-1) + self.macro[macroid][3][where[1]-1]
-            else:
-              macro_line = "not available"
-            mac_info = "Exception occurred running Python macro {} at\n       Source line {}\n".format(macroid, self.umap(macro_line))
-            trace_info = traceback.format_exception(*sys.exc_info())
-            self.crash_w_context(mac_info + "\n".join(trace_info), i)
-
-          try: # try to grab its output
-            self.wb[i:i+1] = var["out"][:]
-          except:
-            traceback.print_exc()
-            self.crash_w_context("Above error occurred trying to copy output from Python macro {}".format(macroid), i)
-
-          var = {}
-        i -= 1
+        i -= 1 # so we can rescan the first line generated by the macro
 
       i += 1
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # play macro (inline: <pm...>)
+    # format:
+    #   <pm name parameters>
+    # Notes:
+    #   (1) This form is allowed to generate only one line, which will replace the inline macro invocation in the line
+    #       that contains the macro definition.
+    #   (2) As .if processing has already "pruned" the macro contents, this means that it is OK for the macro to contain
+    #         .if t
+    #         1 statement
+    #         .if-
+    #         .if h
+    #         1 statement
+    #         .if-
+    #   (3) Unfortunately, we have not processed/protected characters yet, so if the PPer used \> so he could have
+    #       a > in a macro argument that will still look like \> and not like ⑳. This makes the reg-exes below more
+    #       complex as they need to recognize both \< and \> and not consider them as initiating or ending a <pm> tag.
+    i = 0
+    while i < len(self.wb):
+      m = re.search(r"(^|[^\\])<(pm .*?[^\\])>", self.wb[i])
+      while m:
+        t = pm_guts(m.group(2), i) # go play the macro
+        if len(t) > 1:
+          self.crash_w_context("Inline macro <{}> tried to generate more than one line of output".format(m.group(2)), i)
+        else:
+          self.wb[i], count = re.subn(re.escape(m.group(0)), m.group(1) + t[0], self.wb[i], 1)
+          if count == 0:
+            self.warn_w_context("Substituting {} for inline macro <{}> failed.".format(t[0], m.group(2)), i)
+            break
+
+        m = re.search(r"(^|[^\\])<(pm .*?[^\\])>", self.wb[i])
+
+      i += 1
+
 
     # Handle any .sr that have the B option specified
     #
@@ -4225,11 +4433,153 @@ class Book(object):
       # user-defined character mapping complete, now do default mapping to Latin-1
       self.utoLat()
 
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # .bn (GG-compatible .bin file maintenance)
+    # must happen before continuation lines are processed
+    i = 0
+    self.bnPresent = False
+    image_type = ""
+    while i < len(self.wb):
+      if self.wb[i].startswith(".bn"):
+        m = re.search("(\w+?)\.(png|jpg|jpeg)",self.wb[i])
+        if m:
+          self.bnPresent = True
+          self.wb[i] = "⑱{}⑱".format(m.group(1))
+          temp = ("png" if m.group(2) == "png" else "jpg")
+          if image_type:
+            if image_type != temp:
+              self.warn("Project contains both png and jpg proofing images.\n" +
+                        "     Please check to ensure no high-res illustrations are missing;\n" +
+                        "     if any are missing please contact the PM or db-req for assistance.")
+          else:
+            image_type = temp
+        else:
+          self.crash_w_context("malformed .bn directive", i)
+      i += 1
 
-    # long lines of any kind may end with a single backslash. The backslash will be replaced by a blank, and
-    # the next line will be concatenated to it.
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # set pnshow, pnlink variables (must happen before page number conversion)
+    # if any .pn numeric is seen, pnshow <- True
+    # override with .pn off
+    override = False
+    self.pnshow = False # generate links and show
+    self.pnlink = False # generate links but do not display
+    i = 0
+    while i < len(self.wb):
+      if self.wb[i].startswith(".pn link"):
+        self.pnlink = True
+        del self.wb[i]
+        continue
+
+      elif self.wb[i].startswith(".pn off"):
+        override = True
+        del self.wb[i]
+        continue
+        
+      elif self.wb[i].startswith(".pn "): # any explicit page number
+        self.pnshow = True
+
+      i += 1
+
+    if override:
+      self.pnshow = False # disable visible page numbers
+
+    # convert page page numbers (outside of .hn, .il) to ⑯number⑰
+    # handle incrementing of page numbers in text or on .hn/.il
+    i = 0
+    while i < len(self.wb):
+
+      # page number increment
+      # convert increment to absolute page number
+      m = re.match(r"\.pn +\+(\d+)", self.wb[i])
+      if m:
+        increment_amount = int(m.group(1))
+        if increment_amount == 0: # can't have duplicate page numbers
+          self.crash_w_context("Invalid .pn increment amount, +0", i)
+        if (self.pageno).isnumeric():
+          self.pageno = "{}".format(int(self.pageno) + increment_amount)
+        else: # Roman, possibly (or maybe null, the default initial value)
+          m = re.match(r"^([iIvVxXlLcCdDmM]+|)$", self.pageno)
+          if not m:
+            self.crash_w_context("Cannot increment non-numeric, non-Roman page number {}".format(self.pageno), i)
+          else:
+            ucRoman = False
+            if not (self.pageno).islower():
+              ucRoman = True # page number has at least 1 upper-case Roman numeral (or is null)
+              self.pageno = (self.pageno).lower()
+            n = self.fromRoman(self.pageno)
+            n += increment_amount
+            self.pageno = self.toRoman(n)
+            if ucRoman:
+              self.pageno = (self.pageno).upper()
+        if self.pnshow or self.pnlink:
+          self.wb[i] = "⑯{}⑰".format(self.pageno)
+        else:
+          del self.wb[i]
+        continue
+
+      # page number is explicit
+      m = re.match(r"\.pn +[\"']?(.+?)($|[\"'])", self.wb[i])
+      if m:
+        self.pageno = m.group(1)
+
+        if self.pnshow or self.pnlink:
+          self.wb[i] = "⑯{}⑰".format(self.pageno)
+        else:
+          del self.wb[i]
+        continue
+
+      # a numeric page number incremented in a heading or .il directive
+      m = re.match(r"\.((h[1-6])|il).*?pn=\+(\d+)($|\s)", self.wb[i])
+      if m:
+        increment_amount = int(m.group(3))
+        if increment_amount == 0: # can't have duplicate page numbers
+          self.crash_w_context("Invalid pn= increment amount, +0", i)
+        if (self.pageno).isnumeric():
+          self.pageno = "{}".format(int(self.pageno) + increment_amount)
+        else: # Roman, possibly
+          m = re.match(r"^([iIvVxXlLcCdDmM]+|)$", self.pageno)
+          if not m:
+            self.crash_w_context("Cannot increment non-numeric, non-Roman page number {}".format(self.pageno), i)
+          else:
+            ucRoman = False
+            if not (self.pageno).islower():
+              ucRoman = True # page number has at least 1 upper-case Roman numeral
+              self.pageno = (self.pageno).lower()
+            n = self.fromRoman(self.pageno)
+            n += increment_amount
+            self.pageno = self.toRoman(n)
+            if ucRoman:
+              self.pageno = (self.pageno).upper()
+        if self.pnshow or self.pnlink:
+          self.wb[i] = re.sub(r"pn=\+\d+", "pn={}".format(self.pageno), self.wb[i])
+        else:
+          self.wb[i] = re.sub(r"pn=\+\d+", "", self.wb[i])
+        i += 1
+        continue
+
+      # an arbitrary page "number" set in a heading or .il directive
+      m = re.match(r"\.((h[1-6])|il).*?pn=[\"']?(.+?)[\"']?($|\s)", self.wb[i])
+      if m:
+        self.pageno = m.group(3)
+        m = re.match(r"\d+|[iIvVxXlLcCdDmM]+$", self.pageno)
+        if not m:
+          self.warn_w_context("Non-numeric, non-Roman page number {} specified: {}".format(self.pageno, self.wb[i]), i)
+        if not self.pnshow and not self.pnlink:
+          self.wb[i] = re.sub(r"pn=[\"']?(.+?)[\"']?($|/s)", "", self.wb[i])
+        i += 1
+        continue
+
+      i += 1
+
+    # Handle continuation:
+    #   Long lines of any kind may end with a single backslash. The backslash will be replaced by a blank, and
+    #   the next line will be concatenated to it.
     # Note: .de is exempted here as it needs separate processing.
-    ### Code to allow continuations could be deleted from later code (except .de) now that it's done here
+    # Note: If a line ends with multiple \ characters they are all deleted and replaced by a single blank.
+    # Note: A continued dot directive may not be immediately followed by a converted .bn or .pn. However, if
+    #       some other line is continued, and it is immediately followed by a converted .bn or .pn the converted
+    #      .bn/.pn will be wrapped into the continued line and assumed to be continued, itself.
     i = 0
     inde = False
     while i < (len(self.wb) - 1):
@@ -4237,7 +4587,30 @@ class Book(object):
         inde = True
       elif self.wb[i].endswith("\\"):
         if not inde:
-          self.wb[i] = self.wb[i][:-1] + " " + self.wb[i+1]
+
+          # look for illegal condition: a continued dot directive is followed by a .bn or .pn
+          if (self.wb[i].startswith(".") and 
+                (self.wb[i+1].startswith("⑱") or self.wb[i+1].startswith("⑯"))):
+            if (re.match("\.[a-z]", self.wb[i]) and
+                  (self.bnmatch.match(self.wb[i+1]) or
+                   self.pnmatch.match(self.wb[i+1]))):
+              self.crash_w_context("Continued dot directive cannot be followed by .pn or .bn", i)
+
+          # now see if next line is a .bn or .pn and if so,
+          #   concatenate it to the current line directly (without a blank),
+          #   and put a \ at the end to continue it
+          # (this makes the presence of the .pn or .bn transparent to continuation processing)
+          elif self.wb[i+1].startswith("⑱") or self.wb[i+1].startswith("⑯"):
+            if self.bnmatch.match(self.wb[i+1]) or self.pnmatch.match(self.wb[i+1]):
+              self.wb[i] = re.sub(r"\\$", "", self.wb[i]) + self.wb[i+1] + '\\'
+              del self.wb[i+1]
+              continue
+
+          # now see if the next line is some other dot directive, and warn if so as this is probably not intended
+          elif self.wb[i+1].startswith(".") and re.match("\.[a-z]", self.wb[i+1]):
+            self.warn_w_context("Possible continuation problem: next line looks like a dot directive.", i)
+
+          self.wb[i] = re.sub(r"\\$", "", self.wb[i]) + " " + self.wb[i+1]
           del self.wb[i+1]
           continue
       else:
@@ -4427,28 +4800,6 @@ class Book(object):
         i -= 1
       i += 1
 
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # .bn (GG-compatible .bin file maintenance)
-    i = 0
-    self.bnPresent = False
-    image_type = ""
-    while i < len(self.wb):
-      if self.wb[i].startswith(".bn"):
-        m = re.search("(\w+?)\.(png|jpg|jpeg)",self.wb[i])
-        if m:
-          self.bnPresent = True
-          self.wb[i] = "⑱{}⑱".format(m.group(1))
-          temp = ("png" if m.group(2) == "png" else "jpg")
-          if image_type:
-            if image_type != temp:
-              self.warn("Project contains both png and jpg proofing images.\n" +
-                        "     Please check to ensure no high-res illustrations are missing;\n" +
-                        "     if any are missing please contact the PM or db-req for assistance.")
-          else:
-            image_type = temp
-        else:
-          self.crash_w_context("malformed .bn directive", i)
-      i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # superscripts, subscripts
@@ -4539,26 +4890,6 @@ class Book(object):
       i += 1
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # set pnshow, pnlink variables
-    # if any .pn numeric is seen, pnshow <- True
-    # override with .pn off
-    override = False
-    self.pnshow = False # generate links and show
-    self.pnlink = False # generate links but do not display
-    for i,t in enumerate(self.wb):
-      if self.wb[i].startswith(".pn link"):
-        self.pnlink = True
-        self.wb[i] = ""
-      if self.wb[i].startswith(".pn off"):
-        override = True
-        self.wb[i] = ""
-      # if re.match(".pn \d", self.wb[i]): # any numeric explicit page number
-      if re.match(".pn (.+)", self.wb[i]): # any explicit page number
-        self.pnshow = True
-    if override:
-      self.pnshow = False # disable visible page numbers
-
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # Examine footnote markers (.fm)
     #   Look for .fm with lz=
     #     If any found, set flags for later
@@ -4598,8 +4929,8 @@ class Ppt(Book):
                      "<u>":      "⓽",  # <u>
                      }
 
-  def __init__(self, args, renc, config):
-    Book.__init__(self, args, renc, config)
+  def __init__(self, args, renc, config, sout, serr):
+    Book.__init__(self, args, renc, config, sout, serr)
     if args.pythonmacrosok:
       Book.python_macros_allowed = True
     self.booktype = "text"
@@ -4617,7 +4948,7 @@ class Ppt(Book):
   # print if debug includes 'd'
   def dprint(self, msg):
     if 'd' in self.debug:
-      print("{}: {}".format(self.__class__.__name__, msg))
+      self.print_msg("{}: {}".format(self.__class__.__name__, msg))
 
   # bailout after saving working buffer in bailout.txt
   def bailout(self, buffer):
@@ -4852,6 +5183,7 @@ class Ppt(Book):
 
   # Squash repeated spaces inside a string, preserving any leading spaces
   def squashBlanks(self, s):
+    s = self.pnsearch.sub("", s) # treat pn info as blanks
     i = 0
     while i < len(s) and s[i] == ' ': # preserve leading spaces
       i += 1
@@ -5036,11 +5368,20 @@ class Ppt(Book):
 
 
     # all page numbers deleted in text version
+    # Note: Page numbers have been encoded by previous processing. 
+    #   They may be stand-alone, in which case we delete the complete
+    #   line, or (due to continuation) they may be embedded within a
+    #   line. In that case we just remove the encoded page number
     i = 0
     while i < len(self.wb): # switch order if pn followed by blank line
-      if re.match(r"\.pn", self.wb[i]):
+      if self.pnmatch.match(self.wb[i]):
         del self.wb[i]
-        i -= 1
+        continue
+        
+      else:
+        if self.pnsearch.search(self.wb[i]):
+          self.wb[i] = self.pnsearch.sub("", self.wb[i])
+
       i += 1
 
     # autonumbered footnotes are assigned numbers
@@ -5379,24 +5720,16 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("⓪", "#")
       self.eb[i] = self.eb[i].replace("⑩", r"\|") # restore temporarily protected \| and \(space)
       self.eb[i] = self.eb[i].replace("⑮", r"\ ")
-      self.eb[i] = re.sub("ⓢ|Ⓢ", " ", self.eb[i]) # non-breaking space
+      self.eb[i] = re.sub("ⓢ|Ⓢ", " ", self.eb[i]) # non-breaking space (becomes regular space in text output
+                                                  # should be OK except if someone rewraps the text file later)
       self.eb[i] = re.sub("ⓣ|Ⓣ", " ", self.eb[i]) # zero space
       self.eb[i] = re.sub("ⓤ|Ⓤ", " ", self.eb[i]) # thin space
       self.eb[i] = re.sub("ⓥ|Ⓥ", " ", self.eb[i]) # thick space
       # ampersand
       self.eb[i] = self.eb[i].replace("Ⓩ", "&")
-      # superscripts
-      m = re.search(r"◸(.*?)◹", self.eb[i])
-      while m:
-        supstr = m.group(1)
-        if len(supstr) == 1:
-          self.eb[i] = re.sub(r"◸.◹", "^"+supstr, self.eb[i],1)
-        else:
-          self.eb[i] = re.sub(r"◸.*?◹", "^{" + supstr + "}", self.eb[i],1)
-        m = re.search(r"◸(.*?)◹", self.eb[i])
-      # subscripts
-      self.eb[i] = self.eb[i].replace("◺", "_{")
-      self.eb[i] = self.eb[i].replace("◿", "}")
+      # superscripts and subscripts
+      if "◸" in self.eb[i] or "◺" in self.eb[i]:
+        self.eb[i] = self.expand_supsub(self.eb[i])
 
       # unprotect temporarily protected characters from Greek strings
       self.eb[i] = self.eb[i].replace("⑩", r"\|") # restore temporarily protected \| and \(space)
@@ -5524,8 +5857,6 @@ class Ppt(Book):
     # put in the final characters for <b>, <i>, etc. as requested by PPer
     for t in tag_finalize:
       if t[0]:
-        aaatagchar = t[1]
-        aaarepchar = t[2]
         s = s.replace(t[1], self.nregs[t[2]])
 
     self.eb = s.split('\n')
@@ -5575,7 +5906,8 @@ class Ppt(Book):
         else:
           i += 1
       self.bb.append(");")  # finish building GG .bin file
-      self.bb.append("$::pngspath = '{}\\';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      #self.bb.append("$::pngspath = '{}\\';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      self.bb.append(r"$::pngspath = '{}\\';".format(os.path.join(os.path.realpath(self.srcfile),"pngs")))
       self.bb.append("1;")
 
   # -------------------------------------------------------------------------------------
@@ -5603,7 +5935,7 @@ class Ppt(Book):
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
-      print("GG .bin file {} created.".format(fnb))
+      self.print_msg("GG .bin file {} created.".format(fnb))
       if self.ppqt2: # and PPQTv2 metadata, if requested
         self.ppqtpage("", 0, fn=fn)
 
@@ -5671,7 +6003,7 @@ class Ppt(Book):
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
-      print("GG .bin file {} created.".format(fnb))
+      self.print_msg("GG .bin file {} created.".format(fnb))
       if self.ppqt2: # and PPQTv2 metadata, if requested
         self.ppqtpage("", 0, fn=fn)
 
@@ -5821,14 +6153,15 @@ class Ppt(Book):
       alt = ""
       if "alt=" in s:
         s, alt = self.get_id("alt",s)
-        alt = re.sub("'","&#39;",alt) # escape any '
+        # don't escape single-quotes in the text version, silly!
+        #alt = re.sub("'","&#39;",alt) # escape any '
       ia["alt"] = alt
 
       return(ia)
 
     m = re.match(r"\.il (.*)", self.wb[self.cl])
     if m:
-      # ignore the illustration line except for any cm= info
+      # ignore the illustration line except for any cm= info and possible alt= text
       ia = parse_illo(self.wb[self.cl]) # parse .il line
       # is the .il line followed by a caption line?
       self.eb.append(".RS 1") # request at least one space in text before illustration
@@ -6486,14 +6819,14 @@ class Ppt(Book):
     widths = list() # column widths
     totalwidth = 0
 
-    # look for continuation characters; restore to one line
+    # look for continuation characters; restore to one line (now, just ensure .ta- is found)
     k1 = self.cl
     s = self.wb[k1]
     while k1 < len(self.wb) and self.wb[k1] != ".ta-":
-      while self.wb[k1].endswith("\\"):
-        self.wb[k1] = re.sub(r"\\$", "", self.wb[k1])
-        self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
-        del self.wb[k1+1]
+      #while self.wb[k1].endswith("\\"):
+      #  self.wb[k1] = re.sub(r"\\$", "", self.wb[k1])
+      #  self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
+      #  del self.wb[k1+1]
       k1 += 1
     if k1 == len(self.wb):
       self.crash_w_context("missing .ta- in table starting: {}".format(s), self.cl)
@@ -6515,6 +6848,20 @@ class Ppt(Book):
     # remove id= if present
     if "id=" in self.wb[self.cl]:
       self.wb[self.cl] = self.get_id("id", self.wb[self.cl], 1)
+
+    # pull out bl= (blank line) option
+    # bl=none (PPer in total control; don't add any blank lines) or
+    #    auto (add a blank line if cell wraps, unless PPer already suppiied one)
+    temp = "y"
+    if "bl=" in self.wb[self.cl]:
+      self.wb[self.cl], temp = self.get_id("bl", self.wb[self.cl])
+      temp = temp.lower()[0] # lower-case and grab first character
+    if temp == "y":
+      add_blank_lines = True
+    elif temp == "n":
+      add_blank_lines = False
+    else:
+      self.warn_w_context("Unexpected bl= value on .ta {} ignored; assuming y".format(temp), self.cl)
 
     # table forms:
     # .ta r:5 l:20 l:5  => use specified width and wrap if necessary
@@ -6658,10 +7005,10 @@ class Ppt(Book):
     #self.twrap = textwrap.TextWrapper()
 
     # if any cell wraps, put a vertical gap between rows
-    # except for cases where the PPer supplies a blank line or a horizontal border
+    # except for cases where the PPer supplies a blank line or a horizontal border or specified bl=n
     rowspace = False
     k1 = self.cl
-    while self.wb[k1] != ".ta-" and not rowspace:
+    while add_blank_lines and self.wb[k1] != ".ta-" and not rowspace:
 
       # lines that we don't check: centered or blank (or .bn info)
       if empty.match(self.wb[k1]) or not "|" in self.wb[k1]:
@@ -6684,7 +7031,7 @@ class Ppt(Book):
               w1 += widths[j]
             else:
               break
-          if len(t1) > w1:
+          if self.truelen(t1) > w1:
             k2 = self.wrap_para(t1, 0, w1, 0, warn=True) # should handle combining characters properly
             if len(k2) > 1:
               rowspace = True
@@ -6692,6 +7039,7 @@ class Ppt(Book):
 
     # process each row of table
     hrules = list() # keep track of horizontal rules the PPer generates (by line number in self.eb)
+    table_start = len(self.eb)
     while self.wb[self.cl] != ".ta-":
 
       # horizontal border
@@ -6718,7 +7066,7 @@ class Ppt(Book):
         self.cl += 1
         continue
 
-      # centered line
+      # "centered" line
       # a line in source that has no vertical pipe
       # (Note: Honors <al=r/l> if specified.)
       if not "|" in self.wb[self.cl]:
@@ -6740,8 +7088,19 @@ class Ppt(Book):
             line = line[6:] # remove the alignment tag
         else:
           align = "^"
-        fmtstring = "{:" + align + "72}"
-        self.eb.append(self.truefmt(fmtstring, line))
+        #fmtstring = "{:" + align + "72}"
+        fmtstring = "{:" + align + "{}".format(totalwidth) + "}"
+        if tindent == 0:
+          s = " " # ensure at least one leading space
+        else:
+          s = " " * tindent  # indentation to center the line with the table
+        if self.truelen(line) <= totalwidth:
+          self.eb.append(s + self.truefmt(fmtstring, line))
+        else:
+          self.warn("Wrapping long line in table: {}".format(line))
+          t = self.wrap_para(line, 0, totalwidth, 0, warn=True)
+          for line in t:
+            self.eb.append(s + self.truefmt(fmtstring, line))
         self.cl += 1
         continue
 
@@ -6778,7 +7137,7 @@ class Ppt(Book):
             break
          # don't bother wrapping a <span> column or one whose naive length is short enough to fit, unless
          # if contains a <br>
-        if (cell_text == "<span>" or len(cell_text) < w1) and (cell_text.find("<br>") == -1):
+        if (cell_text == "<span>" or self.truelen(cell_text) < w1) and (cell_text.find("<br>") == -1):
           w[i] = [cell_text]
         elif caligns[i] != 'h': # if not hanging indent, wrap normally
           w[i] = self.wrap_para(cell_text, 0, w1, 0, warn=True) # should handle combining characters properly
@@ -6814,7 +7173,7 @@ class Ppt(Book):
           s = " " * tindent  # center the table
         for col in range(0,ncols):
           w1 = widths[col]
-          temp_bafter = ''
+          temp_bafter = -1
           for j in range(col+1, ncols):
             if w[j][0].strip() == "<span>":
               w1 += widths[j] + len(bafter[j-1]) + len(bbefore[j]) # account for space between columns
@@ -6826,7 +7185,7 @@ class Ppt(Book):
           if w[col][0] != "<span>":
             s += bbefore[col]
             s += self.truefmt(fmt, line)
-            if temp_bafter:
+            if temp_bafter != -1:
               s += temp_bafter
             else:
               s += bafter[col]
@@ -6849,10 +7208,20 @@ class Ppt(Book):
     # r = self.eb line number of this horizontal rule
 
     for i, r in enumerate(hrules):
-      p = r - 1 if (i > 0) else -1
+      p = r - 1 if (i > 0 or r > table_start) else -1
       n = r + 1 if (r < len(self.eb) - 1) else -1
 
-      if p == -1 and n != -1: # handle top rule
+      # Deal with encoded .bn lines, which are shorter than other table lines and
+      # not indented (for centering) as they are. We must totally ignore such
+      # lines and reset p and n to pretend they are not present as needed.
+      if self.bnPresent:
+        while p != -1 and self.is_bn_line(self.eb[p]):
+          p = p - 1 if (p > 0) else -1
+        while n != -1 and self.is_bn_line(self.eb[n]):
+          n = n + 1 if (n < len(self.eb) - 1) else -1
+
+      # handle top rule
+      if p == -1 and n != -1:
         #key = 'ludr'
         kl = '*' # no left to begin with
         ku = '*' # no up at all for this row
@@ -6871,7 +7240,8 @@ class Ppt(Book):
           kl = temp # set next "left" character from remembered first character of the rule
         self.eb[r] = line
 
-      elif p != -1 and n != -1: # handle a middle rule
+      # handle a middle rule
+      elif p != -1 and n != -1:
         #key = 'ludr'
         kl = '*' # no left to begin with
         line = rindent * ' '
@@ -6892,7 +7262,8 @@ class Ppt(Book):
           kl = temp # set next "left" character from remembered first character of rule
         self.eb[r] = line
 
-      elif p != -1 and n == -1: # handle last rule
+      # handle last rule
+      elif p != -1 and n == -1:
         #key = 'ludr'
         kl = '*' # no left to begin with
         kd = '*' # no down at all for this row
@@ -6909,6 +7280,8 @@ class Ppt(Book):
           else:
             line += temp
           kl = temp # set next "left" character from remembered character
+
+        # replace horizontal border with modified rule
         self.eb[r] = line
 
     self.eb.append(".RS c")  # request blank line below table (special flag for .ul/.ol/.it processing)
@@ -6953,7 +7326,8 @@ class Ppt(Book):
   # .de CSS definition
   # ignore the directive in text
   def doDef(self):
-    while (self.cl < len(self.wb) - 1) and self.wb[self.cl].endswith("\\"):
+    while (self.cl < len(self.wb) - 1) and self.wb[self.cl].endswith("\\"): # this version of continuation still needed
+                                                                            # as it behaves differently from others.
       del self.wb[self.cl] # multiple line
     if not self.wb[self.cl].endswith("\\"):
       del self.wb[self.cl] # last or single line
@@ -7452,7 +7826,7 @@ class Ppt(Book):
     while self.cl < len(self.wb):
       if "a" in self.debug:
         s = self.wb[self.cl]
-        print( self.umap(s) )  # safe print the current line
+        self.print_msg( s )  # print the current line
       if not self.wb[self.cl]: # skip blank lines
         self.cl += 1
         continue
@@ -7486,9 +7860,9 @@ class Ppt(Book):
       return # do not make UTF-8 text file
 
     if self.renc == "l":
-      print("creating Latin-1 text file")
+      self.print_msg("creating Latin-1 text file")
     if self.renc == "u":
-      print("creating UTF-8 text file")
+      self.print_msg("creating UTF-8 text file")
 
     self.preprocess()
     self.process()
@@ -7515,11 +7889,12 @@ class Pph(Book):
   ul_dict = {}
   ol_classnum = 0
   ol_dict = {}
+  table_list = []
 
   booktype = "html"
 
-  def __init__(self, args, renc, config):
-    Book.__init__(self, args, renc, config)
+  def __init__(self, args, renc, config, sout, serr):
+    Book.__init__(self, args, renc, config, sout, serr)
     if self.listcvg:
       self.cvglist()
     self.dstfile = re.sub("-src", "", self.srcfile.split('.')[0]) + ".html"
@@ -7534,6 +7909,8 @@ class Pph(Book):
       self.cssline = {}
 
     def addcss(self, s):
+      if s.endswith("}"):
+        s = s[:-1].rstrip() + " }"
       if s in self.cssline:
         self.cssline[s] += 1
       else:
@@ -7583,7 +7960,7 @@ class Pph(Book):
   # print if debug includes 'd'
   def dprint(self, msg):
     if 'd' in self.debug:
-      print("{}: {}".format(self.__class__.__name__, msg))
+      self.print_msg("{}: {}".format(self.__class__.__name__, msg))
 
   # bailout after saving working buffer in bailout.txt
   def bailout(self, buffer):
@@ -7705,7 +8082,7 @@ class Pph(Book):
 
       # skip .de statements (including continuations), too, to avoid affecting RGB color specifications
       if self.wb[i].startswith(".de"):
-        while (i < len(self.wb) - 1) and self.wb[i].endswith("\\"):
+        while (i < len(self.wb) - 1) and self.wb[i].endswith("\\"): # this version of continuation still needed
           i += 1
         if not self.wb[i].endswith("\\"):
           i += 1
@@ -7730,101 +8107,12 @@ class Pph(Book):
         i -= 1
       i += 1
 
-    # page numbers
-    i = 0
-    while i < len(self.wb):
-
-      # page number increment
-      # convert increment to absolute page number
-      m = re.match(r"\.pn \+(\d+)", self.wb[i])
-      if m:
-        increment_amount = int(m.group(1))
-        if increment_amount == 0: # can't have duplicate page numbers
-          self.crash_w_context("Invalid .pn increment amount, +0", i)
-        if (self.pageno).isnumeric():
-          self.pageno = "{}".format(int(self.pageno) + increment_amount)
-        else: # Roman, possibly (or maybe null, the default initial value)
-          m = re.match(r"^([iIvVxXlLcCdDmM]+|)$", self.pageno)
-          if not m:
-            self.crash_w_context("Cannot increment non-numeric, non-Roman page number {}".format(self.pageno), i)
-          else:
-            ucRoman = False
-            if not (self.pageno).islower():
-              ucRoman = True # page number has at least 1 upper-case Roman numeral (or is null)
-              self.pageno = (self.pageno).lower()
-            n = self.fromRoman(self.pageno)
-            n += increment_amount
-            self.pageno = self.toRoman(n)
-            if ucRoman:
-              self.pageno = (self.pageno).upper()
-        if self.pnshow or self.pnlink:
-          self.wb[i] = "⑯{}⑰".format(self.pageno)
-        else:
-          del self.wb[i]
-        continue
-
-      # page number is explicit
-      m = re.match(r"\.pn [\"']?(.+?)($|[\"'])", self.wb[i])
-      if m:
-        self.pageno = m.group(1)
-        #m = re.match(r"(\d+$)|([iIvVxXlLcCdDmM]+$)", self.pageno)
-        #if not m:
-        #  self.warn("Non-numeric, non-Roman page number {} specified: {}".format(self.pageno, self.wb[i]))
-        if self.pnshow or self.pnlink:
-          self.wb[i] = "⑯{}⑰".format(self.pageno)
-        else:
-          del self.wb[i]
-        continue
-
-      # a numeric page number incremented in a heading or .il directive
-      m = re.match(r"\.((h[1-6])|il).*?pn=\+(\d+)($|\s)", self.wb[i])
-      if m:
-        increment_amount = int(m.group(3))
-        if increment_amount == 0: # can't have duplicate page numbers
-          self.crash_w_context("Invalid pn= increment amount, +0", i)
-        if (self.pageno).isnumeric():
-          self.pageno = "{}".format(int(self.pageno) + increment_amount)
-        else: # Roman, possibly
-          m = re.match(r"^([iIvVxXlLcCdDmM]+|)$", self.pageno)
-          if not m:
-            self.crash_w_context("Cannot increment non-numeric, non-Roman page number {}".format(self.pageno), i)
-          else:
-            ucRoman = False
-            if not (self.pageno).islower():
-              ucRoman = True # page number has at least 1 upper-case Roman numeral
-              self.pageno = (self.pageno).lower()
-            n = self.fromRoman(self.pageno)
-            n += increment_amount
-            self.pageno = self.toRoman(n)
-            if ucRoman:
-              self.pageno = (self.pageno).upper()
-        if self.pnshow or self.pnlink:
-          self.wb[i] = re.sub(r"pn=\+\d+", "pn={}".format(self.pageno), self.wb[i])
-        else:
-          self.wb[i] = re.sub(r"pn=\+\d+", "", self.wb[i])
-        i += 1
-        continue
-
-      # an arbitrary page "number" set in a heading or .il directive
-      m = re.match(r"\.((h[1-6])|il).*?pn=[\"']?(.+?)[\"']?($|\s)", self.wb[i])
-      if m:
-        self.pageno = m.group(3)
-        m = re.match(r"\d+|[iIvVxXlLcCdDmM]+$", self.pageno)
-        if not m:
-          self.warn_w_context("Non-numeric, non-Roman page number {} specified: {}".format(self.pageno, self.wb[i]), i)
-        if not self.pnshow and not self.pnlink:
-          self.wb[i] = re.sub(r"pn=[\"']?(.+?)[\"']?($|/s)", "", self.wb[i])
-        i += 1
-        continue
-
-      i += 1
-
     # merge page numbers (down) into text
     # ⑯14⑰ moves into next paragraph down or into a heading
     # 21-Jun-2014: handle consecutive .pn +1
     i = 0
     while i < len(self.wb):
-      m = re.match(r"⑯(.+)⑰", self.wb[i])
+      m = self.pnmatch.match(self.wb[i])
       if m:
         pnum = m.group(1) # string
         del self.wb[i]
@@ -7889,6 +8177,7 @@ class Pph(Book):
           i += 1 # keep looking
       else:       # only increment if first match above failed
         i += 1    # as if it worked we deleted the matching line
+
 
     # convert any <br> outside of .li blocks to <br />
     i = 0
@@ -8031,7 +8320,7 @@ class Pph(Book):
         if header_needed:
           self.warn("No references found for these named footnotes:")
           header_needed = False
-        print("               {}".format(name))
+        self.print_msg("               {}".format(name))
 
     # target references
     i = 0
@@ -8082,9 +8371,6 @@ class Pph(Book):
               sstart += s
             m = re.match(r"( *)(.*)", self.wb[i])
             if m:
-              aadbg0 = self.wb[i]
-              aadbg1 = m.group(1)
-              aadbg2 = m.group(2)
               self.wb[i] = m.group(1) + sstart + m.group(2) # put start tags after blanks (if any)
             else: # should not happen?
               self.dprint("tagstack code problem?\ni = {}\nline = >>{}<<".format(i, self.wb[i]))
@@ -8505,7 +8791,7 @@ class Pph(Book):
       try:
         f1.write( "{:s}\r\n".format(t))
       except Exception as e:
-        print( "internal error:\n  cannot write line: {:s}".format(self.umap(t)) )
+        self.print_msg( "internal error:\n  cannot write line: {:s}".format(t))
         self.fatal("exiting")
     f1.close()
 
@@ -8516,7 +8802,7 @@ class Pph(Book):
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
-      print("GG .bin file {} created.".format(fnb))
+      self.print_msg("GG .bin file {} created.".format(fnb))
       if self.ppqt2: # and PPQTv2 metadata, if requested
         self.ppqtpage("", 0, fn=fn)
 
@@ -8744,6 +9030,7 @@ class Pph(Book):
 
   # .de CSS definition
   # one liners: .de h1 { color:red; }
+  # this version of continuation still needed as it behaves differently from regular one
   def doDef(self):
     if not self.wb[self.cl].endswith("\\"):
       # single line
@@ -8985,11 +9272,9 @@ class Pph(Book):
   #
   def checkIllo(self, fname): # assure that fn exists in images folder
     if " " in fname:
-      self.warn("cannot have spaces in illustration filenames.")
+      self.warn("cannot have spaces in illustration filenames: {}".format(fname))
     if re.search("[A-Z]", fname):
-      self.warn("illustration filenames must be lower case.")
-    #fullname = os.path.join(os.path.dirname(self.srcfile),"images",fname)
-    #if not os.path.isfile(fullname):
+      self.warn("illustration filenames must be lower case: {}".format(fname))
     if self.imageDirectoryOK:
       if not fname in self.imageDict:
         self.warn("file {} not in images folder".format(fname))
@@ -9278,19 +9563,28 @@ class Pph(Book):
     if ia["align"] == "r":
       u.append("<div {} class='figright {}'>".format(ia["id"], idn))
 
+
+    page_link = ""
     if ia["pageno"] != "":
-      if self.nregs["pnstyle"] == "title" or "x" in self.debug:
-        u.append("<span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ia["pageno"])) # new 3.24M
-      else:
-        u.append("<span class='pageno' id='Page_{0}' >{0}</span>".format(ia["pageno"]))
-      #u.append("<span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ia["pageno"]))
+      if self.pnshow:
+        if self.nregs["pnstyle"] == "title" or "x" in self.debug:
+          u.append("<span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ia["pageno"])) # new 3.24M
+        else:
+          u.append("<span class='pageno' id='Page_{0}' >{0}</span>".format(ia["pageno"]))
+        #u.append("<span class='pageno' title='{0}' id='Page_{0}' ></span>".format(ia["pageno"]))
+      elif self.pnlink:
+        if ia["link"]:
+          page_link = "id='Page_{0}' ".format(ia["pageno"])
+        else:
+          page_link = "<a id='Page_{0}'></a>".format(ia["pageno"])
       ia["pageno"] = ""
 
     # 16-Apr-2014: placed link in div
     if ia["link"] != "": # link to larger image specified in markup
-      u.append("<a href='images/{}'><img src='images/{}' alt='{}' class='{}' /></a>".format(ia["link"], ia["ifn"], ia["alt"], ign))
+      u.append("<a {}href='images/{}'><img src='images/{}' alt='{}' class='{}' /></a>".format(page_link, ia["link"],
+                                                                                              ia["ifn"], ia["alt"], ign))
     else: # no link to larger image
-      u.append("<img src='images/{}' alt='{}' class='{}' />".format(ia["ifn"], ia["alt"], ign))
+      u.append("{}<img src='images/{}' alt='{}' class='{}' />".format(page_link, ia["ifn"], ia["alt"], ign))
 
     rep = 1 # source lines to replace
 
@@ -9728,7 +10022,7 @@ class Pph(Book):
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-  # .fm footnote mark
+  # .fm footnote mark (HTML)
   def doFmark(self):
     rend = True
     lz = False
@@ -9755,7 +10049,13 @@ class Pph(Book):
       if "=" in options:
         self.warn("Unrecognized option in .fm command: {}".format(self.wb[self.cl]))
     if rend and ((not lz) or (lz and len(self.fnlist))):
-      self.wb[self.cl] = "<hr style='border: none; border-bottom: thin solid; width: 10%; margin-left: 0; margin-top: 1em; text-align: left; ' />"
+      if self.pvs > 0:
+        self.wb[self.cl] = ("<hr style='border: none; border-bottom: thin solid; width: 10%; margin-left: 0; " +
+                            "margin-top: {}em; text-align: left; ' />".format(self.pvs))
+        self.pvs = 0
+      else:
+        self.wb[self.cl] = ("<hr style='border: none; border-bottom: thin solid; width: 10%; margin-left: 0; " +
+                            "margin-top: 1em; text-align: left; ' />")
       self.cl += 1
     else:
       rend = False
@@ -9763,8 +10063,20 @@ class Pph(Book):
     if lz:
       # emit saved footnotes
       if len(self.fnlist): # make sure there's something to generate
+        first_fn = True
         for t in self.fnlist:
           for s in t:
+            if first_fn:
+              first_fn = False
+              if self.pvs: # handle adjusting top margin for first footnote if necessary
+                if s.startswith("<div class='footnote' id='f"):
+                  s2 = "margin-top: {}em; ".format(self.pvs)
+                  self.pvs = 0
+                  s, count = re.subn("style='font-size", "style='{}font-size".format(s2), s, 1)
+                  if not count:
+                    self.warn("Footnote HTML substitution failed for: {}::{}".format(s, s2))
+                else:
+                  self.warn("Unexpected footnote HTML: {}".format(s))
             if self.cl < len(self.wb):
               self.wb.insert(self.cl, s)
             else:
@@ -9795,6 +10107,11 @@ class Pph(Book):
 
       if self.footnoteLzH and not self.keepFnHere: # if special footnote landing zone in effect and not disabled for this footnote
         self.grabFootnoteH()
+
+        # restore self.pvs after footnote if not being generated here
+        temp_pvs = self.fn_pvs_stack.pop() # get prior self.pvs value
+        if temp_pvs != -1:
+          self.pvs = temp_pvs
       return
 
     m = re.match(r"\.fn (\d+)( |$)(lz=here|hlz=here)?", self.wb[self.cl]) # First try numeric footnote
@@ -9813,6 +10130,14 @@ class Pph(Book):
         self.warn(".fn specifies hlz=here but landing zones not in effect for HTML output:{}".format(self.wb[self.cl]))
       elif m.group(3).startswith("lz") and not self.footnoteLzT and not self.footnoteLzH:
         self.warn(".fn specifies lz=here but no landing zones are in effect:{}".format(self.wb[self.cl]))
+
+    # preserve self.pvs across footnote if not being generated here
+    if self.footnoteLzH and not self.keepFnHere:
+      temp_pvs = self.pvs
+      self.pvs = 0
+    else:
+      temp_pvs = -1
+    self.fn_pvs_stack.append(temp_pvs)
 
     myfsz = self.fsz                  # capture current font size
     self.fszpush('.fn')               # stack current size for later restoration
@@ -9833,7 +10158,7 @@ class Pph(Book):
       if myfsz:                                          # if we have a font-size override
         myfsz = " style='font-size: {}; '".format(myfsz)  # build a style string for it
 
-      self.css.addcss("[1430] div.footnote {}")
+      #self.css.addcss("[1430] div.footnote {}")
       self.css.addcss("[1431] div.footnote > :first-child { margin-top: 1em; }")
       self.css.addcss("[1432] div.footnote p {{ text-indent: 1em; margin-top: {0}em; margin-bottom: {1}em; }}".format(s2,s2))
       self.wb[self.cl] = "<div class='footnote' id='f{}'{}>".format(fnname, myfsz)
@@ -9890,7 +10215,6 @@ class Pph(Book):
   # left margin calculated and applied for epub.
   #
   # s=  summary
-  # o=  options. only one implemented: "wide" for unrestricted width table
 
   def doTable(self): # HTML
 
@@ -9946,13 +10270,13 @@ class Pph(Book):
     il_line = self.wb[self.cl]
     border_tag = "<" + NOW + ">" # tag showing a horizontal border line is already processed
 
-    # look for continuation characters; restore to one line
+    # look for continuation characters; restore to one line (now, just look for .ta-)
     k1 = self.cl
     while k1 < len(self.wb) and self.wb[k1] != ".ta-":
-      while self.wb[k1].endswith("\\"):
-        self.wb[k1] = re.sub(r"\\$", "", self.wb[k1])
-        self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
-        del self.wb[k1+1]
+      #while self.wb[k1].endswith("\\"):
+      #  self.wb[k1] = re.sub(r"\\$", "", self.wb[k1])
+      #  self.wb[k1] = self.wb[k1] + " " + self.wb[k1+1]
+      #  del self.wb[k1+1]
       k1 += 1
     if k1 == len(self.wb):
       self.crash_w_context("missing .ta- in table starting: {}".format(s), self.cl)
@@ -9983,6 +10307,19 @@ class Pph(Book):
       if tid:
         tid = " id='{}'".format(tid)
 
+    # pull out bl= (blank line) option, but ignore in HTML except for validation
+    # bl=none (PPer in total control; don't add any blank lines) or
+    #    auto (add a blank line if cell wraps, unless PPer already suppiied one)
+    temp = "y"
+    if "bl=" in self.wb[self.cl]:
+      self.wb[self.cl], temp = self.get_id("bl", self.wb[self.cl])
+      temp = temp.lower()[0] # lower-case and grab first character
+    if temp == "y":
+      add_blank_lines = True
+    elif temp == "n":
+      add_blank_lines = False
+    else:
+      self.warn_w_context("Unexpected bl= value on .ta {} ignored; assuming y".format(temp), self.cl)
 
     # tables forms:
     # .ta r:5 l:20 l:5  => use specified width and wrap if necessary
@@ -10140,15 +10477,28 @@ class Pph(Book):
 
     if borders_present:
       s += "border-collapse: {}; ".format(self.nregs["border-collapse"])
-    self.css.addcss("[1670] .table{0} {{ {1} }}".format(self.tcnt, s))
 
     if tw_html != "none" and tw_epub != "":
-        epw = int(re.sub("%", "", tw_epub)) # as integer
-        left_indent_pct = (100 - epw) // 2
-        right_indent_pct = 100 - epw - left_indent_pct
-        self.css.addcss("[1671] @media handheld {{ .table{} {{ margin-left: {}%; margin-right: {}%; width: {}%; }} }}".format(self.tcnt, left_indent_pct, right_indent_pct, epw))
+      epw = int(re.sub("%", "", tw_epub)) # as integer
+      left_indent_pct = (100 - epw) // 2
+      right_indent_pct = 100 - epw - left_indent_pct
+    else:
+      left_indent_pct = right_indent_pct = epw = 0
 
-    t.append("<table class='table{}' summary='{}'{}>".format(self.tcnt, tsum, tid))
+    lookup = (s, left_indent_pct, right_indent_pct, epw)
+    try:
+      ix = self.table_list.index(lookup)
+    except ValueError:
+      self.table_list.append(lookup)
+      ix = len(self.table_list) - 1
+      self.css.addcss("[1670] .table{0} {{ {1} }}".format(ix, s))
+      if left_indent_pct or right_indent_pct or epw:
+        self.css.addcss("[1671] @media handheld {{ .table{} {{ margin-left: {}%; margin-right: {}%; width: {}%; }} }}".format(ix,
+                                                                                                                              left_indent_pct,
+                                                                                                                              right_indent_pct,
+                                                                                                                              epw))
+
+    t.append("<table class='table{}' summary='{}'{}>".format(ix, tsum, tid))
 
     # set relative widths of columns
     if tw_html != "none":
@@ -10344,7 +10694,6 @@ class Pph(Book):
       border_bottom = ''
       self.cl += 1
     t.append("</table>")
-    self.tcnt += 1
     self.wb[startloc:self.cl+1] = t
     self.cl = startloc + len(t)
 
@@ -10367,6 +10716,7 @@ class Pph(Book):
         d_adj = m.group(4)
       else:
         self.crash_w_context("malformed drop image directive", line)
+    self.checkIllo(di["d_image"])
     di["s_adj"] = re.sub(r"\.","_", str(d_adj))
     if self.pindent:
       s0 = re.sub("em", "", self.nregs["psi"]) # drop the "em"
@@ -10378,7 +10728,7 @@ class Pph(Book):
     mbot = mtop
     self.css.addcss("[1920] img.drop-capi { float: left; margin: 0 0.5em 0 0; position: relative; z-index: 1; }")
     if type == "p":
-      self.css.addcss("[1921] p.drop-capi{} {{ text-indent: 0; margin-top: {}em; margin-bottom: {}em}}".format(di["s_adj"],mtop,mbot))
+      self.css.addcss("[1921] p.drop-capi{} {{ text-indent: 0; margin-top: {}em; margin-bottom: {}em; }}".format(di["s_adj"],mtop,mbot))
       self.css.addcss("[1922] p.drop-capi{}:first-letter {{ color: transparent; visibility: hidden; margin-left: -{}em; }}".format(di["s_adj"],d_adj))
       self.css.addcss("[1923] @media handheld {")
       self.css.addcss("[1924]   img.drop-capi { display: none; visibility: hidden; }")
@@ -10556,7 +10906,8 @@ class Pph(Book):
         else:
           i += 1
       self.bb.append(");")
-      self.bb.append("$::pngspath = '{}\\';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      #self.bb.append("$::pngspath = '{}\\';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
+      self.bb.append(r"$::pngspath = '{}\\';".format(os.path.join(os.path.realpath(self.srcfile),"pngs")))
       self.bb.append("1;")
 
 
@@ -10640,11 +10991,16 @@ class Pph(Book):
         t[i] = t[i].strip()
       t = "<br />".join(t)
       if self.pvs > 0: # handle any pending vertical space before the .sn
-        self.wb[self.cl] = "<div class='sidenote' style='margin-top: {}em; '>{}</div>".format(self.pvs, t)
+        # need to apply vertical space separately so sidenote and following text are placed
+        # properly
+        s = "<div  style='margin-top: {}em; '></div>".format(self.pvs)
+        self.wb.insert(self.cl, s)
+        self.wb[self.cl+1] = "<div class='sidenote'>{}</div>".format(t)
         self.pvs = 0
+        self.cl += 2
       else:
         self.wb[self.cl] = "<div class='sidenote'>{}</div>".format(t)
-      self.cl += 1
+        self.cl += 1
     else:
       self.crash_w_context("malformed .sn directive", self.cl)
 
@@ -10917,8 +11273,8 @@ class Pph(Book):
           if csstuple != self.ul_dict[clss]:
             self.warn_w_context("Conflicting .ul CSS characteristics for PPer-supplied class {}".format(clss), self.cl)
             if 'd' in self.debug:
-              print("Older definition requires: {}".format(self.ul_dict[clss]))
-              print("New definition requires: {}".format(csstuple))
+              self.print_msg("Older definition requires: {}".format(self.ul_dict[clss]))
+              self.print_msg("New definition requires: {}".format(csstuple))
         except KeyError: # if key doesn't exist, save it
           self.ul_dict[clss] = csstuple
       else:
@@ -11029,8 +11385,8 @@ class Pph(Book):
           if csstuple != self.ol_dict[clss]:
             self.warn_w_context("Conflicting .ol CSS characteristics for PPer-supplied class {}".format(clss), self.cl)
             if 'd' in self.debug:
-              print("Older definition requires: {}".format(self.ul_dict[clss]))
-              print("New definition requires: {}".format(csstuple))
+              self.print_msg("Older definition requires: {}".format(self.ul_dict[clss]))
+              self.print_msg("New definition requires: {}".format(csstuple))
         except KeyError: # if key doesn't exist, save it
           self.ol_dict[clss] = csstuple
       else:
@@ -11228,8 +11584,8 @@ class Pph(Book):
               if csstuple != b.dl_dict[self.dl_class]:
                 self.warn_w_context("Conflicting .dl CSS characteristics required for PPer-supplied class {}".format(self.dl_class), b.cl)
                 if 'd' in self.debug:
-                  print("Older definition requires: {}".format(b.dl_dict[self.dl_class]))
-                  print("New definition requires: {}".format(csstuple))
+                  self.print_msg("Older definition requires: {}".format(b.dl_dict[self.dl_class]))
+                  self.print_msg("New definition requires: {}".format(csstuple))
             except KeyError: # if key doesn't exist, save it
               b.dl_dict[self.dl_class] = csstuple
           else:
@@ -11290,7 +11646,7 @@ class Pph(Book):
           dlparms += " margin-top: .5em; margin-bottom: .5em;" # CSS assumes .5em top margin; HTML will override if needed
 
           if b.fsz != "100%" and b.fsz != "1.0em":
-            dlparms += " font-size: {};".format(self.fsz)
+            dlparms += " font-size: {};".format(b.fsz)
             b.fsz = "100%" # reset so inner elements aren't further reduced (will be restored when popping list stack)
 
           if self.options["float"]: # float=y
@@ -11758,7 +12114,7 @@ class Pph(Book):
     if len(rb):
       self.warn("Possible link or target problems:")
       for w in rb:
-        print(self.umap(w))
+        self.stderr.write(w + '\n')
 
     # report on possible image problems (used too many times, not used at all)
     if self.imageDirectoryOK:
@@ -11771,7 +12127,8 @@ class Pph(Book):
         if self.imageDict[k] == 0: # unused image
           notUsed += 1
           notUsedList.append(k)
-        elif self.imageDict[k] > 1: # used multiple times
+        elif k != self.cimage and self.imageDict[k] > 1: # used multiple times (exempt cover
+                                                         # in case PPer decided to use it in HTML
           multiplyUsed += 1
           multiplyUsedList.append(k)
 
@@ -11780,19 +12137,19 @@ class Pph(Book):
 
       if self.imageCheck: # full report?
         if notUsed:
-          self.warn("{} image{} not used:".format(notUsed, notUsedS))
+          self.warn("{} image{} apparently not used:".format(notUsed, notUsedS))
           for img in notUsedList:
             self.warn("  {}".format(img))
         if multiplyUsed:
-          self.warn("{} image{} used multiple times:".format(multiplyUsed, multiplyUsedS))
+          self.info("{} image{} used multiple times:".format(multiplyUsed, multiplyUsedS))
           for img in multiplyUsedList:
-            self.warn("  {} ({}x)".format(img, self.imageDict[img]))
+            self.info("  {} ({}x)".format(img, self.imageDict[img]))
 
       else:  # summary only
         if notUsed:
-          self.warn("{} image{} not used. Rerun with -img option for more information".format(notUsed, notUsedS))
+          self.warn("{} image{} apparently unused. Rerun with -img option for more information".format(notUsed, notUsedS))
         if multiplyUsed:
-          self.warn("{} image{} used multiple times. Rerun with -img option for more information".format(multiplyUsed, multiplyUsedS))
+          self.info("{} image{} used multiple times. Rerun with -img option for more information".format(multiplyUsed, multiplyUsedS))
 
 
   #def doUdiv(self):
@@ -11805,7 +12162,7 @@ class Pph(Book):
     while self.cl < len(self.wb):
       if "a" in self.debug:
         s = self.wb[self.cl]
-        print( self.umap(s) )  # safe print the current line
+        self.print_msg( s)  # print the current line
       if not self.wb[self.cl]: # skip blank lines
         self.cl += 1
         continue
@@ -11819,7 +12176,7 @@ class Pph(Book):
         self.cl += 1
         continue
       if self.wb[self.cl] == "<div⓭>": # one more case of .dv to skip over, but this one needs fixup
-        sellf.wb[self.cl] = "<div>"    # remove the ⓭ that marked this one for us
+        self.wb[self.cl] = "<div>"    # remove the ⓭ that marked this one for us
         self.cl += 1
         continue
 
@@ -11952,7 +12309,7 @@ def loadConfig(ini_file):
         config.read(fn, encoding=config_encoding)
       except:
         traceback.print_exc()
-        self.fatal("Above error occurred while reading ini file {}".format(fn))
+        sys.stderr.write("Above error occurred while reading ini file {}\n".format(fn))
 
   # convert any multi-line header values to single line
   for k in config['CSS']:
@@ -11967,8 +12324,9 @@ def main():
   parser.add_argument('-i', '--infile', help='UTF-8 or Latin-1 input file')
   parser.add_argument('-l', '--log', help="display Latin-1, diacritic, and Greek conversion logs",
                       action="store_true")
-  parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r,l,x)')
+  parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r,l,x,e)')
   # debug "x" forces "title" style for page numbering, rather than "content"
+  # debug "e" forces all messages to stderr, even informational ones
   parser.add_argument('-o', '--output_format', default="hu",
                       help='output format (HTML:h, text:t, u or l)')
   parser.add_argument('-a', '--anonymous', action='store_true',
@@ -11989,59 +12347,70 @@ def main():
                       help="create report of unused image files")
   parser.add_argument("-ini", "--ini_file",
                       help="ini file suffix (or none)")
+  parser.add_argument("-std", "--stdout", action="store_true",
+                      help="force all messages to stdout (useful for testing)")
 
 
   args = parser.parse_args()
 
+  #setup stdout and stderr so they can handle UTF-8 output on Windows
+  ppgen_stderr = open(sys.stderr.fileno(), mode='w', encoding='utf-8', buffering=1)
+  if 'e' in args.debug:
+    ppgen_stdout = ppgen_stderr
+  else:
+    ppgen_stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
+
   # version request. print and exit
   if args.version:
-    print("{}".format(VERSION))
+    ppgen_stdout.write("{}".format(VERSION) + '\n')
     exit(1)
 
-  print("ppgen {}".format(VERSION))
+  ppgen_stdout.write("ppgen {}".format(VERSION) + '\n')
 
   if 'p' in args.debug:
-    print("running on {}".format(platform.system()))
+    ppgen_stdout.write("running on {}".format(platform.system()) + '\n')
 
   # -f and -sbin are mutually exclusive
   if args.filter and args.srcbin:
-    print("Error: Both -f (--filter) and -sbin (--srcbin) specified; terminating")
+    ppgen_stderr.write("Error: Both -f (--filter) and -sbin (--srcbin) specified; terminating" + '\n')
     exit(1)
 
   # infile of mystery-src.txt will generate mystery.txt and mystery.html
 
   if not args.listcvg and (args.infile == None or not args.infile):
-    print("infile must be specified. use \"--help\" for help")
+    ppgen_stderr.write("infile must be specified. use \"--help\" for help" + '\n')
     exit(1)
 
   # Handle config file (ppgen.ini)
   config = loadConfig(args.ini_file)
 
+  # if PPer did not explicitly ask for utf-8, only create it if input is encoded in utf-8
   if 't' in args.output_format:
-    ppt = Ppt(args, "u", config) # if PPer did not explicitly ask for utf-8, only create it if input is encoded in utf-8
+    ppt = Ppt(args, "u", config, ppgen_stdout, ppgen_stderr)
     ppt.run()
-    ppt = Ppt(args, "l", config)
+    ppt = Ppt(args, "l", config, ppgen_stdout, ppgen_stderr)
     ppt.run()
 
 
+  # if PPer explicitly asked for utf-8 always create it, even if input is encoded in Latin-1 or ASCII
   # UTF-8 only
   if 'u' in args.output_format:
-    ppt = Ppt(args, "U", config)  # if PPer explicitly asked for utf-8 always create it, even if input is encoded in Latin-1 or ASCII
+    ppt = Ppt(args, "U", config, ppgen_stdout, ppgen_stderr)
     ppt.run()
 
 
   # Latin-1 only
   if 'l' in args.output_format:
-   ppt = Ppt(args, "l", config)
+   ppt = Ppt(args, "l", config, ppgen_stdout, ppgen_stderr)
    ppt.run()
 
 
   if 'h' in args.output_format:
-    print("creating HTML version")
-    pph = Pph(args, "h", config)
+    ppgen_stdout.write("creating HTML version" + '\n')
+    pph = Pph(args, "h", config, ppgen_stdout, ppgen_stderr)
     pph.run()
 
-  print("done.")
+  ppgen_stdout.write("done." + '\n')
 
 if __name__ == '__main__':
     main()
@@ -12110,7 +12479,7 @@ if __name__ == '__main__':
 # \u25f9  ◹   UPPER RIGHT TRIANGLE # follows superscripts
 # \u25fa  ◺   LOWER LEFT TRIANGLE # precedes subscripts
 # \u25ff  ◿   LOWER RIGHT TRIANGLE # follows subscripts
-# \u2ac9  ⫉   SUBSET OF ABOVE ALMOST EQUAL TO # used temporarily during page number reference processing
+# \u2ac9  ⫉   SUBSET OF ABOVE ALMOST EQUAL TO # used temporarily during page number reference processing and Greek processing
 #
 #
 # ppgen css numbers:
