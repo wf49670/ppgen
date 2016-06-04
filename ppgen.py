@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55q" + with_regex   # 1-Jun-2016
+VERSION="3.55r" + with_regex   # 2-Jun-2016
 #3.55:
 #  Incorporate 3.54o into production
 #3.55a:
@@ -101,6 +101,12 @@ VERSION="3.55q" + with_regex   # 1-Jun-2016
 #    in the text output, since the number of characters in the string changes after decoding the super/subscripts.
 #  Text: Fix bug in handling horizontal table rules. If the table did not have a top rule, then the first 
 #    horizontal rule in the table was not connected properly to the vertical rules.
+#  Text: Fix bug in handling horizontal table rules when the rule is immediately preceded or followed by a
+#    .bn directive.
+#3.55r:
+#  HTML: Fix bug causing .sp to be ineffective if it occurs just before a footnote that is captured for processing
+#    by a remote landing zone. Also, properly handle .sp that occurs just before a footnote when .pi (indented
+#    paragraphs) are in effect.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -174,6 +180,7 @@ class Book(object):
   nfstack = [] # block stack
   dvstack = [] # stack for nested .dv blocks
   fsstack = [] # stack for .fs push
+  fn_pvs_stack = [] # stack for HTML .fn processing to save pvs value
   blkfszstack = [] # stack for font-sizes across footnotes, divs, and lists
   liststack = [] # ul/ol stack
   list_type = None   # no list in progress
@@ -10015,7 +10022,7 @@ class Pph(Book):
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-  # .fm footnote mark
+  # .fm footnote mark (HTML)
   def doFmark(self):
     rend = True
     lz = False
@@ -10042,7 +10049,13 @@ class Pph(Book):
       if "=" in options:
         self.warn("Unrecognized option in .fm command: {}".format(self.wb[self.cl]))
     if rend and ((not lz) or (lz and len(self.fnlist))):
-      self.wb[self.cl] = "<hr style='border: none; border-bottom: thin solid; width: 10%; margin-left: 0; margin-top: 1em; text-align: left; ' />"
+      if self.pvs > 0:
+        self.wb[self.cl] = ("<hr style='border: none; border-bottom: thin solid; width: 10%; margin-left: 0; " +
+                            "margin-top: {}em; text-align: left; ' />".format(self.pvs))
+        self.pvs = 0
+      else:
+        self.wb[self.cl] = ("<hr style='border: none; border-bottom: thin solid; width: 10%; margin-left: 0; " +
+                            "margin-top: 1em; text-align: left; ' />")
       self.cl += 1
     else:
       rend = False
@@ -10050,8 +10063,20 @@ class Pph(Book):
     if lz:
       # emit saved footnotes
       if len(self.fnlist): # make sure there's something to generate
+        first_fn = True
         for t in self.fnlist:
           for s in t:
+            if first_fn:
+              first_fn = False
+              if self.pvs: # handle adjusting top margin for first footnote if necessary
+                if s.startswith("<div class='footnote' id='f"):
+                  s2 = "margin-top: {}em; ".format(self.pvs)
+                  self.pvs = 0
+                  s, count = re.subn("style='font-size", "style='{}font-size".format(s2), s, 1)
+                  if not count:
+                    self.warn("Footnote HTML substitution failed for: {}::{}".format(s, s2))
+                else:
+                  self.warn("Unexpected footnote HTML: {}".format(s))
             if self.cl < len(self.wb):
               self.wb.insert(self.cl, s)
             else:
@@ -10082,6 +10107,11 @@ class Pph(Book):
 
       if self.footnoteLzH and not self.keepFnHere: # if special footnote landing zone in effect and not disabled for this footnote
         self.grabFootnoteH()
+
+        # restore self.pvs after footnote if not being generated here
+        temp_pvs = self.fn_pvs_stack.pop() # get prior self.pvs value
+        if temp_pvs != -1:
+          self.pvs = temp_pvs
       return
 
     m = re.match(r"\.fn (\d+)( |$)(lz=here|hlz=here)?", self.wb[self.cl]) # First try numeric footnote
@@ -10100,6 +10130,14 @@ class Pph(Book):
         self.warn(".fn specifies hlz=here but landing zones not in effect for HTML output:{}".format(self.wb[self.cl]))
       elif m.group(3).startswith("lz") and not self.footnoteLzT and not self.footnoteLzH:
         self.warn(".fn specifies lz=here but no landing zones are in effect:{}".format(self.wb[self.cl]))
+
+    # preserve self.pvs across footnote if not being generated here
+    if self.footnoteLzH and not self.keepFnHere:
+      temp_pvs = self.pvs
+      self.pvs = 0
+    else:
+      temp_pvs = -1
+    self.fn_pvs_stack.append(temp_pvs)
 
     myfsz = self.fsz                  # capture current font size
     self.fszpush('.fn')               # stack current size for later restoration
