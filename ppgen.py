@@ -30,83 +30,18 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.55r" + with_regex   # 2-Jun-2016
-#3.55:
-#  Incorporate 3.54o into production
-#3.55a:
-#  Include the .di (drop image) directive in the image-checking process to avoid false warning messages and to
-#    perform the additional diagnostic checks on them.
-#3.55b:
-#  Text: When using alt= tag as an illo caption, don't turn single quotes into HTML entities.
-#  Text: Table problem with incorrect right-border on lines that end with <span>
-#3.55c:
-#  Revise handling of stdout and stderr. Previously, to avoid problems on Windows systems when running ppgen in a command
-#    window, ppgen translated any characters with values > x80 to *. With this enhancement ppgen encodes stdout and stderr
-#    as UTF-8 files, and sends all message characters directly. In a Windows console message this may show garbage for the
-#    UTF-8 characters, but no errors will occur. If stdout/stderr are piped to files the files will be UTF-8 encoded and
-#    will show all characters properly. Also, Linux and Mac consoles should show all the characters properly in the error
-#    messages without piping.
-#  Text: Recognize long "centered" table lines (lines without a | to split them into cells) and wrap them to stay within the
-#    edges of the table. Also make sure that any such lines that specify <al=l> or <al=r> stay within the table edges.
-#3.55d:
-#  HTML: Fix issue with vertical placement of sidenotes (.sn) in relation to the text that follows them, when the sidenote
-#    is preceded by a .sp directive.
-#3.55e:
-#  HTML: Fix Python failure when using .dl with .fs in effect.
-#3.55f:
-#  Fix Python trap during macro processing (.pm) when macro argument contains regular-expression meta-characters. We may still
-#    terminate, but with a better error message.
-#  When combining long lines continued by a \ character, if the line ended with multiple \ characters ppgen was using a non-breaking
-#    space rather than a regular space. That has been fixed. Also, all the trailing \ characters will be deleted.
-#  Removed unnecessary code for handling continuations, now that it has been centralized.
-#3.55g:
-#  Allow macros to be invoked by <pm name parms> as long as they return only 1 line of output.
-#  Allow <pm ...> tags inside of [Greek: ...] tags in some situations.
-#  Fix major Greek processing issue when keep=a or b is specified.
-#  Move uncomment, .ig, and .if processing before doGreek so Greek processing won't be performed on lines that will be ignored anyway
-#    (Note: Uncommenting, etc. still happens only when ppgen is not operating in filter mode.)
-#3.55h:
-#  Eliminate .table### duplication in the CSS when the table classes have the same characteristics
-#3.55i:
-#  Exempt <g> and </g> from Greek processing so they can be used for emphasis in Greek strings.
-#  Minor rewording of imagecheck warning messages
-#3.55j:
-#  HTML: Fix issue with .pn off (no page visible numbers) where ppgen creates page numbers anyway for illustrations.
-#        Also ensure that a page number link is generated on the illustration if a .pn directive occurs
-#        just before a .il directive.
-#3.55k:
-# HTML:  Fix Python trap that can occur due to a coding error handling a .dv directive has neither a class= nor an fs= operand
-#3.55l:
-#  HTML: Reduce number of class= specifications for <td> elements by keeping track of which style is most common for that table and
-#    refactoring the .cnnn definition into a .table td CSS specification. Note: This may increase the
-#    number of .table<nnn> classes that are generated, including some that will duplicate others, if they
-#    have a different "most popular" cell style.
-#  Text: Allow bl=y (default) or n on .ta to allow or prevent addition of blank lines between rows
-#    when some cell wraps to multiple lines.
-#3.55m:
-#  Revert table changes in HTML introduced by 3.55l as they do not work properly.
-#3.55n:
-#  Fix .bin files so the pngspath variable has the full path name, and so it ends in \\ rather than \ as
-#    seems to be necessary for Guiguts to work properly.
-#3.55o:
-#  Move .bn encoding so it happens before continuation lines are processed, to ensure that raw .bn directive
-#    doesn't appear in the middle of a continued line.
-#  Move .pn checking/encoding so it happens before continuation lines are processed
-#3.55p:
-#  Add -de command line option to force all messages to stderr to simplify regression testing
-#  Add a warning if a continued line is followed by an apparent dot directive (other than .pn, .bn)
-#3.55q:
-#  Text: Properly calculate the length of text strings that have encoded super/subscripted text within them.
-#    This affects things like wrapping but also (and especially) the calculation of widths for table cells
-#    in the text output, since the number of characters in the string changes after decoding the super/subscripts.
-#  Text: Fix bug in handling horizontal table rules. If the table did not have a top rule, then the first 
-#    horizontal rule in the table was not connected properly to the vertical rules.
-#  Text: Fix bug in handling horizontal table rules when the rule is immediately preceded or followed by a
-#    .bn directive.
-#3.55r:
-#  HTML: Fix bug causing .sp to be ineffective if it occurs just before a footnote that is captured for processing
-#    by a remote landing zone. Also, properly handle .sp that occurs just before a footnote when .pi (indented
-#    paragraphs) are in effect.
+VERSION="3.56" + with_regex   # 4-Jun-2016
+#3.56:
+#  From 3.55r (unreleased except to kdweeks):
+#    HTML: Fix bug causing .sp to be ineffective if it occurs just before a footnote that is captured for processing
+#      by a remote landing zone. Also, properly handle .sp that occurs just before a footnote when .pi (indented
+#      paragraphs) are in effect.
+#  Modify parsing of .sr to avoid potential issues with the regex module (if installed on the user's system)
+#  Add code to detect some cases of improper Greek transliterations (no ending ] or mismatched []) and 
+#    terminate. (Note: balanced [] within a Greek tag are allowed. If the author, for some reason,
+#    had a Greek string containing only a [ and no ] to balance it, use " \[" (with the space).
+#  Improve handling of .fs to tolerate spaces within the size options, though there shouldn't be any.
+
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -3542,13 +3477,16 @@ class Book(object):
       temp_gkstring = gkstring
       if "</g>" in temp_gkstring: # make sure that </g> doesn't trigger the warning
         temp_gkstring = re.sub("</?g>", "", temp_gkstring)
+      if " \[" in temp_gkstring: # make sure that \[ (escaped [) doesn't trigger the warning
+        temp_gkstring = re.sub(r" \\\[", "", temp_gkstring)
       m = re.search(r"[~=_)(/\\|+]", temp_gkstring)
       if m:
         self.warn("Possible accent problem in Greek string {} with result {}".format(gkmatch.group(0), gkstring))
 
       gkfull = gkfull.replace(r"\|", "⑩") # temporarily protect \| and \(space) so they
       gkfull = gkfull.replace(r"\ ", "⑮") # retain their special meaning within [Greek: ...] tags in case keep was specified
-      gkfull = gkfull.replace(r"\]", "\④") # also \] needs to become protected here, but with an added \
+      #gkfull = gkfull.replace(r"\]", "\④") # also \] needs to become protected here, but with an added \
+      gkfull = gkfull.replace(r"\]", "④") # also \] needs to become protected here
 
       return gkfull
 
@@ -3673,12 +3611,12 @@ class Book(object):
         if keep:
           text.append(line)
         elif line.startswith(".sr"):
-          m2 = re.match(r"\.sr (\w+)", line)
+          m2 = re.match(r"\.sr +([^ ]+)", line)
           if m2:
             if keepType == 't' and "h" in m2.group(1):
               self.warn(".sr command for HTML skipped by .if t: {}".format(line))
             elif keepType == 'h':
-              m3 = re.match(r"h*[ult]", m2.group(1))
+              m3 = re.search(r"[ult]", m2.group(1))
               if m3:
                 self.warn(".sr command for text skipped by .if h: {}".format(line))
 
@@ -3702,7 +3640,15 @@ class Book(object):
           nest = 0
           done = False
           while i < end and not done:
-            if text[i] == "[":
+            if text[i] == "\n" and text[i+1] == ".":
+              if (i + 2) < end and re.match("[a-z]", text[i+2]):
+                self.fatal("Greek text contains dot directive; closing ] missing? {}".format(text[newstart:i+4]))
+            # Balance internal [ and ] if present. Allow " \[" to escape an unbalanced [ if needed.
+            # Note: the space before the \ is required. Also, we do not allow escaping of an unbalanced
+            #       ] at this time. If we did, it would also require a space: " \]"
+            #       The problem is that, for example, "o\]" is an o with a \, followed by a ]. It is not an
+            #       o followed by a \].
+            if text[i] == "[" and text[i-2:i] != " \\":
               nest += 1
             elif text[i] == "]" and nest == 0:
               done = True
@@ -4003,7 +3949,7 @@ class Book(object):
       while i < len(self.wb):
         if self.wb[i].startswith(".sr"):
           #self.wb[i] = self.restore_some_escapes(self.wb[i])
-          m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
+          m = re.match(r"\.sr +([^ ]+) +(.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
           if m:
             if m.group(5) != "":           # if anything here then the user's expression was wrong, somehow
               self.warn("Problem with .sr arguments: " +
@@ -4199,7 +4145,7 @@ class Book(object):
     while i < len(self.wb):
       if self.wb[i].startswith(".sr"):
         #self.wb[i] = self.restore_some_escapes(self.wb[i])
-        m = re.match(r"\.sr (.*?) (.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
+        m = re.match(r"\.sr +([^ ]+) +(.)(.*)\2(.*)\2(.*)", self.wb[i])  # 1=which 2=separator 3=search 4=replacement 5=unexpected trash
         if m:
           if m.group(5) != "":           # if anything here then the user's expression was wrong, somehow
             self.warn("Problem with .sr arguments: " +
@@ -4475,7 +4421,7 @@ class Book(object):
         override = True
         del self.wb[i]
         continue
-        
+
       elif self.wb[i].startswith(".pn "): # any explicit page number
         self.pnshow = True
 
@@ -4589,7 +4535,7 @@ class Book(object):
         if not inde:
 
           # look for illegal condition: a continued dot directive is followed by a .bn or .pn
-          if (self.wb[i].startswith(".") and 
+          if (self.wb[i].startswith(".") and
                 (self.wb[i+1].startswith("⑱") or self.wb[i+1].startswith("⑯"))):
             if (re.match("\.[a-z]", self.wb[i]) and
                   (self.bnmatch.match(self.wb[i+1]) or
@@ -5368,7 +5314,7 @@ class Ppt(Book):
 
 
     # all page numbers deleted in text version
-    # Note: Page numbers have been encoded by previous processing. 
+    # Note: Page numbers have been encoded by previous processing.
     #   They may be stand-alone, in which case we delete the complete
     #   line, or (due to continuation) they may be embedded within a
     #   line. In that case we just remove the encoded page number
@@ -5377,7 +5323,7 @@ class Ppt(Book):
       if self.pnmatch.match(self.wb[i]):
         del self.wb[i]
         continue
-        
+
       else:
         if self.pnsearch.search(self.wb[i]):
           self.wb[i] = self.pnsearch.sub("", self.wb[i])
@@ -9247,11 +9193,11 @@ class Pph(Book):
         self.fsz = "100%"             # no, reset font size to 100%
 
     else: # something specified
-      m = re.match(r"\.fs +(.+)%$", self.wb[self.cl])  # % form?
+      m = re.match(r"\.fs +([^ ]+) *%$", self.wb[self.cl])  # % form?
       if m:
         self.fsz = m.group(1) + "%"
         self.wb[self.cl] = ""
-      m = re.match(r"\.fs +(.+)em$", self.wb[self.cl]) # em form?
+      m = re.match(r"\.fs +([^ ]+) *em$", self.wb[self.cl]) # em form?
       if m:
         self.fsz = m.group(1) + "em"
         if self.fsz == "1em":
