@@ -30,17 +30,23 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.56" + with_regex   # 4-Jun-2016
+VERSION="3.56a" + with_regex   # 27-Jun-2016
 #3.56:
 #  From 3.55r (unreleased except to kdweeks):
 #    HTML: Fix bug causing .sp to be ineffective if it occurs just before a footnote that is captured for processing
 #      by a remote landing zone. Also, properly handle .sp that occurs just before a footnote when .pi (indented
 #      paragraphs) are in effect.
 #  Modify parsing of .sr to avoid potential issues with the regex module (if installed on the user's system)
-#  Add code to detect some cases of improper Greek transliterations (no ending ] or mismatched []) and 
+#  Add code to detect some cases of improper Greek transliterations (no ending ] or mismatched []) and
 #    terminate. (Note: balanced [] within a Greek tag are allowed. If the author, for some reason,
 #    had a Greek string containing only a [ and no ] to balance it, use " \[" (with the space).
 #  Improve handling of .fs to tolerate spaces within the size options, though there shouldn't be any.
+#3.56a:
+#  HTML: Revise handling of .dl style=p so HTML created by .nf directives (including .ce, .rj) within the block will valiate properly.
+#  Text: Fix problem of .bn creating an extra blank line between table rows for tables that have multi-line cells.
+#  Text: Fix handling of multi-line <sc> strings to remove Python exception. Also, try to detect missing </sc> by detecting
+#        dot commands within the <sc> string.
+#  HTML: Revise handline of .ix to fix a validation error if a .bn line occurs between a main entry and its first sub-entry.
 
 
 
@@ -2566,6 +2572,7 @@ class Book(object):
         # If we hit a dot command, handle it
         if not b.wb[b.cl].startswith(".dt") and not b.wb[b.cl].startswith(".dd"):
           if re.match(r"\.([a-z]|⓭DV-)", b.wb[b.cl]):
+            #if self.options["style"] == "p" or (self.options["combine"] and (self.term or self.paragraph)):
             if self.options["combine"] and (self.term or self.paragraph):
               self.emit_paragraph()
             else:
@@ -5522,25 +5529,40 @@ class Ppt(Book):
 
     # do small caps last since it could uppercase a tag.
     if not self.nregs["tag-sc"]: # ignore if we're doing <sc> with tags instead of UPPERCASE
+
+      def to_uppercase(m):
+        return m.group(1).upper()
+
       re_scmult = re.compile(r"<sc>(.+?)<\/sc>", re.DOTALL)
       re_scsing = re.compile(r"<sc>(.*?)<\/sc>")
-      for i, line in enumerate(self.wb):
-        def to_uppercase(m):
-          return m.group(1).upper()
+      #for i, line in enumerate(self.wb):
+      i = 0
+      while i < len(self.wb):
 
+        # todo: check for and reject nested <sc> and other tags
         while "<sc>" in self.wb[i]:
           if not "</sc>" in self.wb[i]: # multi-line
             t = []
-            while "</sc>" not in self.wb[i]:
-              t.append(self.wb[i])
-              del(self.wb[i])
-            t.append(self.wb[i]) # last line
+            j = i
+            while j < len(self.wb) and "</sc>" not in self.wb[j]:
+              t.append(self.wb[j])
+              #del self.wb[i]
+              j += 1
+              if j < len(self.wb) and self.wb[j].startswith("."): # check for possible dot directive
+                if re.match(r"\.[a-z]", self.wb[j]):
+                  self.warn_w_context("Possible missing </sc>: Apparent dot directive within <sc> string", j)
+            if j < len(self.wb):
+              t.append(self.wb[j]) # last line (contains </sc>)
+            else:
+              self.crash_w_context("Missing </sc> for <sc> on flagged line", i)
             ts = "\n".join(t) # make all one line
             ts = re.sub(re_scmult, to_uppercase, ts)
             t = ts.splitlines() # back to a series of lines
-            self.wb[i:i+1] = t
+            self.wb[i:j+1] = t
           else: # single line
             self.wb[i] = re.sub(re_scsing, to_uppercase, self.wb[i])
+
+        i += 1
 
     #
     # Handle any .sr for text that have the b option specified
@@ -7136,7 +7158,16 @@ class Ppt(Book):
             else:
               s += bafter[col]
         self.eb.append(s)
-      nextline = self.wb[self.cl + 1]
+      j = self.cl + 1
+      # find next line that is not a .bn line (could theoretically have multiple sequential .bn lines)
+      nextline = ""
+      done = False
+      while j < len(self.wb) and not done:
+        nextline = self.wb[j]
+        if (self.bnPresent and self.is_bn_line(nextline)):
+          j += 1
+        else:
+          done = True
       nextline = nextline.replace("<span>", "") # recognize the special case of a blank line
       nextline = nextline.replace("|", "")      # which has the form  | <span> | <span>
       nextline = nextline.strip()
@@ -10973,7 +11004,11 @@ class Pph(Book):
     # indentation, it does. If next line has greater indentation, then leave the <li> open so
     # we can nest the inner <ul> properly.
     def checknext(linenum):
-      linenum = linenum + 1
+      linenum += 1
+      while (linenum < len(self.wb) and
+             self.bnPresent and
+             self.is_bn_line(self.wb[linenum])):
+        linenum += 1
       s = "</li>" # assume next line is same indentation
       if linenum < len(self.wb) and self.wb[linenum] != ".ix-":
         tmp, leadsp = trimsp(linenum)
@@ -11765,7 +11800,7 @@ class Pph(Book):
         b = self.book
 
         if self.dd_active:
-          self.build_dd("", True)
+          self.build_dd("", endit=True)
 
         if self.options["style"] == "p": # <p> style
           self.dlbuffer.append(self.dlspaces + "  </div>")
@@ -11836,6 +11871,7 @@ class Pph(Book):
 
       # Build HTML for definition into the buffer (may be a single line of definition, or a paragraph if combine=y)
       # s: possibly long string (even paragraph length) containing the dd info
+      # endit: will be set if we need to force the close of a <dd> (paragraphs are always closed)
       def build_dd(self, s, endit=False):
 
         b = self.book
@@ -11853,8 +11889,6 @@ class Pph(Book):
             self.pageinfo = ""
           if self.options["style"] == "d":
             self.dlbuffer.append(self.dtddspaces + "</dd>")
-          else:
-            self.dlbuffer.append(self.dtddspaces + "</p>")
           self.dd_active = False
           b.list_item_active = False
           return
@@ -11923,6 +11957,7 @@ class Pph(Book):
           #else:
           #  self.dlbuffer.append(self.dtddspaces + "<p{}{}>".format(clss, cstyle) + t[0])
           extraspaces = "  "
+          t[-1] += "</p>" # always close paragraphs
           self.dlbuffer.append(self.dtddspaces + extraspaces + t[0])
 
         for i in range(1, len(t)): # handle remaining lines, if any, of this definition
@@ -11959,7 +11994,7 @@ class Pph(Book):
           b.cl += len(self.dlbuffer)
           self.dlbuffer = []
 
-    # main processing for doDl (Text):
+    # main processing for doDl (HTML):
 
     dlobj = PphDefList(self) # create the object
     dlobj.run()              # turn over control
