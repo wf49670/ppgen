@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.56a" + with_regex   # 27-Jun-2016
+VERSION="3.56b" + with_regex   # 27-Jun-2016
 #3.56:
 #  From 3.55r (unreleased except to kdweeks):
 #    HTML: Fix bug causing .sp to be ineffective if it occurs just before a footnote that is captured for processing
@@ -47,6 +47,10 @@ VERSION="3.56a" + with_regex   # 27-Jun-2016
 #  Text: Fix handling of multi-line <sc> strings to remove Python exception. Also, try to detect missing </sc> by detecting
 #        dot commands within the <sc> string.
 #  HTML: Revise handline of .ix to fix a validation error if a .bn line occurs between a main entry and its first sub-entry.
+#3.56b:
+#  Text: Properly count ^ in superscripted strings, and _ in subscripted strings, for line wrapping.
+#  Text: Wrap heading lines (.hn) that are wider than the current width set by the .ll directive.
+#  Allow alternate form of <target> markup <target=id_value> as alternative to the <target id=id_value> forms.
 
 
 
@@ -2800,7 +2804,7 @@ class Book(object):
     m = re.search(r"◸(.*?)◹", s)
     while m:
       supstr = m.group(1)
-      if len(supstr) == 1:
+      if len(supstr) == 1 or self.truelen(supstr, expand_supsub=False) == 1:
         s = re.sub(r"◸.◹", "^"+supstr, s, 1)
       else:
         s = re.sub(r"◸.*?◹", "^{" + supstr + "}", s, 1)
@@ -2813,13 +2817,13 @@ class Book(object):
 
   # Calculate "true" length of a string, accounting for <lang> markup and combining or non-spacing characters in Hebrew, etc.
   # Also, take into account text encoded for super/subscripts, since the eventual decoding will change the text length.
-  def truelen(self, s):
+  def truelen(self, s, expand_supsub=True):
     #self.dprint("entered: {}".format(s))
     if self.bnPresent:
       s = self.bnsearch.sub("", s) # remove any bn info before trying to calculate the length
       s = self.pnsearch.sub("", s) # remove any pn info before trying to calculate the length
 
-    if "◸" in s or "◺" in s:
+    if expand_supsub and ("◸" in s or "◺" in s):
       s = self.expand_supsub(s)
 
     l = len(s) # get simplistic length
@@ -4928,7 +4932,7 @@ class Ppt(Book):
     return shortest_line_len
 
   # wrap string into paragraph in t[]
-  def wrap_para(self, s,  indent, ll, ti, perturb=False, keep_br=False, warn=False):
+  def wrap_para(self, s,  indent, ll, ti, perturb=False, keep_br=False, warn=False, expand_supsub=True):
     # if ti < 0, strip off characters that will be in the hanging margin
     # perturb is usually False, but during paragraph rewrapping may be set to True
     # if wrap() discovered that all lines wrapped shorter than 55. In that case
@@ -4965,6 +4969,10 @@ class Ppt(Book):
 
     # Convert any <br> in the line to ⓬ for easier processing
     s = re.sub(" ?\<br\> ?", BR, s)
+
+    # handle super/subscripts if necessary
+    if expand_supsub:
+      s = self.expand_supsub(s)
 
     # at this point, s is ready to wrap
     mywidth = ll - indent
@@ -5178,42 +5186,52 @@ class Ppt(Book):
     #  s2 = s2.replace('  ', ' ')
     #s = s0 + s2
 
-    # Handle case where caller wants an optimal (repeated/tested) wrap?
-    if optimal_needed and ll > 55: # don't need optimality if we're wrapping shorter than PG's "minimum" of 55 anyway
-      for i in range(0, -8, -2):
-        t = self.wrap_para(s, indent, ll+i, ti, keep_br=True)
-        ta.append(t)
-        sll = self.shortest_line_len(t[0:-1])
-        if sll >= 55:
-          done = True # Done if already good enough
-          break
-        else:
-          ts.append(sll)
+    # expand any super/subscripts
+    s = self.expand_supsub(s)
 
-      # All had a line shorter than 55. Tell wrap_para() to
-      # try again, perturbing the word layout.
-      if not done:
-        t = self.wrap_para(s, indent, ll, ti, perturb=True, keep_br=True)
-        ta.append(t)
-        sll = self.shortest_line_len(t[0:-1])
-        if sll >= 55:
-          done = True # Done if already good enough
-        else:
-          ts.append(sll)
+    # avoid wrapping if s is short enough already and we don't need to worry about ti:
+    if not ti and (self.truelen(s) + indent <= ll):
+      if indent:
+        s = (indent * " ") + s
+      t = [s]
 
-      # if not done yet then all test paragraphs had some short lines
-      # choose the best one we found
-      if not done:
-        longest_short = 0
-        besti = -1
-        for i in range(0,len(ta)):
-          if ts[i] > longest_short:
-            t = ta[i]
-            longest_short = ts[i]
-            besti = i
-    # else handle case where caller wants only a single, simple wrap
     else:
-      t = self.wrap_para(s, indent, ll+i, ti, keep_br=True) # don't need optimal wrap, so just do it once
+      # Handle case where caller wants an optimal (repeated/tested) wrap?
+      if optimal_needed and ll > 55: # don't need optimality if we're wrapping shorter than PG's "minimum" of 55 anyway
+        for i in range(0, -8, -2):
+          t = self.wrap_para(s, indent, ll+i, ti, keep_br=True, expand_supsub=False)
+          ta.append(t)
+          sll = self.shortest_line_len(t[0:-1])
+          if sll >= 55:
+            done = True # Done if already good enough
+            break
+          else:
+            ts.append(sll)
+
+        # All had a line shorter than 55. Tell wrap_para() to
+        # try again, perturbing the word layout.
+        if not done:
+          t = self.wrap_para(s, indent, ll, ti, perturb=True, keep_br=True, expand_supsub=False)
+          ta.append(t)
+          sll = self.shortest_line_len(t[0:-1])
+          if sll >= 55:
+            done = True # Done if already good enough
+          else:
+            ts.append(sll)
+
+        # if not done yet then all test paragraphs had some short lines
+        # choose the best one we found
+        if not done:
+          longest_short = 0
+          besti = -1
+          for i in range(0,len(ta)):
+            if ts[i] > longest_short:
+              t = ta[i]
+              longest_short = ts[i]
+              besti = i
+      # else handle case where caller wants only a single, simple wrap
+      else:
+        t = self.wrap_para(s, indent, ll+i, ti, keep_br=True, expand_supsub=False) # don't need optimal wrap, so just do it once
 
     # remove any <br> from ends of lines
     for i in range(len(t)):
@@ -6051,9 +6069,14 @@ class Ppt(Book):
     h2a = self.wb[self.cl+1].split('|')
     for line in h2a:
       line = line.strip()
-      while '  ' in line:   # squash any repeated internal spaces
-        line = line.replace('  ', ' ')
-      self.eb.append(self.truefmt(fmt, line).rstrip())
+      if self.truelen(line) <= self.regLL: # wrapping is not needed
+        while '  ' in line:   # squash any repeated internal spaces
+          line = line.replace('  ', ' ')
+        self.eb.append(self.truefmt(fmt, line).rstrip())
+      else: # wrapping is needed
+        s = self.wrap(line, ll=self.regLL, optimal_needed=False)
+        for t in s:
+          self.eb.append(self.truefmt(fmt, t).rstrip())
 
     self.eb.append(".RS 1")
     self.cl += 2
@@ -7695,7 +7718,7 @@ class Ppt(Book):
       # (overrides method in DefList)
       def wrap_def(self):
         b = self.book
-        indent_first = self.options["tindent"] + b.list_item_width + 1
+        indent_first = self.options["tindent"] + b.list_item_width + 1 # + dindent?
         wraplen = b.regLL - b.regIN
         if not self.options["collapse"]:
           wraplen -= indent_first
@@ -7723,6 +7746,7 @@ class Ppt(Book):
 
         elif self.options["float"]: # collapse, float
           t = b.wrap(self.definition, windent, wraplen, indent_first)
+          t[0] = t[0][indent_first:]
 
         else: # collapse, not float
           if self.options["hang"]:
@@ -7753,13 +7777,13 @@ class Ppt(Book):
         if self.options["float"]:  # floated style (first line is term + 1st line of definition)
           s.append(".RS 1") # want a blank line between entries
           if self.term or not self.form_c:
-            s.append(self.indent_padding + (self.options["tindent"] * " ") + ltrm + t[0].strip())
-          else: # not floated; definition (if any) is on next line, but avoid extra blank lines
+            s.append(self.indent_padding + (self.options["tindent"] * " ") + ltrm + t[0].rstrip())
+          else: # no term, or form c
             if t[0].strip(): # if we have a definition
               if not self.options["collapse"]:
-                s.append(self.indent_padding + self.definition_padding + t[0].strip())
+                s.append(self.indent_padding + self.definition_padding + t[0].rstrip())
               else: # collapse
-                s.append(self.indent_padding + self.dindent_padding + t[0].strip())
+                s.append(self.indent_padding + self.dindent_padding + t[0].rstrip())
           start = 1
 
         else:                 # non-floated style (first line is term, if we have one)
@@ -8300,6 +8324,8 @@ class Pph(Book):
         self.print_msg("               {}".format(name))
 
     # target references
+    # Originally <target id='something'> but also allow id="something" and id=something for convenience
+    # Also, now allow <target=something>
     i = 0
     while i < len(self.wb):
       if "<target id" in self.wb[i]:
@@ -8318,6 +8344,13 @@ class Pph(Book):
           self.wb[i] = re.sub("<target id=(.*?)>", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], 1)
           self.checkId(m.group(1), id_loc=i)
           m = re.search("<target id=(.*?)>", self.wb[i])
+      elif "<target=" in self.wb[i]:
+        m = re.search("<target=(.*?)>", self.wb[i])
+        while m:
+          self.wb[i] = re.sub("<target(.*?)>", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], 1)
+          self.checkId(m.group(1), id_loc=i)
+          m = re.search("<target(.*?)>", self.wb[i])
+
       i += 1
 
     # inline tags across lines in .nf blocks must be applied to each line
@@ -11899,7 +11932,7 @@ class Pph(Book):
         if self.options["style"] == "d" and not s:
           s = "&nbsp;"
 
-        if not self.options["combine"]:
+        if not self.options["combine"]: ### why only combine=n?
           # calculate leading spaces in definition line if needed (non-combining only)
           tmp = s
           ss = ""
@@ -11911,6 +11944,7 @@ class Pph(Book):
           leadsp = len(tmp) - len(tmp.lstrip())
 
           # define an indent class if needed
+          ### recognize duplicates; need different name if so? Or detect and reject?
           if leadsp > 0:
             dd_indent_class = "dd_in{}".format(leadsp)  # create an indent class
             if b.nregsusage["nf-spaces-per-em"] > 1:
