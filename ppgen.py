@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.56b" + with_regex   # 27-Jun-2016
+VERSION="3.56c" + with_regex   # 28-Oct-2016
 #3.56:
 #  From 3.55r (unreleased except to kdweeks):
 #    HTML: Fix bug causing .sp to be ineffective if it occurs just before a footnote that is captured for processing
@@ -51,6 +51,10 @@ VERSION="3.56b" + with_regex   # 27-Jun-2016
 #  Text: Properly count ^ in superscripted strings, and _ in subscripted strings, for line wrapping.
 #  Text: Wrap heading lines (.hn) that are wider than the current width set by the .ll directive.
 #  Allow alternate form of <target> markup <target=id_value> as alternative to the <target id=id_value> forms.
+#3.56c:
+#  Added -dm command-line option to provide additional debugging info during .pm/<pm> processing
+#  Fixed spelling of [Lambda] and [lambda] (.cv processing).
+#  Text: Fixed wrapping of first line of the definition for a .dl entry.
 
 
 
@@ -1482,8 +1486,8 @@ class Book(object):
      ('[iota]', '\u03B9', '\\u03B9', 0), #
      ('[Kappa]','\u039A', '\\u039A', 0), #
      ('[kappa]','\u03BA', '\\u03BA', 0), #
-     ('[Lamda]','\u039B', '\\u039B', 0), #
-     ('[lamda]','\u03BB', '\\u03BB', 0), #
+     ('[Lambda]','\u039B', '\\u039B', 0), #
+     ('[lambda]','\u03BB', '\\u03BB', 0), #
      ('[Mu]',   '\u039C', '\\u039C', 0), #
      ('[mu]',   '\u03BC', '\\u03BC', 0), #
      ('[Nu]',   '\u039D', '\\u039D', 0), #
@@ -4023,6 +4027,15 @@ class Book(object):
         else:
           self.crash_w_context("Error occurred parsing macro arguments for: {}".format(line), i)
 
+      # debug if requested
+      if 'm' in self.debug:
+        if tlex[0].startswith("."):
+          self.print_msg("Processing .pm for {} with parameters:\n".format(tlex[1]))
+        else:
+          self.print_msg("Processing <pm for {} with parameters:\n".format(tlex[1]))
+        for i in range(1, len(tlex)):
+          self.print_msg("  {}: {}".format(i, tlex[i]))
+
       macroid = tlex[1]  # "tnote"
       if not macroid in self.macro:
         self.crash_w_context("undefined macro {}: ".format(macroid), i)
@@ -4035,8 +4048,12 @@ class Book(object):
             pnum = int(m.group(1))
             subst = r"\${}".format(pnum)
             if pnum < len(tlex) - 1:
+              if 'm' in self.debug:
+                self.print_msg("Macro line {} before: {}".format(j, t[j]))
               try:
                 t[j] = re.sub(subst, tlex[pnum+1], t[j], 1)
+                if 'm' in self.debug:
+                  self.print_msg("Macro line {} after: {}".format(j, t[j]))
               except:
                 if 'd' in self.debug:
                   traceback.print_exc()
@@ -7628,20 +7645,27 @@ class Ppt(Book):
         # wrap the definition paragraph as needed
         #
         indent_first = self.options["tindent"] + b.list_item_width + 1 + self.options["dindent"]
-        indent_chars = "~" * indent_first
-        s = indent_chars + self.paragraph
+        wraplen = b.regLL - b.regIN
+
+        if self.options["collapse"]: # if collapsing need to temporarily pad first line to account for term
+          indent_chars = "~" * indent_first
+          s = indent_chars + self.paragraph
+        else:
+          s = self.paragraph
+          wraplen -= indent_first # if not collapsing, need to reduce wrap width by indent width
+
         if self.options["hang"]:
           ti = -2
           indent = 2
         else:
           ti = 0
           indent = 0
-        wraplen = b.regLL - b.regIN
-        if not self.options["collapse"]:
-          wraplen -= indent_first
-        # wrap parameters: s,  indent=0, ll=72, ti=0, optimal_needed=True
+
+          # wrap parameters: s,  indent=0, ll=72, ti=0, optimal_needed=True
         t = b.wrap(s, indent, wraplen, ti)
-        t[0] = t[0][indent_first:]
+
+        if self.options["collapse"]: # if collapsing need to remove temporary pad from first line
+          t[0] = t[0][indent_first:]
 
         # layout the term and definition line(s)
 
@@ -11944,7 +11968,11 @@ class Pph(Book):
           leadsp = len(tmp) - len(tmp.lstrip())
 
           # define an indent class if needed
+          ### TODO:
           ### recognize duplicates; need different name if so? Or detect and reject?
+          ### Handle indents differently: setup a span as <span class='indent_class'>&nbsp;</span>rest of text
+          ### where indent_class is calculated based on the leading blanks, and defined as
+          ### width: m.nem; display: inline-block
           if leadsp > 0:
             dd_indent_class = "dd_in{}".format(leadsp)  # create an indent class
             if b.nregsusage["nf-spaces-per-em"] > 1:
@@ -12339,9 +12367,16 @@ def main():
   parser.add_argument('-i', '--infile', help='UTF-8 or Latin-1 input file')
   parser.add_argument('-l', '--log', help="display Latin-1, diacritic, and Greek conversion logs",
                       action="store_true")
-  parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r,l,x,e)')
-  # debug "x" forces "title" style for page numbering, rather than "content"
+  parser.add_argument('-d', '--debug', nargs='?', default="", help='debug flags (d,s,a,p,r,l,x,e,m)')
+  # debug "a" logs (many of the) source lines processed
+  # debug "d" forces additional debugging info in some error cases (.sr, .pm/<pm>, .ul/ol/dl class generation)
   # debug "e" forces all messages to stderr, even informational ones
+  # debug "l" forces additional reporting in Greek processing
+  # debug "m" forces additional debugging info for .pm/<pm>
+  # debig "p" causes ppgen to print platform info
+  # debug "r" forces additional reporting in .sr processing
+  # debug "s" forces ppgen to keep style= info rather than generating unique classes
+  # debug "x" forces "title" style for page numbering, rather than "content"
   parser.add_argument('-o', '--output_format', default="hu",
                       help='output format (HTML:h, text:t, u or l)')
   parser.add_argument('-a', '--anonymous', action='store_true',
