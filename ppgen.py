@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.56d" + with_regex   # 01-Oct-2016
+VERSION="3.56e" + with_regex   # 01-Oct-2016
 #3.56:
 #  From 3.55r (unreleased except to kdweeks):
 #    HTML: Fix bug causing .sp to be ineffective if it occurs just before a footnote that is captured for processing
@@ -62,7 +62,15 @@ VERSION="3.56d" + with_regex   # 01-Oct-2016
 #  Removed warning for .nf l blocks when .in > 0 and .nr nfl value is specified; it's really an unnecessary warning
 #    as .nr nfl is intended to handle only the case where .in == 0.
 #  Allow > characters within <pm ...> arguments, as long as they're within a properly quoted string.
-
+#3.56e:
+#  Allow text to contain the character ^ without it triggering superscript processing. For this situation the PPer
+#    should use ^^ and ppgen will replace that with a single ^ in the output.
+#  Allow text to contain the string _{ followed by some text followed by } without triggering subscript processing.
+#    For this situation the PPer should use __{ (two underscores, then the {) and ppgen will replace the __ with _
+#    in the output.
+#  If a // is immediately preceded by either http: or https: then warn the PPer to escape the // if he wants a
+#    URL rather than a comment.
+#  Allow a <pm invocation to span lines if continued by a \ character so it's really considered to be on one line.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -2078,7 +2086,7 @@ class Book(object):
   # as that could lead to odd behavior
   def check_for_pppgen_special_characters(self):
     s = '\n'.join(self.wb)  # make a text blob
-    pattern = r"(.*?)([ᒪᒧⓓⓢ①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳ⓈⓉⓊⓋⓏⓣⓤⓥ⓪⓫⓬⓭⓵⓶⓷⓸⓹⓺⓻⓼⓽◮◸◹◺◿⫉])"
+    pattern = r"(.*?)([ᒪᒧⓓⓢ①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳ⓈⓉⓊⓋⓏⓣⓤⓥ⓪⓫⓬⓭⓮⓯⓵⓶⓷⓸⓹⓺⓻⓼⓽◮◸◹◺◿⫉])"
 
     values = {'ᒪ': '\\u14aa',  #  ᒪ   CANADIAN SYLLABICS MA # precedes lang= info
               'ᒧ': '\\u14a7',  #  ᒧ   CANADIAN SYLLABICS MO # follows lang= info
@@ -2117,6 +2125,8 @@ class Book(object):
               '⓫': '\\u24eb',  #  ⓫   NEGATIVE CIRCLED NUMBER ELEVEN # temporary substitute for | in inline HTML sidenotes until postprocessing
               '⓬': '\\u24ec',  #  ⓬   NEGATIVE CIRCLED NUMBER TWELVE # temporary substitute for <br> in text wrapping
               '⓭': '\\u24ed',  #  ⓭   NEGATIVE CIRCLED NUMBER THIRTEEN # temporarily marks end of .dv blocks in HTML, .⓭DV-
+              '⓮': '\\u24ee',  #  ⓮   NEGATIVE CIRCLED NUMBER FOURTEEN # used to protect/convert ^^ in input to ^ in output
+              '⓯': '\\u24ef',  #  ⓯   NEGATIVE CIRCLED NUMBER FIFTEEN  # used to protect/convert __{ in input to _{ in output
               '⓵': '\\u24f5',  #  ⓵   DOUBLE CIRCLED DIGIT ONE # temporary substitute for <i>
               '⓶': '\\u24f6',  #  ⓶   DOUBLE CIRCLED DIGIT TWO # temporary substitute for <b>
               '⓷': '\\u24f7',  #  ⓷   DOUBLE CIRCLED DIGIT THREE # temporary substitute for <g>
@@ -2837,6 +2847,12 @@ class Book(object):
     if expand_supsub and ("◸" in s or "◺" in s):
       s = self.expand_supsub(s)
 
+    # if string has ⓯ it will become one character longer (⓯ -> _}) so we need
+    # to expand it to get the proper length. Note that we do not need to worry
+    # about ⓮ which becomes ^ as the length doesn't change.
+    if "⓯" in s:
+      s = re.sub("⓯", "_{", s)
+
     l = len(s) # get simplistic length
     for c in s: # examine each character
       cc = ord(c)
@@ -3553,21 +3569,26 @@ class Book(object):
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # Remove comments and un-escape any escaped / characters in the text (\/ becomes /)
     #
-    # Note: I've implemented, but commented out, a warning for continued // and continued .ig
-    #       as the warning for // can trigger on the -----File: ... p1\p2\p3\f1\f2\ lines if
-    #       the PPer leaves them in as comments.
+    # Note: I trued implementing a warning for continued // and continued .ig but the
+    #       warning for // can trigger on the -----File: ... p1\p2\p3\f1\f2\ lines if
+    #       the PPer leaves them in as comments. So I did not keep those implementations.
     def uncomment(buffer):
       i = 0
       while i < len(buffer):
-        if  re.match(r"\/\/", buffer[i]): # entire line is a comment
+        if  re.match(r"//", buffer[i]): # entire line is a comment
           #if buffer[i].endswith("\\"):
           #  self.warn("Continuation \ ignored following //: {}".format(buffer[i]))
           del buffer[i]
           continue
-        if re.search(r"\/\/.*$", buffer[i]):
-          #if buffer[i].endswith("\\"):
-          #  self.warn("Continuation \ ignored following //: {}".format(buffer[i]))
-          buffer[i] = re.sub(r"\/\/.*$", "", buffer[i])
+
+        m = re.match(r"(.*?)//(.*)$", buffer[i])
+        if m:
+          if m.group(1).endswith("http:") or m.group(1).endswith("https:"):
+            self.warn("Use /\/ rather than // if you want this to be a URL instead of the start of a comment: {}".format(buffer[i]))
+
+          buffer[i] = m.group(1)
+
+
         #
         # convert escaped / characters
         #
@@ -4236,8 +4257,7 @@ class Book(object):
 
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # macros processed before handling line continuation via trailing \ character
-    # define macro
+    # define macro (processed before continuation characters are handled, so must handle explicitly)
     # .dm name
     # .dm name $1 $2 (optionally: lang=python)
     # macro line 1
@@ -4308,6 +4328,7 @@ class Book(object):
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # play macro (dot directive, .pm)
+    # processed before continuation characters are handled, so must handle explicitly
     # format:
     #  .pm name parameters
     i = 0
@@ -4327,52 +4348,6 @@ class Book(object):
 
       i += 1
 
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # play macro (inline: <pm...>)
-    # format:
-    #   <pm name parameters>
-    # Notes:
-    #   (1) This form is allowed to generate only one line, which will replace the inline macro invocation in the line
-    #       that contains the macro definition.
-    #   (2) As .if processing has already "pruned" the macro contents, this means that it is OK for the macro to contain
-    #         .if t
-    #         1 statement
-    #         .if-
-    #         .if h
-    #         1 statement
-    #         .if-
-    #   (3) Unfortunately, we have not processed/protected characters yet, so if the PPer used \> so he could have
-    #       a > in a macro argument that will still look like \> and not like ⑳. This makes the reg-exes below more
-    #       complex as they need to recognize both \< and \> and not consider them as initiating or ending a <pm> tag.
-    #       Note: The revised reg-ex below will allow unescaped < and > so long as they are within quotes.  Of course,
-    #             for HTML an unescaped < or > is only valid if it's part of an HTML tag. Otherwise, for normal text in
-    #             the HTML file the user needs to use \< and \> to generate &lt; and &gt; to pass validation.
-    #       Warning: A \< or \> used OUTSIDE of a quoted string in a <pm> argument will lose its escape character. So for
-    #                an argument that is intended as plain text, not an HTML tag, be sure to quote the argument.
-    i = 0
-    while i < len(self.wb):
-      #m = re.search(r"(^|[^\\])<(pm .*?[^\\])>", self.wb[i])
-      # try to allow > within a macro argument, as long as the argument is within quotes
-      m = re.search(r"(^|[^\\])<(pm [^ ]+" + # first argument: some  non-blank string: macro name
-                    r"( +|'[^']*'|\"[^\"]*\"|[^>]+)+)" + # remaining "arguments": spaces, or a quoted string, or a non-quoted string
-                    r">", self.wb[i])
-      while m:
-        t = pm_guts(m.group(2), i) # go play the macro
-        if len(t) > 1:
-          self.crash_w_context("Inline macro <{}> tried to generate more than one line of output".format(m.group(2)), i)
-        else:
-          self.wb[i], count = re.subn(re.escape(m.group(0)), m.group(1) + t[0], self.wb[i], 1)
-          if count == 0:
-            self.warn_w_context("Substituting {} for inline macro <{}> failed.".format(t[0], m.group(2)), i)
-            break
-
-        #m = re.search(r"(^|[^\\])<(pm .*?[^\\])>", self.wb[i])
-        m = re.search(r"(^|[^\\])<(pm [^ ]+" + # first argument: some  non-blank string: macro name
-                      r"( +|'[^']*'|\"[^\"]*\"|[^>]+)+)" + # remaining "arguments": spaces, or a quoted string, or a non-quoted string
-                      r">", self.wb[i])
-
-
-      i += 1
 
 
     # Handle any .sr that have the B option specified
@@ -4622,6 +4597,56 @@ class Book(object):
     if self.wb[-1].endswith("\\"):
       self.crash_w_context("File ends with continued line.", i)
 
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # play macro (inline: <pm...>)
+    # format:
+    #   <pm name parameters>
+    # Notes:
+    #   (1) This form is allowed to generate only one line, which will replace the inline macro invocation in the line
+    #       that contains the macro definition.
+    #   (2) As .if processing has already "pruned" the macro contents, this means that it is OK for the macro to contain
+    #         .if t
+    #         1 statement
+    #         .if-
+    #         .if h
+    #         1 statement
+    #         .if-
+    #   ###I'm not sure if (3) below is still correct; need to think about this...
+    #   (3) Unfortunately, we have not processed/protected characters yet, so if the PPer used \> so he could have
+    #       a > in a macro argument that will still look like \> and not like ⑳. This makes the reg-exes below more
+    #       complex as they need to recognize both \< and \> and not consider them as initiating or ending a <pm> tag.
+    #       Note: The revised reg-ex below will allow unescaped < and > so long as they are within quotes.  Of course,
+    #             for HTML an unescaped < or > is only valid if it's part of an HTML tag. Otherwise, for normal text in
+    #             the HTML file the user needs to use \< and \> to generate &lt; and &gt; to pass validation.
+    #   Warning: A \< or \> used OUTSIDE of a quoted string in a <pm> argument will lose its escape character. So for
+    #            an argument that is intended as plain text, not an HTML tag, be sure to quote the argument.
+    i = 0
+    while i < len(self.wb):
+      #m = re.search(r"(^|[^\\])<(pm .*?[^\\])>", self.wb[i])
+      # try to allow > within a macro argument, as long as the argument is within quotes
+      m = re.search(r"(^|[^\\])<(pm [^ ]+" + # first argument: some  non-blank string: macro name
+                    r"( +|'[^']*'|\"[^\"]*\"|[^>]+)+)" + # remaining "arguments": spaces, or a quoted string, or a non-quoted string
+                    r">", self.wb[i])
+      while m:
+        t = pm_guts(m.group(2), i) # go play the macro
+        if len(t) > 1:
+          self.crash_w_context("Inline macro <{}> tried to generate more than one line of output".format(m.group(2)), i)
+        else:
+          self.wb[i], count = re.subn(re.escape(m.group(0)), m.group(1) + t[0], self.wb[i], 1)
+          if count == 0:
+            self.warn_w_context("Substituting {} for inline macro <{}> failed.".format(t[0], m.group(2)), i)
+            break
+
+        #m = re.search(r"(^|[^\\])<(pm .*?[^\\])>", self.wb[i])
+        m = re.search(r"(^|[^\\])<(pm [^ ]+" + # first argument: some  non-blank string: macro name
+                      r"( +|'[^']*'|\"[^\"]*\"|[^>]+)+)" + # remaining "arguments": spaces, or a quoted string, or a non-quoted string
+                      r">", self.wb[i])
+
+
+      i += 1
+
+
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # courtesy remaps
     #
@@ -4670,6 +4695,8 @@ class Book(object):
       self.wb[i] = self.wb[i].replace(r"\:", "⑥")
       self.wb[i] = self.wb[i].replace(r"\-", "⑨")
       self.wb[i] = self.wb[i].replace(r"\#", "⓪")
+      self.wb[i] = self.wb[i].replace(r"^^", "⓮") # ^^ will eventually become ^ in the output file
+      self.wb[i] = self.wb[i].replace(r"__{", "⓯") # __{ will eventually become _{ in the output file
 
       # special characters
       # leave alone if in literal block (correct way, not yet implemented)
@@ -4805,6 +4832,20 @@ class Book(object):
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # superscripts, subscripts
+    #
+    # Superscripts:
+    #   Denoted in ppgen source by:
+    #                               ^ followed by 1 character
+    #                               ^{1 or more characters}
+    # Subscripts:
+    #   Denoted in ppgen source by:
+    #                               _{1 or more characters}
+    # Notes:
+    #   1. If you have a book that has an actual ^ character in it, use ^^ to represent it.
+    #   2. If you have a book that has a superscript ^ character, use the ^{...} form.
+    #   3. If you have a book that has the text _{...} in it, on one line, use __{ for the
+    #      opening characters (2 underscores, then the { character).
+
     pat1 = re.compile("\^([^\{])")   # single-character superscript
     pat2 = re.compile("\^\{(.*?)\}") # multi-character superscript
     pat3 = re.compile("_\{(.*?)\}")  # subscript
@@ -5751,6 +5792,8 @@ class Ppt(Book):
       self.eb[i] = self.eb[i].replace("⓪", "#")
       self.eb[i] = self.eb[i].replace("⑩", r"\|") # restore temporarily protected \| and \(space)
       self.eb[i] = self.eb[i].replace("⑮", r"\ ")
+      self.eb[i] = self.eb[i].replace("⓮", "^")
+      self.eb[i] = self.eb[i].replace("⓯", "_{")
       self.eb[i] = re.sub("ⓢ|Ⓢ", " ", self.eb[i]) # non-breaking space (becomes regular space in text output
                                                   # should be OK except if someone rewraps the text file later)
       self.eb[i] = re.sub("ⓣ|Ⓣ", " ", self.eb[i]) # zero space
@@ -8751,6 +8794,8 @@ class Pph(Book):
     text = re.sub("⑫", ">", text)
     text = re.sub("⑬", "[", text)
     text = re.sub("⑭", "]", text)
+    text = re.sub("⓮", "^", text)
+    text = re.sub("⓯", "_{", text)
 
     # unprotect temporarily protected characters from Greek strings
     text = re.sub("⑩", "\|", text) # restore temporarily protected \| and \(space)
@@ -12543,6 +12588,8 @@ if __name__ == '__main__':
 # \u24ec  ⓬   NEGATIVE CIRCLED NUMBER TWELVE # temporary substitute for <br> in text wrapping
 # \u24ed  ⓭   NEGATIVE CIRCLED NUMBER THIRTEEN # temporarily marks end of .dv blocks in HTML, .⓭DV-
 #                                                and beginning of the div for .dv without a class or style element
+# \u24ee  ⓮   NEGATIVE CIRCLED NUMBER FOURTEEN # used to protect/convert ^^ in input text to ^ in output text
+# \u24ef  ⓯   NEGATIVE CIRCLED NUMBER FIFTEEN  # used to protect/convert __{ in input text to _{ in output text
 # \u24f5  ⓵   DOUBLE CIRCLED DIGIT ONE # temporary substitute for <i>
 # \u24f6  ⓶   DOUBLE CIRCLED DIGIT TWO # temporary substitute for <b>
 # \u24f7  ⓷   DOUBLE CIRCLED DIGIT THREE # temporary substitute for <g>
