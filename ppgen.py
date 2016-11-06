@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.56e" + with_regex   # 01-Oct-2016
+VERSION="3.56f" + with_regex   # 01-Nov-2016
 #3.56:
 #  From 3.55r (unreleased except to kdweeks):
 #    HTML: Fix bug causing .sp to be ineffective if it occurs just before a footnote that is captured for processing
@@ -71,6 +71,11 @@ VERSION="3.56e" + with_regex   # 01-Oct-2016
 #  If a // is immediately preceded by either http: or https: then warn the PPer to escape the // if he wants a
 #    URL rather than a comment.
 #  Allow a <pm invocation to span lines if continued by a \ character so it's really considered to be on one line.
+#3.56f: 
+#  Text: if .dl definition lines contain <br> make sure we go through wrapping so the <br> is removed and lines are split
+#  Adjust .sr parsing to use a non-greedy match for more robust error detection
+#  In HTML table processing (dotable) handle case of a right-aligned cell that appears not to be the last cell in the row,
+#    but really is because all following cells are <span>. In that case, it should not have padding-right specified.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -3987,7 +3992,7 @@ class Book(object):
       m = re.match(r"\.sr +([ulthfbBp]+) +(.*)", self.wb[i]) # validate first argument of .sr
       if m:
         which = m.group(1)
-        m = re.match(r"(.)(.*)\1(.*)\1(.*)", m.group(2))  # 1=separator 2=search 3=replacement 4=unexpected trash
+        m = re.match(r"(.)(.*?)\1(.*?)\1(.*)", m.group(2))  # 1=separator 2=search 3=replacement 4=unexpected trash
         if m:
           if m.group(4) == "":  # ok?
             search = m.group(2)
@@ -5275,14 +5280,16 @@ class Ppt(Book):
     # expand any super/subscripts
     s = self.expand_supsub(s)
 
-    # avoid wrapping if s is short enough already and we don't need to worry about ti:
-    if not ti and (self.truelen(s) + indent <= ll):
+    brloc = s.find("<br>") # check for <br> in string
+
+    # avoid wrapping if s is short enough already, does not contain <br>, and we don't need to worry about ti:
+    if not ti and (self.truelen(s) + indent <= ll) and brloc == -1:
       if indent:
         s = (indent * " ") + s
       t = [s]
 
     else:
-      # Handle case where caller wants an optimal (repeated/tested) wrap?
+      # Handle case where we need to wrap
       if optimal_needed and ll > 55: # don't need optimality if we're wrapping shorter than PG's "minimum" of 55 anyway
         for i in range(0, -8, -2):
           t = self.wrap_para(s, indent, ll+i, ti, keep_br=True, expand_supsub=False)
@@ -7732,7 +7739,7 @@ class Ppt(Book):
           ti = 0
           indent = 0
 
-          # wrap parameters: s,  indent=0, ll=72, ti=0, optimal_needed=True
+        # wrap parameters: s,  indent=0, ll=72, ti=0, optimal_needed=True
         t = b.wrap(s, indent, wraplen, ti)
 
         if self.options["collapse"]: # if collapsing need to remove temporary pad from first line
@@ -7835,7 +7842,7 @@ class Ppt(Book):
             windent = 0
             wti = 0
 
-        # wrap parameters: s,  indent=0, ll=72, ti=0, optimal_needed=True
+        # wrap parameters: s,  indent=0, ll=72, ti=0, optimal_needed=True ####
         if not self.options["collapse"]:
           t = b.wrap(self.definition, windent, wraplen, wti) # not collapse, either float or not float
 
@@ -10752,8 +10759,16 @@ class Pph(Book):
 
         if v[k] != "<span>":
           if not borders_present: # if no left/right borders in table
-            if k < len(v) - 1: # each column not the last gets padding to the right
-              padding += 'padding-right: 1em; '
+            if k < len(v) - 1:    # If we appear not to be the last column, need to check for
+                                  #   all columns to the right being <span> as that could still
+                                  #   make us the last column
+              lastcol = True       # assume we're the last column
+              for kk in range(k+1, len(v)):
+                if v[kk].strip() != "<span>": # if some column after us is not <span>
+                  lastcol = False             # then we're not the last column
+                  break
+              if not lastcol:
+                padding += 'padding-right: 1em; '
           # convert leading protected spaces (\  or \_) to padding
           t1 = v[k]
           t2 = re.sub(r"^ⓢ+","", v[k])
