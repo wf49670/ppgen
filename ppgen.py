@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.56f" + with_regex   # 01-Nov-2016
+VERSION="3.56g" + with_regex   # 11-Nov-2016
 #3.56:
 #  From 3.55r (unreleased except to kdweeks):
 #    HTML: Fix bug causing .sp to be ineffective if it occurs just before a footnote that is captured for processing
@@ -76,6 +76,8 @@ VERSION="3.56f" + with_regex   # 01-Nov-2016
 #  Adjust .sr parsing to use a non-greedy match for more robust error detection
 #  In HTML table processing (dotable) handle case of a right-aligned cell that appears not to be the last cell in the row,
 #    but really is because all following cells are <span>. In that case, it should not have padding-right specified.
+#3.56g:
+#  Text: If using alt= for the caption for an illustration, make sure to wrap the the caption if it's too long.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -6322,7 +6324,7 @@ class Ppt(Book):
       else:
         # no caption, just illustration
         if ia["alt"]: # use alt text if available
-          t = ["[{}: {}]".format(self.nregs["Illustration"], ia["alt"])]
+          t = self.wrap("[{}: {}]".format(self.nregs["Illustration"], ia["alt"]), 0, self.regLL, 0)
         else:
           t = ["[{}]".format(self.nregs["Illustration"])]
         self.eb += t
