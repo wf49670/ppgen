@@ -30,7 +30,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.56g" + with_regex   # 11-Nov-2016
+VERSION="3.56h" + with_regex   # 12-Nov-2016
 #3.56:
 #  From 3.55r (unreleased except to kdweeks):
 #    HTML: Fix bug causing .sp to be ineffective if it occurs just before a footnote that is captured for processing
@@ -78,6 +78,11 @@ VERSION="3.56g" + with_regex   # 11-Nov-2016
 #    but really is because all following cells are <span>. In that case, it should not have padding-right specified.
 #3.56g:
 #  Text: If using alt= for the caption for an illustration, make sure to wrap the the caption if it's too long.
+#3.56h:
+#  HTML: Validate links to music files (.mid) that a PPer may use. Also add -mus command line option, analogous to 
+#        the -img option.
+#  HTML: When validating link targets, check more of the name to ensure all errors are flagged.
+#  Allow links to music files, via #text to display:music/filename.mid#
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -2040,7 +2045,7 @@ class Book(object):
   def checkId(self, s, id_loc=None):
     if not id_loc:
       id_loc = self.cl
-    if not re.match(r"[A-Za-z][A-Za-z0-9\-_\:\.]*", s):
+    if not re.match(r"[A-Za-z][A-Za-z0-9\-_\:\.]*$", s):
       self.warn_w_context("illegal identifier: {}".format(s), id_loc)
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -8006,6 +8011,7 @@ class Pph(Book):
     self.css = self.userCSS()
     self.linkinfo = self.linkMsgs()
     self.imageCheck = args.imagecheck
+    self.musicCheck = args.musiccheck
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   # internal class to manage CSS as it is added at runtime
@@ -8879,7 +8885,13 @@ class Pph(Book):
         self.wb[i] = re.sub(m.group(0), s, self.wb[i], 1)
         m = re.search(r"⑲([iIvVxXlLcCdDmM]+)⑲", self.wb[i])
 
-      m = re.search(r"⑲(.*?):(.*?)⑲", self.wb[i]) # named reference
+      m = re.search(r"⑲(.*?):(music/.*\.mid)⑲", self.wb[i]) # named music file reference
+      while m:
+        s = "<a href='{}'>{}</a>".format(m.group(2), m.group(1)) # link to that
+        self.wb[i] = re.sub(re.escape(m.group(0)), s, self.wb[i], 1)
+        m = re.search(r"⑲(.*?):(music/.*\.mid)⑲", self.wb[i])
+
+      m = re.search(r"⑲(.*?):(.*?)⑲", self.wb[i]) # named text reference
       while m:
         s = "<a href='⫉{}'>{}</a>".format(m.group(2), m.group(1)) # link to that
         self.checkId(m.group(2), id_loc=i)
@@ -12151,6 +12163,66 @@ class Pph(Book):
     dlobj = PphDefList(self) # create the object
     dlobj.run()              # turn over control
 
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  # check that music file exists
+  #
+  def checkMusic(self, fname): # assure that fn exists in images folder
+    if " " in fname:
+      self.warn("cannot have spaces in music filenames: {}".format(fname))
+    if re.search("[A-Z]", fname):
+      self.warn("music filenames must be lower case: {}".format(fname))
+    if self.musicDirectoryOK:
+      if not fname in self.musicDict:
+        self.warn("file {} not in music folder".format(fname))
+      else:
+        self.musicDict[fname] += 1
+    else:
+      self.warn("music checking bypassed; unable to open music folder")
+
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  # report on possible image or music file problems (used too many times, not used at all)
+  #
+  # which: "image" or "music file"
+  # flag:  self.imageDirectory or self.musicDirectory
+  # dict:  self.imageDict or self.musicDict
+  # option: self.imageCheck or self.musicCheck
+  # whichoption: "-img" or "-mus"
+  def fileReport(self, which, flag, dict, option, whichoption):
+    if flag:
+      msgIssued = False
+      notUsed = 0
+      notUsedList = []
+      multiplyUsed = 0
+      multiplyUsedList = []
+      for k in dict:
+        if dict[k] == 0: # unused file
+          notUsed += 1
+          notUsedList.append(k)
+        elif (which == "music" or k != self.cimage) and dict[k] > 1: # used multiple times (exempt cover image
+                                                         # in case PPer decided to use it in HTML)
+          multiplyUsed += 1
+          multiplyUsedList.append(k)
+
+      notUsedS = "s" if notUsed > 1 else ""
+      multiplyUsedS = "s" if multiplyUsed > 1 else ""
+
+      if option: # full report?
+        if notUsed:
+          self.warn("{} {}{} apparently not used:".format(notUsed, which, notUsedS))
+          for t in notUsedList:
+            self.warn("  {}".format(t))
+        if multiplyUsed:
+          self.info("{} {}{} used multiple times:".format(multiplyUsed, which, multiplyUsedS))
+          for t in multiplyUsedList:
+            self.info("  {} ({}x)".format(t, dict[t]))
+
+      else:  # summary only
+        if notUsed:
+          self.warn("{} {}{} apparently unused. Rerun with {} option for more information".format(notUsed, which, notUsedS, whichoption))
+        if multiplyUsed:
+          self.info("{} {}{} used multiple times. Rerun with {} option for more information".format(multiplyUsed, which, multiplyUsedS, whichoption))
+
+
 
   def doChecks(self):
     rb = [] # report buffer
@@ -12183,7 +12255,10 @@ class Pph(Book):
       m = re.search(r"href=[\"']([^#].*?)[\"']", line) # now look for external links that we can't check
       while m:            # could have more than one in a line
         t = m.group(1)
-        if not t.startswith("images/"):    # don't worry about links to our image files
+        if t.startswith("music/"):  # handle links to music files
+          t = t[6:]
+          self.checkMusic(t)
+        elif not t.startswith("images/"):    # don't worry about links to our image files
           self.linkinfo.add("[4] ")
           self.linkinfo.add("[4]Warning: cannot validate external link: {}".format(t))
         line = re.sub(re.escape(m.group(0)), "", line, 1) # remove the one we found
@@ -12249,44 +12324,10 @@ class Pph(Book):
       for w in rb:
         self.stderr.write(w + '\n')
 
-    # report on possible image problems (used too many times, not used at all)
-    if self.imageDirectoryOK:
-      msgIssued = False
-      notUsed = 0
-      notUsedList = []
-      multiplyUsed = 0
-      multiplyUsedList = []
-      for k in self.imageDict:
-        if self.imageDict[k] == 0: # unused image
-          notUsed += 1
-          notUsedList.append(k)
-        elif k != self.cimage and self.imageDict[k] > 1: # used multiple times (exempt cover
-                                                         # in case PPer decided to use it in HTML
-          multiplyUsed += 1
-          multiplyUsedList.append(k)
+    # report on image or music files used too many times or not used at all
+    self.fileReport("image", self.imageDirectoryOK, self.imageDict, self.imageCheck, "-img")
+    self.fileReport("music file", self.musicDirectoryOK, self.musicDict, self.musicCheck, "-mus")
 
-      notUsedS = "s" if notUsed > 1 else ""
-      multiplyUsedS = "s" if multiplyUsed > 1 else ""
-
-      if self.imageCheck: # full report?
-        if notUsed:
-          self.warn("{} image{} apparently not used:".format(notUsed, notUsedS))
-          for img in notUsedList:
-            self.warn("  {}".format(img))
-        if multiplyUsed:
-          self.info("{} image{} used multiple times:".format(multiplyUsed, multiplyUsedS))
-          for img in multiplyUsedList:
-            self.info("  {} ({}x)".format(img, self.imageDict[img]))
-
-      else:  # summary only
-        if notUsed:
-          self.warn("{} image{} apparently unused. Rerun with -img option for more information".format(notUsed, notUsedS))
-        if multiplyUsed:
-          self.info("{} image{} used multiple times. Rerun with -img option for more information".format(multiplyUsed, multiplyUsedS))
-
-
-  #def doUdiv(self):
-  #  print(self.wb[self.cl])
 
   def process(self):
 
@@ -12337,27 +12378,45 @@ class Pph(Book):
     self.cleanup()
     self.doHTMLSr()
 
-  # build dictionary of images in images directory
+  # build dictionary of files in images or music directory
   # later we'll check which were used
-  def buildImgDict(self):
-   imgpath = os.path.join(os.path.dirname(self.srcfile),"images")
-   self.imageDirectoryOK = True
-   try:
-     imglist = os.listdir(imgpath)
-   except FileNotFoundError:
-     self.imageDirectoryOK = False
+  def buildFilesDict(self):
 
-   if self.imageDirectoryOK:
-     for s in imglist:
-       if s.endswith(".png") or s.endswith(".jpg"):
-         self.imageDict[s] = 0
-       else:
-         self.warn("file {} in images folder does not have type .jpg or .png".format(s))
+    # which: string, images or music
+    # filetypes: list of allowable file types
+    def buildDict(which, filetypes, msginsert):
+      fileDict = {}
+      filepath = os.path.join(os.path.dirname(self.srcfile), which)
+      DirectoryOK = True
+      try:
+        filelist = os.listdir(filepath)
+      except FileNotFoundError:
+        DirectoryOK = False
+    
+      if DirectoryOK:
+        for s in filelist:
+          found = False
+          for t in filetypes:
+            if s.endswith(t):
+              found = True
+              fileDict[s] = 0
+          if not found:
+            self.warn("file {} in {} folder does not have type {}".format(s, which, msginsert))
+
+      if which == "images":
+        self.imageDirectoryOK = DirectoryOK
+        self.imageDict = fileDict
+      else:
+        self.musicDirectoryOK = DirectoryOK
+        self.musicDict = fileDict
+
+    buildDict("images", [".jpg", ".png"], ".jpg or .png")
+    buildDict("music", [".mid"], ".mid")
 
 
   def run(self): # HTML
     self.loadFile(self.srcfile)
-    self.buildImgDict()
+    self.buildFilesDict()
     self.preprocess()
     if self.gk_requested or self.dia_requested: # override output encoding if doing Greek or diacritics
       self.encoding = "utf_8"
@@ -12484,7 +12543,9 @@ def main():
   parser.add_argument("-pmok", "--pythonmacrosok", action="store_true",
                       help="allow macros written in Python without prompting user for permission")
   parser.add_argument("-img", "--imagecheck", action="store_true",
-                      help="create report of unused image files")
+                      help="create detailed report of unused image files")
+  parser.add_argument("-mus", "--musiccheck", action="store_true",
+                      help="create detailed report of unused music files")
   parser.add_argument("-ini", "--ini_file",
                       help="ini file suffix (or none)")
   parser.add_argument("-std", "--stdout", action="store_true",
