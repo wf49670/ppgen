@@ -17,6 +17,8 @@ try:
 except:
   import re
   with_regex = ""
+#import re
+#with_regex = ""
 import sys, string, os, platform
 import configparser
 import textwrap
@@ -30,7 +32,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.56h" + with_regex   # 12-Nov-2016
+VERSION="3.56i" + with_regex   # 14-Nov-2016
 #3.56:
 #  From 3.55r (unreleased except to kdweeks):
 #    HTML: Fix bug causing .sp to be ineffective if it occurs just before a footnote that is captured for processing
@@ -71,7 +73,7 @@ VERSION="3.56h" + with_regex   # 12-Nov-2016
 #  If a // is immediately preceded by either http: or https: then warn the PPer to escape the // if he wants a
 #    URL rather than a comment.
 #  Allow a <pm invocation to span lines if continued by a \ character so it's really considered to be on one line.
-#3.56f: 
+#3.56f:
 #  Text: if .dl definition lines contain <br> make sure we go through wrapping so the <br> is removed and lines are split
 #  Adjust .sr parsing to use a non-greedy match for more robust error detection
 #  In HTML table processing (dotable) handle case of a right-aligned cell that appears not to be the last cell in the row,
@@ -79,10 +81,13 @@ VERSION="3.56h" + with_regex   # 12-Nov-2016
 #3.56g:
 #  Text: If using alt= for the caption for an illustration, make sure to wrap the the caption if it's too long.
 #3.56h:
-#  HTML: Validate links to music files (.mid) that a PPer may use. Also add -mus command line option, analogous to 
+#  HTML: Validate links to music files (.mid) that a PPer may use. Also add -mus command line option, analogous to
 #        the -img option.
 #  HTML: When validating link targets, check more of the name to ensure all errors are flagged.
 #  Allow links to music files, via #text to display:music/filename.mid#
+#3.56i:
+#  Detect inline <pm with missing > (which might mean a missing continuation \ character) and fail the run if 
+#    one is found. This avoids a potential loop/bug in Python's re.search processing.
 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
@@ -4634,12 +4639,17 @@ class Book(object):
     #   Warning: A \< or \> used OUTSIDE of a quoted string in a <pm> argument will lose its escape character. So for
     #            an argument that is intended as plain text, not an HTML tag, be sure to quote the argument.
     i = 0
+    pattern = r"(^|[^\\])<(pm [^ ]+( +|'[^']*'|\"[^\"]*\"|[^>]+)+)>"
     while i < len(self.wb):
-      #m = re.search(r"(^|[^\\])<(pm .*?[^\\])>", self.wb[i])
-      # try to allow > within a macro argument, as long as the argument is within quotes
-      m = re.search(r"(^|[^\\])<(pm [^ ]+" + # first argument: some  non-blank string: macro name
-                    r"( +|'[^']*'|\"[^\"]*\"|[^>]+)+)" + # remaining "arguments": spaces, or a quoted string, or a non-quoted string
-                    r">", self.wb[i])
+      debug = re.search(r"<pm [^\\>]*$", self.wb[i])
+      if debug:
+        self.crash_w_context("Apparent inline macro invocation with missing terminator (>). Possible missing continuation character?", i)
+      # first argument: some non-blank string for the macro name
+      # remaining "arguments" spaces, or a quoted string, or a non-quoted string
+      #m = re.search(r"(^|[^\\])<(pm [^ ]+" + # first argument: some  non-blank string: macro name
+      #              r"( +|'[^']*'|\"[^\"]*\"|[^>]+)+)" + # remaining "arguments": spaces, or a quoted string, or a non-quoted string
+      #              r">", self.wb[i])
+      m = re.search(pattern, self.wb[i])
       while m:
         t = pm_guts(m.group(2), i) # go play the macro
         if len(t) > 1:
@@ -4651,9 +4661,10 @@ class Book(object):
             break
 
         #m = re.search(r"(^|[^\\])<(pm .*?[^\\])>", self.wb[i])
-        m = re.search(r"(^|[^\\])<(pm [^ ]+" + # first argument: some  non-blank string: macro name
-                      r"( +|'[^']*'|\"[^\"]*\"|[^>]+)+)" + # remaining "arguments": spaces, or a quoted string, or a non-quoted string
-                      r">", self.wb[i])
+        #m = re.search(r"(^|[^\\])<(pm [^ ]+" + # first argument: some  non-blank string: macro name
+        #              r"( +|'[^']*'|\"[^\"]*\"|[^>]+)+)" + # remaining "arguments": spaces, or a quoted string, or a non-quoted string
+        #              r">", self.wb[i])
+        m = re.search(pattern, self.wb[i])
 
 
       i += 1
@@ -12392,7 +12403,7 @@ class Pph(Book):
         filelist = os.listdir(filepath)
       except FileNotFoundError:
         DirectoryOK = False
-    
+
       if DirectoryOK:
         for s in filelist:
           found = False
