@@ -32,7 +32,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.56i" + with_regex   # 14-Nov-2016
+VERSION="3.56j" + with_regex   # 14-Nov-2016
 #3.56:
 #  From 3.55r (unreleased except to kdweeks):
 #    HTML: Fix bug causing .sp to be ineffective if it occurs just before a footnote that is captured for processing
@@ -86,9 +86,12 @@ VERSION="3.56i" + with_regex   # 14-Nov-2016
 #  HTML: When validating link targets, check more of the name to ensure all errors are flagged.
 #  Allow links to music files, via #text to display:music/filename.mid#
 #3.56i:
-#  Detect inline <pm with missing > (which might mean a missing continuation \ character) and fail the run if 
-#    one is found. This avoids a potential loop/bug in Python's re.search processing.
-
+#  Detect inline "<pm" with missing > (which either means a missing > or might mean a missing continuation \ character) and fail the run if 
+#    one is found.
+#3.56j:
+#  Use a better regular expression for finding <pm invocations, so it will recognize failing cases (invocation not present) in more
+#    linear time in all situations for users who use the re library module instead of regex. Also allows parsing some more complex
+#    arguments successfully.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -4639,11 +4642,16 @@ class Book(object):
     #   Warning: A \< or \> used OUTSIDE of a quoted string in a <pm> argument will lose its escape character. So for
     #            an argument that is intended as plain text, not an HTML tag, be sure to quote the argument.
     i = 0
-    pattern = r"(^|[^\\])<(pm [^ ]+( +|'[^']*'|\"[^\"]*\"|[^>]+)+)>"
+    #pattern = r"(^|[^\\])<(pm [^ ]+( +|'[^']*'|\"[^\"]*\"|[^>]+)+)>"
+    pattern = r"(^|[^\\])<(pm [^ ]+( +|'[^']*'|\"[^\"]*\"|[^>'\"]+)+)>"
     while i < len(self.wb):
-      debug = re.search(r"<pm [^\\>]*$", self.wb[i])
-      if debug:
-        self.crash_w_context("Apparent inline macro invocation with missing terminator (>). Possible missing continuation character?", i)
+
+      # need to make sure inline macros are properly terminated
+      # so we don't get them output as garbage raw text.
+      n = re.search(r"<pm [^\\>]*$", self.wb[i])
+      if n:
+        self.crash_w_context("Inline macro (<pm) invocation does not have a terminator (>).", i)
+
       # first argument: some non-blank string for the macro name
       # remaining "arguments" spaces, or a quoted string, or a non-quoted string
       #m = re.search(r"(^|[^\\])<(pm [^ ]+" + # first argument: some  non-blank string: macro name
