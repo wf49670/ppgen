@@ -32,7 +32,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.56j" + with_regex   # 14-Nov-2016
+VERSION="3.56k" + with_regex   # 16-Nov-2016
 #3.56:
 #  From 3.55r (unreleased except to kdweeks):
 #    HTML: Fix bug causing .sp to be ineffective if it occurs just before a footnote that is captured for processing
@@ -92,6 +92,9 @@ VERSION="3.56j" + with_regex   # 14-Nov-2016
 #  Use a better regular expression for finding <pm invocations, so it will recognize failing cases (invocation not present) in more
 #    linear time in all situations for users who use the re library module instead of regex. Also allows parsing some more complex
 #    arguments successfully.
+#3.56k:
+#  Ensure macro name is present for .pm and <pm to avoid Python trap later.
+#    Also, provide better error detection for malformed <pm> requests.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -4105,6 +4108,10 @@ class Book(object):
         else:
           self.crash_w_context("Error occurred parsing macro arguments for: {}".format(line), i)
 
+      # ensure macro name present
+      if len(tlex) == 1:
+        self.crash_w_context("Macro name missing", i)
+
       # debug if requested
       if 'm' in self.debug:
         if tlex[0].startswith("."):
@@ -4643,14 +4650,22 @@ class Book(object):
     #            an argument that is intended as plain text, not an HTML tag, be sure to quote the argument.
     i = 0
     #pattern = r"(^|[^\\])<(pm [^ ]+( +|'[^']*'|\"[^\"]*\"|[^>]+)+)>"
-    pattern = r"(^|[^\\])<(pm [^ ]+( +|'[^']*'|\"[^\"]*\"|[^>'\"]+)+)>"
+    pattern = r"(^|[^\\])<(pm [^ '\">]+( +|'[^']*'|\"[^\"]*\"|[^> '\"]*)*)>"
+    #                    <pm corr 114.4 'village.' 'village,'>
     while i < len(self.wb):
 
       # need to make sure inline macros are properly terminated
       # so we don't get them output as garbage raw text.
       n = re.search(r"<pm [^\\>]*$", self.wb[i])
       if n:
-        self.crash_w_context("Inline macro (<pm) invocation does not have a terminator (>).", i)
+        self.crash_w_context("Inline macro (<pm>) invocation does not have a terminator (>).", i)
+
+      # need to make sure inline macros have at least a macro name
+      # so we don't get them output as garbage raw text. Also lets us
+      # check for <pm> invocations that are so malformed we didn't
+      # recognize them at all.
+      o = re.search(r"(^|[^\\])<pm", self.wb[i])
+      pm_present = True if (o) else False
 
       # first argument: some non-blank string for the macro name
       # remaining "arguments" spaces, or a quoted string, or a non-quoted string
@@ -4663,16 +4678,19 @@ class Book(object):
         if len(t) > 1:
           self.crash_w_context("Inline macro <{}> tried to generate more than one line of output".format(m.group(2)), i)
         else:
+          aadbg1 = m.group(0)
+          aadbg2 = m.group(1)
           self.wb[i], count = re.subn(re.escape(m.group(0)), m.group(1) + t[0], self.wb[i], 1)
           if count == 0:
             self.warn_w_context("Substituting {} for inline macro <{}> failed.".format(t[0], m.group(2)), i)
             break
 
-        #m = re.search(r"(^|[^\\])<(pm .*?[^\\])>", self.wb[i])
-        #m = re.search(r"(^|[^\\])<(pm [^ ]+" + # first argument: some  non-blank string: macro name
-        #              r"( +|'[^']*'|\"[^\"]*\"|[^>]+)+)" + # remaining "arguments": spaces, or a quoted string, or a non-quoted string
-        #              r">", self.wb[i])
         m = re.search(pattern, self.wb[i])
+        o = re.search(r"(^|[^\\])<pm", self.wb[i]) # search for a broken <pm again, too.
+        pm_present = True if (o) else False
+
+      if pm_present and not m: # if there was a broken <pm> after the last successful one, fail
+        self.crash_w_context("Problem parsing inline macro (<pm>) arguments (missing macro name?)", i)
 
 
       i += 1
