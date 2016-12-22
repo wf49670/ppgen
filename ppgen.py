@@ -32,7 +32,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.56k" + with_regex   # 16-Nov-2016
+VERSION="3.56l" + with_regex   # 21-Dec-2016
 #3.56:
 #  From 3.55r (unreleased except to kdweeks):
 #    HTML: Fix bug causing .sp to be ineffective if it occurs just before a footnote that is captured for processing
@@ -95,6 +95,12 @@ VERSION="3.56k" + with_regex   # 16-Nov-2016
 #3.56k:
 #  Ensure macro name is present for .pm and <pm to avoid Python trap later.
 #    Also, provide better error detection for malformed <pm> requests.
+#3.56l:
+#  Provide better detection of incorrect arguments to .dc directive. Also allow more flexible spacing of .dc and .di arguments.
+#  When (in text) processing multiple lines while looking for a </sc>, consider it an error (rather than merely a warning) if
+#    we encounter an apparent dot directive. Also, stop the scan on a blank line, too.
+#  For text, make sure that .sr directives that specify b or B are processed only at the appropriate time, and not also in 
+#    post-processing.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -5695,6 +5701,7 @@ class Ppt(Book):
       while i < len(self.wb):
 
         # todo: check for and reject nested <sc> and other tags
+        # todo: complain if blank lines found
         while "<sc>" in self.wb[i]:
           if not "</sc>" in self.wb[i]: # multi-line
             t = []
@@ -5703,9 +5710,12 @@ class Ppt(Book):
               t.append(self.wb[j])
               #del self.wb[i]
               j += 1
-              if j < len(self.wb) and self.wb[j].startswith("."): # check for possible dot directive
-                if re.match(r"\.[a-z]", self.wb[j]):
-                  self.warn_w_context("Possible missing </sc>: Apparent dot directive within <sc> string", j)
+              if j < len(self.wb):
+                if self.wb[j].startswith("."): # check for possible dot directive
+                  if re.match(r"\.[a-z]", self.wb[j]):
+                    self.crash_w_context("Missing </sc>: Apparent dot directive within <sc> string", j)
+                elif not self.wb[j]:           # check for a blank line
+                  self.crash_w_context("Missing </sc>: Blank line within <sc> string", j)
             if j < len(self.wb):
               t.append(self.wb[j]) # last line (contains </sc>)
             else:
@@ -5992,7 +6002,7 @@ class Ppt(Book):
     #self.dprint("processing .sr for text without b specified")
     for i in range(len(self.srw)):
       if ((('t' in self.srw[i]) or (self.renc in self.srw[i])) and not
-          ('b' in self.srw[i]) or 'B' in self.srw[i]): # if this one is for post-processing and applies to the text form we're generating
+          ('b' in self.srw[i] or 'B' in self.srw[i])): # if this one is for post-processing and applies to the text form we're generating
         self.process_SR(self.eb, i)
 
     # build GG .bin info if needed
@@ -10874,14 +10884,14 @@ class Pph(Book):
   # (split out during development of drop caps for .nf blocks)
   def doDropimageGuts(self, line, type="p"):
     di={}
-    m = re.match(r"\.di (\S+) (\d+) (\S+)$",self.wb[line]) # 3 argument version: image, width, adjust
+    m = re.match(r"\.di +(\S+) +(\d+) +(\S+)$",self.wb[line]) # 3 argument version: image, width, adjust
     if m:
       di["d_image"] = m.group(1)
       di["d_width"] = m.group(2)
       di["d_height"] = ""
       d_adj = m.group(3)
     else:
-      m = re.match(r"\.di (\S+) (\d+) (\d+) (\S+)$",self.wb[self.cl])
+      m = re.match(r"\.di +(\S+) +(\d+) +(\d+) +(\S+)$",self.wb[self.cl]) # 4 argument version
       if m:
         di["d_image"] = m.group(1)
         di["d_width"] = m.group(2)
@@ -10935,10 +10945,13 @@ class Pph(Book):
 
   # Drop Cap. a single, capital letter
   def doDropcap(self, line, type="p"):
-    m = re.match(r"\.dc (.*?)\s(.*)", self.wb[line]) # optional adjust
+    #m = re.match(r"\.dc (.*?)\s(.*?)(\s|$)", self.wb[line]) # optional adjust
+    m = re.match(r"\.dc +(.*?) +(.*?)( +(.*)|$)", self.wb[line]) # optional adjust
     dcadjs = ""
     dcadj = 0
     if m:
+      if m.group(4):
+        self.crash_w_context("Unexpected (extra) argument(s) to .dc: {}".format(m.group(4), line))
       dcadj = m.group(1)
       dclh = m.group(2)
       dcadjs = "{}_{}".format(dcadj, dclh)
