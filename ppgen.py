@@ -32,7 +32,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.56l" + with_regex   # 21-Dec-2016
+VERSION="3.56m" + with_regex   # 17-Jan-2017
 #3.56:
 #  From 3.55r (unreleased except to kdweeks):
 #    HTML: Fix bug causing .sp to be ineffective if it occurs just before a footnote that is captured for processing
@@ -101,6 +101,9 @@ VERSION="3.56l" + with_regex   # 21-Dec-2016
 #    we encounter an apparent dot directive. Also, stop the scan on a blank line, too.
 #  For text, make sure that .sr directives that specify b or B are processed only at the appropriate time, and not also in 
 #    post-processing.
+#3.56m:
+#  Text: Fix problem generating horizontal rules for tables with short lines
+#  When -dp command-line argument is present also print the Python version.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -7377,7 +7380,7 @@ class Ppt(Book):
         line = rindent * ' '
         temp = self.eb[r][rindent]
         for l in range(rindent, len(self.eb[r])):
-          kd = self.eb[n][l] # if (l < len(self.eb[n])) else '*' # down character
+          kd = self.eb[n][l]  if (l < len(self.eb[n])) else '*' # down character
           if kd not in '│┃║':
             kd = '*'
           kr = self.eb[r][l + 1] if (l < len(self.eb[r]) - 1) else '*' # right character, or *
@@ -7396,10 +7399,10 @@ class Ppt(Book):
         line = rindent * ' '
         temp = self.eb[r][rindent]
         for l in range(rindent, len(self.eb[r])):
-          ku = self.eb[p][l] #if (l < len(self.eb[p])) else '*' # up character
+          ku = self.eb[p][l] if (l < len(self.eb[p])) else '*' # up character
           if ku not in '│┃║':
             ku = '*'
-          kd = self.eb[n][l] #if (l < len(self.eb[n])) else '*' # down character
+          kd = self.eb[n][l] if (l < len(self.eb[n])) else '*' # down character
           if kd not in '│┃║':
             kd = '*'
           kr = self.eb[r][l + 1] if (l < len(self.eb[r]) - 1) else '*' # right character, or *
@@ -7419,7 +7422,7 @@ class Ppt(Book):
         line = rindent * ' '
         temp = self.eb[r][rindent]
         for l in range(rindent, len(self.eb[r])):
-          ku = self.eb[p][l]  #if (l < len(self.eb[p])) else '*' # up character
+          ku = self.eb[p][l]  if (l < len(self.eb[p])) else '*' # up character
           if ku not in '│┃║':
             ku = '*'
           kr = self.eb[r][l + 1] if (l < len(self.eb[r]) - 1) else '*' # right character, or *
@@ -12620,6 +12623,7 @@ def main():
 
   if 'p' in args.debug:
     ppgen_stdout.write("running on {}".format(platform.system()) + '\n')
+    ppgen_stdout.write("Python version: {}".format(platform.python_version()) + '\n')
 
   # -f and -sbin are mutually exclusive
   if args.filter and args.srcbin:
