@@ -32,7 +32,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.56m" + with_regex   # 17-Jan-2017
+VERSION="3.56n" + with_regex   # 25-Mar-2017
 #3.56:
 #  From 3.55r (unreleased except to kdweeks):
 #    HTML: Fix bug causing .sp to be ineffective if it occurs just before a footnote that is captured for processing
@@ -104,6 +104,8 @@ VERSION="3.56m" + with_regex   # 17-Jan-2017
 #3.56m:
 #  Text: Fix problem generating horizontal rules for tables with short lines
 #  When -dp command-line argument is present also print the Python version.
+#3.56n:
+#  Text: Fix alignment problem with vertical rule connectors in tables when cells have super- or subscripted characters.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -4704,7 +4706,6 @@ class Book(object):
 
       i += 1
 
-
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # courtesy remaps
     #
@@ -7379,8 +7380,9 @@ class Ppt(Book):
         ku = '*' # no up at all for this row
         line = rindent * ' '
         temp = self.eb[r][rindent]
+        temp_linen = self.expand_supsub(self.eb[n])
         for l in range(rindent, len(self.eb[r])):
-          kd = self.eb[n][l]  if (l < len(self.eb[n])) else '*' # down character
+          kd = temp_linen[l]  if (l < self.truelen(temp_linen)) else '*' # down character
           if kd not in '│┃║':
             kd = '*'
           kr = self.eb[r][l + 1] if (l < len(self.eb[r]) - 1) else '*' # right character, or *
@@ -7398,11 +7400,13 @@ class Ppt(Book):
         kl = '*' # no left to begin with
         line = rindent * ' '
         temp = self.eb[r][rindent]
+        temp_linen = self.expand_supsub(self.eb[n])
+        temp_linep = self.expand_supsub(self.eb[p])
         for l in range(rindent, len(self.eb[r])):
-          ku = self.eb[p][l] if (l < len(self.eb[p])) else '*' # up character
+          ku = temp_linep[l] if (l < self.truelen(temp_linep)) else '*' # up character
           if ku not in '│┃║':
             ku = '*'
-          kd = self.eb[n][l] if (l < len(self.eb[n])) else '*' # down character
+          kd = temp_linen[l] if (l < self.truelen(temp_linen)) else '*' # down character
           if kd not in '│┃║':
             kd = '*'
           kr = self.eb[r][l + 1] if (l < len(self.eb[r]) - 1) else '*' # right character, or *
@@ -7421,8 +7425,9 @@ class Ppt(Book):
         kd = '*' # no down at all for this row
         line = rindent * ' '
         temp = self.eb[r][rindent]
+        temp_linep = self.expand_supsub(self.eb[p])
         for l in range(rindent, len(self.eb[r])):
-          ku = self.eb[p][l]  if (l < len(self.eb[p])) else '*' # up character
+          ku = temp_linep[l]  if (l < self.truelen(temp_linep)) else '*' # up character
           if ku not in '│┃║':
             ku = '*'
           kr = self.eb[r][l + 1] if (l < len(self.eb[r]) - 1) else '*' # right character, or *
