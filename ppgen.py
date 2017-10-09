@@ -32,19 +32,21 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.57a" + with_regex   # 25-Mar-2017
+VERSION="3.57b" + with_regex   # 09-Oct-2017
 #3.57a:
 #  Initial 3.57 release
 #  Enh: Provide context for "Unclosed tags in .nf block" error
 #  Enh: Warn if user has extraneous info on a .h<n> directive.
 #  Bug: Properly handle "break" operand on .h4/5/6 directives.
 #  Enh: Warn if user apparently has a dot directive immediately following a .h<n> directive
-#  Enh: Adjust index-related CSS to better distinguish subentries from overflow/wrapped entries. 
+#  Enh: Adjust index-related CSS to better distinguish subentries from overflow/wrapped entries.
 #  Bug: Change page number processing to allow for continued .hn or .il statements, as the rest of
 #         continuation processing happens after we handle page numbers.
 #  Enh: Revise <pm ...> processing to use non-greedy matching to more reliably handle cases where the PPer has
 #         included multiple macro invocations on the same source line. (No known problems reported with the
 #         old code, though.)
+#3.57b:
+#  Bug: HTML: Inline tags within an all upper-case <sc> string cause the wrong CSS class to be generated.
 
 ###  Todo? Bug: In HTML, a .sp placed before a .il does not take effect until the next text after the illustration/caption.
 
@@ -4442,7 +4444,7 @@ class Book(object):
 
     # convert page page numbers to ⑯number⑰
     #
-    # Notes: 
+    # Notes:
     #   1. Must happen before continuation is handled, so continuation processing does not see
     #        a .pn directive when continuing a dot command or normal text.
     #   2. All pn handling must happen in one pass through the source file, to ensure that the
@@ -4494,7 +4496,7 @@ class Book(object):
         continue
 
       # Now handle pn= operands on .hn and .il
-      # 
+      #
       # First, for .hn and .il we need to handle any continuation...
       if i < (len(self.wb) - 1) and self.wb[i].endswith("\\"):
         m = re.match(r"\.((h[1-6])|il)", self.wb[i])
@@ -4555,7 +4557,7 @@ class Book(object):
     # Handle continuation:
     #   Long lines of any kind may end with a single backslash. The backslash will be replaced by a blank, and
     #   the next line will be concatenated to it.
-    # Notes: 
+    # Notes:
     #     1. .de is exempted here as it needs separate processing.
     #     2. If a line ends with multiple \ characters they are all deleted and replaced by a single blank.
     #     3. A continued dot directive may not be immediately followed by a converted .bn or .pn. However, if
@@ -7506,7 +7508,7 @@ class Ppt(Book):
       self.crash_w_context("malformed .sn directive", self.cl) # should never hit this as preprocesscommon() checked it
 
   # Index processing (Text)
-  ### To do: ensure that text and HTML output is compatible. Also, text form ignoring blank lines? Should it include 1 
+  ### To do: ensure that text and HTML output is compatible. Also, text form ignoring blank lines? Should it include 1
   ###   between major entries? Should that be a .ix option?)
   def doIx(self):
     indent = self.regIN if (self.regIN) else 1 # ensure indented at least 1 space
@@ -8660,6 +8662,13 @@ class Pph(Book):
     # -------------------------------------------------------------------------
     # inline markup (HTML)
 
+    # list of simple inline tags:
+    simple_tags = ['l', 'xl', 'xxl', 's', 'xs', 'xxs', 'i', 'b', 'f', 'g',
+                   'u', 'em', 'strong', 'cite', 'sn', 'br']
+    # inline tags of the form <x=...>
+    complex_tags1 = ['c', 'fs', 'abbr']
+    # inline tags of the form <x ...>
+    complex_tags2 = ['abbr']
     for i, line in enumerate(self.wb):
 
       # promote the "ignore in text" tags
@@ -8708,8 +8717,23 @@ class Pph(Book):
         # old version: m = re.search(r"<sc>([^<]+?)</sc>", stmp)
         if m:
           scstring = self.htmlTokenRestore(m.group(1)) # need to undo our remappings in order to properly check case of string
+
           # need to remove any <a> resulting from <target> directives which will confuse the checking
           scstring = re.sub("<a [^>]*>.*?</a>", "", scstring)
+
+          # inline tags created directly by the PPer also confuse the checking:
+          #   l, xl, xxl, s, xs, xxs, i, b, f, g, u, em, strong, cite,
+          #   c=, fs=, abbr, lang (span), sn (?), br (?)
+          for tag in simple_tags:
+            scstring = re.sub("</?" + tag + ">", "", scstring)
+          for tag in complex_tags1:
+            scstring = re.sub("<" + tag + "=[^>]*>", "", scstring)
+            scstring = re.sub("</" + tag + ">", "", scstring)
+          for tag in complex_tags2:
+            scstring = re.sub("<" + tag + " [^>]*>", "", scstring)
+            scstring = re.sub("</" + tag + ">", "", scstring)
+
+          ###
           # warn about all lower case, but not within .nf as
           # we will have replicated the <sc> tags that cross lines
           # of the .nf block, which could leave some all lower-case
@@ -9304,7 +9328,7 @@ class Pph(Book):
                                          # and may force a second page break
 
     else: # h4-h6
-      if break_wanted: 
+      if break_wanted:
         hcss += "page-break-before: always; "
       else:
         hcss += "page-break-before: auto; "
