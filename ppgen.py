@@ -32,7 +32,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.57b" + with_regex   # 09-Oct-2017
+VERSION="3.57c" + with_regex   # 13-Oct-2017
 #3.57a:
 #  Initial 3.57 release
 #  Enh: Provide context for "Unclosed tags in .nf block" error
@@ -47,6 +47,8 @@ VERSION="3.57b" + with_regex   # 09-Oct-2017
 #         old code, though.)
 #3.57b:
 #  Bug: HTML: Inline tags within an all upper-case <sc> string cause the wrong CSS class to be generated.
+#3.57c:
+#  Bug: Fix Python trap during execution introduced by 3.57a while checking continued .h<n> and .il directives.
 
 ###  Todo? Bug: In HTML, a .sp placed before a .il does not take effect until the next text after the illustration/caption.
 
@@ -4501,7 +4503,7 @@ class Book(object):
       if i < (len(self.wb) - 1) and self.wb[i].endswith("\\"):
         m = re.match(r"\.((h[1-6])|il)", self.wb[i])
         if m: # found continued .hn or .il
-          while i < len(self.wb - 1) and self.wb[i].endswith("\\"):
+          while i < len(self.wb) - 1 and self.wb[i].endswith("\\"):
             if self.wb[i+1].startswith(".pn") or self.wb[i+1].startswith(".bn"):
               self.crash_w_context(".pn or .bn not allowed within a continued dot directive", i)
             elif self.wb[i+1].startswith(".") and re.match("\.[a-z]", self.wb[i+1]):
