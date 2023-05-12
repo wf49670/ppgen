@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import locale
+locale.setlocale(category=locale.LC_ALL, locale="en_US.utf-8") # RT correct invalid locale was en_EN.utf-8
+
 # Note: ppgen uses a number of unicode characters as markers and placeholders to avoid
 # interference from or iterfering with PPer-provided text. They are listed at the end of this file,
 # before the css keys.
@@ -32,7 +35,7 @@ import struct
 import imghdr
 import traceback
 
-VERSION="3.57c" + with_regex   # 13-Oct-2017
+VERSION="3.57d_GHS_H5" + with_regex   # 03-Mar-2023
 #3.57a:
 #  Initial 3.57 release
 #  Enh: Provide context for "Unclosed tags in .nf block" error
@@ -49,8 +52,10 @@ VERSION="3.57c" + with_regex   # 13-Oct-2017
 #  Bug: HTML: Inline tags within an all upper-case <sc> string cause the wrong CSS class to be generated.
 #3.57c:
 #  Bug: Fix Python trap during execution introduced by 3.57a while checking continued .h<n> and .il directives.
+#3.57d:
+#  Enh: Updated HTML processing to HTML5.
 
-###  Todo? Bug: In HTML, a .sp placed before a .il does not take effect until the next text after the illustration/caption.
+###  Todo Bug: In HTML, a .sp placed before a .il does not take effect until the next text after the illustration/caption.
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
@@ -64,7 +69,8 @@ NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
   Roger Frank (rfrank@rfrank.net)
   Walt Farrell (walt.farrell@gmail.com)
-
+  Rick Tonsing (okrick@gmail.com) minor HTML5 updates only
+  
   Permission is hereby granted, free of charge, to any person obtaining
   a copy of this software and associated documentation files (the
   "Software"), to deal in the Software without restriction, including
@@ -353,9 +359,9 @@ class Book(object):
   # 3. printable form for .cvglist output listing
   gk = [                              # builtin Greek transliterations
 
-     ('ï/', 'i/+', 'ï/', None, 'ΐ (i/+ is the preferred form)'), # i/u/y alternatives using dieresis
-     ('ü/', 'y/+', 'ü/', None, 'ΰ (y/+ is preferred)'), # standardize to doubly marked form and fall into normal processing
-     ('ÿ/', 'y/+', 'ÿ/', None, 'ΰ (y/+ is preferred)'),
+     ('ï/', 'i/+', 'ï/', None, 'ΐ (i/+ is the preferred form)'), # i/u/y alternatives using dieresis
+     ('ü/', 'y/+', 'ü/', None, 'ΰ (y/+ is preferred)'), # standardize to doubly marked form and fall into normal processing
+     ('ÿ/', 'y/+', 'ÿ/', None, 'ΰ (y/+ is preferred)'),
      ('ï~', 'i~+', 'ï~', None, 'ῗ (i~+ is preferred)'),
      ('ü~', 'y~+', 'ü~', None, 'ῧ (y~+ is preferred)'),
      ('ÿ~', 'y~+', 'ÿ~', None, 'ῧ (y~+ is preferred)'),
@@ -2179,6 +2185,8 @@ class Book(object):
       except Exception as e:
         pass
 
+    self.stderr.write("**Detected encoding: " + self.encoding + "\n")
+
     if self.encoding == "":
       self.fatal("cannot determine input file decoding")
     else:
@@ -2717,7 +2725,7 @@ class Book(object):
               self.term = ""           # nullify the term
               t[0] = t[0].rstrip() # remove only trailing blanks from form c line
 
-            tempbr = "<br>" if (b.booktype == "text") else "<br />"
+            tempbr = "<br>" if (b.booktype == "text") else "<br>" # void element
             separator = tempbr if (self.options["break"]) else " "
             if self.paragraph:
               self.paragraph += separator
@@ -4731,9 +4739,9 @@ class Book(object):
 
       # special characters
       # leave alone if in literal block (correct way, not yet implemented)
-      # map &nbsp; to non-breaking space
+      # map &nbsp; to non-breaking space (edit: use &#160; entity instead
       # 10-Sep-2014: I don't fully understand why I did this mapping
-      self.wb[i] = self.wb[i].replace("&nbsp;", "ⓢ") # ampersand
+      self.wb[i] = self.wb[i].replace("&#160;", "ⓢ") # non-breaking-space
       self.wb[i] = self.wb[i].replace("&", "Ⓩ") # ampersand
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -8217,7 +8225,7 @@ class Pph(Book):
         # it's the first reference
         fnlist.append(name)
         self.wb[i] = re.sub(string, \
-        "⑪a id='r{0}' /⑫⑪a href='⑦f{0}' style='text-decoration: none; '⑫⑪sup⑫⑬{0}⑭⑪/sup⑫⑪/a⑫".format(name), \
+        "⑪a id='r{0}'⑫⑪/a⑫⑪a href='⑦f{0}' style='text-decoration: none; '⑫⑪sup⑫⑬{0}⑭⑪/sup⑫⑪/a⑫".format(name), \
         self.wb[i], 1)
 
     self.preProcessCommon()
@@ -8340,7 +8348,7 @@ class Pph(Book):
         i += 1    # as if it worked we deleted the matching line
 
 
-    # convert any <br> outside of .li blocks to <br />
+    # convert any <br> outside of .li blocks to <br>
     i = 0
     while i < len(self.wb):
 
@@ -8353,7 +8361,7 @@ class Pph(Book):
         i += 1
         continue
 
-      self.wb[i] = self.wb[i].replace("<br>", "<br />")
+      self.wb[i] = self.wb[i].replace("<br>", "<br>") # void element
       i += 1
 
 
@@ -8589,7 +8597,6 @@ class Pph(Book):
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     # <lang> tags processed in HTML.
     # <lang="fr">merci</lang>
-    # <span lang="fr xml:lang="fr">merci</span>
     i = 0
     while i < len(self.wb):
       if self.wb[i] == ".li":         # ignore literal blocks
@@ -8602,7 +8609,7 @@ class Pph(Book):
         while m:
           langspec = m.group(1)
           self.wb[i] = re.sub(re.escape(m.group(0)), "ᒪ'{}'".format(langspec), self.wb[i])
-          # self.wb[i] = re.sub(m.group(0), "<span lang=\"{0}\" xml:lang=\"{0}\">".format(langspec), self.wb[i], 1)
+          # self.wb[i] = re.sub(m.group(0), "<span lang=\"{0}\">".format(langspec), self.wb[i], 1)
           m = re.search(r"<lang=[\"']?([^\"'>]+)[\"']?>",self.wb[i])
         if "<lang" in self.wb[i]:
           self.fatal("incorrect lang markup: {}".format(self.wb[i]))
@@ -8815,7 +8822,7 @@ class Pph(Book):
       if m:
         self.wb[i] = re.sub(r"<g>", "<em class='gesperrt'>", self.wb[i])
         self.css.addcss("[1378] em.gesperrt { font-style: normal; letter-spacing: 0.2em; margin-right: -0.2em; }")
-        self.css.addcss("[1379] @media handheld { em.gesperrt { font-style: italic; letter-spacing: 0; margin-right: 0;}}")
+        self.css.addcss("[1379] .x-ebookmaker em.gesperrt { font-style: italic; letter-spacing: 0; margin-right: 0;}")
       self.wb[i] = re.sub("<\/g>", "</em>", self.wb[i])
 
       m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
@@ -8826,9 +8833,9 @@ class Pph(Book):
 
       # <sn>...</sn> becomes a span
       tmpline = self.wb[i]
-      m = re.search(r"<sn[^>]*>.*?</sn>", tmpline) # find sidenote contents and replace any | with <br/>
+      m = re.search(r"<sn[^>]*>.*?</sn>", tmpline) # find sidenote contents and replace any | with <br>
       while m:
-        sn = m.group(0).replace('|', '<br/>')
+        sn = m.group(0).replace('|', '<br>') 
         self.wb[i] = re.sub(re.escape(m.group(0)), sn, self.wb[i])
         tmpline = re.sub(re.escape(m.group(0)), "", tmpline)
         m = re.search(r"<sn[^>]*>.*?</sn>", tmpline)
@@ -8863,18 +8870,18 @@ class Pph(Book):
     text = re.sub("②", "}", text)
     text = re.sub("③", "[", text)
     text = re.sub("④", "]", text)
-    text = re.sub("⑤", "&lt;", text)
-    text = re.sub("⑳", "&gt;", text)
+    text = re.sub("⑤", "&lt;", text) # for future reference: &#60;
+    text = re.sub("⑳", "&gt;", text) # for future reference: &#62;
     text = re.sub("⓪", "#", text)
     text = re.sub("⓫", "|", text)
     text = re.sub("⑩", r"\|", text) # restore temporarily protected \| and \(space)
     text = re.sub("⑮", r"\ ", text)
-    text = re.sub("ⓢ", "&nbsp;", text) # non-breaking space
+    text = re.sub("ⓢ", "&#160;", text) # non-breaking space (edit: use &#160; instead of &nbsp;)
     text = re.sub("ⓣ", "&#8203;", text) # zero space
-    text = re.sub("ⓤ", "&thinsp;", text) # thin space
+    text = re.sub("ⓤ", "&#8201;", text) # thin space (edit: use &#8201; instead of &thinsp;)
     text = re.sub("ⓥ", "&#8196;", text) # thick space
     # ampersand
-    text = re.sub("Ⓩ", "&amp;", text)
+    text = re.sub("Ⓩ", "&#38;", text) # (use &#38; instead of &amp;)
     # protected
     text = re.sub("⑪", "<", text)
     text = re.sub("⑫", ">", text)
@@ -8906,18 +8913,18 @@ class Pph(Book):
 
       # use entities if user is writing any "--" or "----" to the HTML file
       # if this is Latin-1 output. Otherwise, trust the PPer.
-      if self.encoding == 'latin_1' and self.renc == "h":
-        self.wb[i] = self.wb[i].replace("--", "&mdash;")
+      if self.encoding == 'latin_1' and self.renc == "h": 
+        self.wb[i] = self.wb[i].replace("--", "&#8212;") # (edit: use &#8212; instead of &mdash;)
       # flag an odd number of dashes
-      if "&mdash;-" in self.wb[i]:
-        self.warn("&mdash; with hyphen: {}".format(self.wb[i]))
+      if "&#8212;-" in self.wb[i]:
+        self.warn("&mdash; with hyphen: {}".format(self.wb[i])) #named token is ok for output
       # ok now to unprotect those we didn't want to go to &mdash; entity
       self.wb[i] = re.sub(r"⑨", '-', self.wb[i])
 
-      self.wb[i] = re.sub(r"\[oe\]", r'&oelig;', self.wb[i])
-      self.wb[i] = re.sub(r"\[ae\]", r'&aelig;', self.wb[i])
-      self.wb[i] = re.sub(r"\[OE\]", r'&OElig;', self.wb[i])
-      self.wb[i] = re.sub(r"\[AE\]", r'&AElig;', self.wb[i])
+      self.wb[i] = re.sub(r"\[oe\]", r'&#339;', self.wb[i])  #(edit: use &#339; instead of &oelig;)
+      self.wb[i] = re.sub(r"\[ae\]", r'&#230;', self.wb[i])  #(edit: use &#230; instead of &aelig;)
+      self.wb[i] = re.sub(r"\[OE\]", r'&#338;', self.wb[i])  #(edit: use &#338; instead of &OElig;)
+      self.wb[i] = re.sub(r"\[AE\]", r'&#198;', self.wb[i])  #(edit: use &#198; instead of &AElig;)
 
     i = 0
     while i < len(self.wb):
@@ -8978,7 +8985,7 @@ class Pph(Book):
       # lang specifications
       m = re.search(r"ᒪ'(.+?)'", self.wb[i])
       while m:
-        self.wb[i] = re.sub(m.group(0), "<span lang=\"{0}\" xml:lang=\"{0}\">".format(m.group(1)), self.wb[i], 1)
+        self.wb[i] = re.sub(m.group(0), "<span lang=\"{0}\">".format(m.group(1)), self.wb[i], 1) # RT remove the deprecated xml declaration
         m = re.search(r"ᒪ'(.+?)'", self.wb[i])
       self.wb[i] = re.sub("ᒧ", "</span>", self.wb[i])
 
@@ -9038,31 +9045,35 @@ class Pph(Book):
                       "border: thin dotted gray; font-style: normal; font-weight: normal; font-variant: normal; " +
                       "letter-spacing: 0em; text-decoration: none; }"
                       )
-      self.css.addcss("[1501] @media handheld { .sidenote, .sni { float: left; clear: none; font-weight: bold; }}")
+      self.css.addcss("[1501] .x-ebookmaker .sidenote, .sni { float: left; clear: none; font-weight: bold; }")
       self.css.addcss("[1502] .sni { text-indent: -.2em; }")
       self.css.addcss("[1503] .hidev { visibility: hidden; }")
 
     # HTML header
     t = []
-    t.append("<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\"")
-    t.append("    \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">")
-    t.append("<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"" + self.nregs["lang"] + "\" lang=\"" + self.nregs["lang"] + "\">") # include base language in header
+    #t.append("<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\"")
+    #t.append("    \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">")
+    t.append("<!DOCTYPE html>")
+    t.append("<html lang=\"" + self.nregs["lang"] + "\">") # include base language in header RT removed deprecated xmlns and xml declarations
     t.append("  <head>")
 
     if self.encoding == "utf_8":
-      t.append("    <meta http-equiv=\"Content-Type\" content=\"text/html;charset=UTF-8\" />")
+      #t.append("    <meta http-equiv=\"Content-Type\" content=\"text/html;charset=UTF-8\">")
+      t.append("    <meta charset=\"UTF-8\">")
     elif self.encoding == "latin_1":
-      t.append("    <meta http-equiv=\"Content-Type\" content=\"text/html;charset=ISO-8859-1\" />")
+      t.append("    <meta http-equiv=\"Content-Type\" content=\"text/html;charset=ISO-8859-1\">")
 
     if self.dtitle != "":
       t.append("    <title>{}</title>".format(self.htmlTokenRestore(self.dtitle)))
     else:
       t.append("    <title>{}</title>".format("Unknown"))
-    t.append("    <link rel=\"coverpage\" href=\"images/{}\" />".format(self.cimage))
+    t.append("    <link rel=\"icon\" href=\"images/{}\" type=\"image/x-cover\">".format(self.cimage))
     self.checkIllo(self.cimage)
-    t.append("    <style type=\"text/css\">")
+    #t.append("    <style type=\"text/css\">")
+    t.append("    <style>") # RT removed the deprecated CDATA comment opening
     t.append("      CSS PLACEHOLDER")
-    t.append("    </style>")
+    #t.append("    </style>")
+    t.append("    </style>") # RT removed the closing of the deprecated CDATA comment
     t.append("  </head>")
     t.append("  <body>   ")
     t.append("")
@@ -9122,9 +9133,9 @@ class Pph(Book):
 
     self.css.addcss("[1465] div.pbb { page-break-before: always; }")
     self.css.addcss("[1466] hr.pb { border: none; border-bottom: thin solid; margin-bottom: 1em; }")
-    self.css.addcss("[1467] @media handheld { hr.pb { display: none; }}")
+    self.css.addcss("[1467] .x-ebookmaker hr.pb { display: none; }")
     self.wb[self.cl:self.cl+1] = ["<div class='pbb'>",
-                                  "  <hr class='pb' style='{}' />".format(hcss),
+                                  "  <hr class='pb' style='{}'>".format(hcss),
                                   "</div>"]
     self.cl += 2
 
@@ -9207,11 +9218,11 @@ class Pph(Book):
     elif self.wb[self.cl] != ".hr":
       self.warn_w_context("Unrecognized .hr options: {}".format(self.wb[self.cl][3:]), self.cl)
     if hrpct == 100:
-      self.wb[self.cl] = "<hr style='border: none; border-bottom: thin solid; margin: 1em auto; {}' />".format(hcss)
+      self.wb[self.cl] = "<hr style='border: none; border-bottom: thin solid; margin: 1em auto; {}'>".format(hcss)
     else:
       lmarp = (100 - hrpct)//2
       rmarp = 100 - hrpct - lmarp
-      self.wb[self.cl] = "<hr style='border: none; border-bottom: thin solid; margin-top: 1em; margin-bottom: 1em; margin-left: {}%; width: {}%; margin-right: {}%; {}' />".format(lmarp,hrpct,rmarp, hcss)
+      self.wb[self.cl] = "<hr style='border: none; border-bottom: thin solid; margin-top: 1em; margin-bottom: 1em; margin-left: {}%; width: {}%; margin-right: {}%; {}'>".format(lmarp,hrpct,rmarp, hcss)
     self.cl += 1
 
   # .tb thought break
@@ -9222,9 +9233,9 @@ class Pph(Book):
     if self.pvs > 0:
       hcss = "margin-top: {}em; ".format(self.pvs)
       self.pvs = 0
-      self.wb[self.cl] = "<hr style='border: none; border-bottom: thin solid; margin-bottom: 0.8em; margin-left: 35%; margin-right: 35%; width: 30%; {}' />".format(hcss) # for IE
+      self.wb[self.cl] = "<hr style='border: none; border-bottom: thin solid; margin-bottom: 0.8em; margin-left: 35%; margin-right: 35%; width: 30%; {}'>".format(hcss) # for IE
     else:
-      self.wb[self.cl] = "<hr style='border: none; border-bottom: thin solid; margin-top: 0.8em; margin-bottom: 0.8em; margin-left: 35%; margin-right: 35%; width: 30%; ' />" # for IE
+      self.wb[self.cl] = "<hr style='border: none; border-bottom: thin solid; margin-top: 0.8em; margin-bottom: 0.8em; margin-left: 35%; margin-right: 35%; width: 30%; '>" # for IE
     self.cl += 1
 
   # .de CSS definition
@@ -9361,8 +9372,8 @@ class Pph(Book):
       if i < len(self.wb) - 1:
         self.wb[i] = self.wb[i] + self.wb[i+1]
         del self.wb[i+1]
-    s = re.sub(r"\|\|", "<br /> <br />", self.wb[self.cl]) # required for epub
-    s = re.sub("\|", "<br />", s)
+    s = re.sub(r"\|\|", "<br> <br>", self.wb[self.cl]) # required for epub
+    s = re.sub("\|", "<br>", s)
     t = []
 
     endDiv = False
@@ -9655,14 +9666,14 @@ class Pph(Book):
       self.css.addcss("[1600] .figleft { clear: left; float: left; max-width: 100%; margin: 0.5em 1em 1em 0; text-align: left; }")
       if caption_present:
           self.css.addcss("[1601] div.figleft p { text-align: center; text-indent: 0; }")
-      self.css.addcss("[1602] @media handheld { .figleft { float: left; }}")
+      self.css.addcss("[1602] .x-ebookmaker .figleft { float: left; }")
       self.css.addcss("[1608] .figleft img { max-width: 100%; height: auto; }")
 
     if ia["align"] == "r":
       self.css.addcss("[1600] .figright { clear: right; float: right; max-width: 100%; margin: 0.5em 0 1em 1em; text-align: right; }")
       if caption_present:
           self.css.addcss("[1601] div.figright p { text-align: center; text-indent: 0; }")
-      self.css.addcss("[1602] @media handheld { .figright { float: right; }}")
+      self.css.addcss("[1602] .x-ebookmaker .figright { float: right; }")
       self.css.addcss("[1608] .figright img { max-width: 100%; height: auto; }")
 
     # make CSS names from igc counter
@@ -9690,11 +9701,11 @@ class Pph(Book):
       my_width = int(re.sub("%", "", ia["ew"]))
       my_lmar = (100 - my_width) // 2
       my_rmar = 100 - my_width - my_lmar
-      lookup1610 += "[1610] @media handheld {{ .idn {{ margin-left:{}%; width:{}; }}}}".format(my_lmar, ia["ew"])
-      build1610b = "[1610] @media handheld {{ .{} {{ margin-left:{}%; width:{}; }}}}".format(idn, my_lmar, ia["ew"])
+      lookup1610 += "[1610] .x-ebookmaker  .idn {{ margin-left:{}%; width:{}; }}".format(my_lmar, ia["ew"])
+      build1610b = "[1610] .x-ebookmaker  .{} {{ margin-left:{}%; width:{}; }}".format(idn, my_lmar, ia["ew"])
     else:  # floated l or right
-      lookup1610 += "[1610] @media handheld {{ .idn {{ width:{}; }}}}".format(ia["ew"])
-      build1610b = "[1610] @media handheld {{ .{} {{ width:{}; }}}}".format(idn, ia["ew"])
+      lookup1610 += "[1610] .x-ebookmaker .idn {{ width:{}; }}".format(ia["ew"])
+      build1610b = "[1610] .x-ebookmaker .{} {{ width:{}; }}".format(idn, ia["ew"])
 
     # if user has set caption width (in percent) we use that for both HTML and epub.
     # If user hasn’t specified it, we use the width of the image in a browser or
@@ -9805,10 +9816,10 @@ class Pph(Book):
 
     # 16-Apr-2014: placed link in div
     if ia["link"] != "": # link to larger image specified in markup
-      u.append("<a {}href='images/{}'><img src='images/{}' alt='{}' class='{}' /></a>".format(page_link, ia["link"],
+      u.append("<a {}href='images/{}'><img src='images/{}' alt='{}' class='{}'></a>".format(page_link, ia["link"],
                                                                                               ia["ifn"], ia["alt"], ign))
     else: # no link to larger image
-      u.append("{}<img src='images/{}' alt='{}' class='{}' />".format(page_link, ia["ifn"], ia["alt"], ign))
+      u.append("{}<img src='images/{}' alt='{}' class='{}'>".format(page_link, ia["ifn"], ia["alt"], ign))
 
     rep = 1 # source lines to replace
 
@@ -9818,11 +9829,11 @@ class Pph(Book):
       if self.wb[self.cl+1] == ".ca": # multiline
         rep += 1
         j = 2
-        s = self.wb[self.cl+j] + "<br />"
+        s = self.wb[self.cl+j] + "<br>  " #RT Added 2 blank characters to fix issue with character deletion in captions
         rep += 1
         j += 1
         while ((self.cl + j) < len(self.wb)) and self.wb[self.cl+j] != ".ca-":
-          s += self.wb[self.cl+j] + "<br />"
+          s += self.wb[self.cl+j] + "<br>  " #RT Added 2 blank characters to fix issue with character deletion in captions
           j += 1
           rep += 1
         if (self.cl + j) == len(self.wb):
@@ -10038,16 +10049,16 @@ class Pph(Book):
     nf_pdi = False
     if 'b' == nft:
       self.css.addcss("[1215] .lg-container-b { text-align: center; }")  # alignment of entire block
-      self.css.addcss("[1216] @media handheld { .lg-container-b { clear: both; }}")
+      self.css.addcss("[1216] .x-ebookmaker .lg-container-b { clear: both; }")
     if 'l' == nft:
       self.css.addcss("[1217] .lg-container-l { text-align: left; }")
-      self.css.addcss("[1218] @media handheld { .lg-container-l { clear: both; }}")
+      self.css.addcss("[1218] .x-ebookmaker .lg-container-l { clear: both; }")
     if 'r' == nft:
       self.css.addcss("[1219] .lg-container-r { text-align: right; }")
-      self.css.addcss("[1220] @media handheld { .lg-container-r { clear: both; }}")
+      self.css.addcss("[1220] .x-ebookmaker .lg-container-r { clear: both; }")
 
     self.css.addcss("[1221] .linegroup { display: inline-block; text-align: left; }")  # alignment inside block
-    self.css.addcss("[1222] @media handheld { .linegroup { display: block; margin-left: 1.5em; }}")
+    self.css.addcss("[1222] .x-ebookmaker .linegroup { display: block; margin-left: 1.5em; }")
     if mo:
       self.css.addcss("[1223] .linegroup .group0 { margin: 0 auto; }")
     else:
@@ -10275,11 +10286,11 @@ class Pph(Book):
     if rend and ((not lz) or (lz and len(self.fnlist))):
       if self.pvs > 0:
         self.wb[self.cl] = ("<hr style='border: none; border-bottom: thin solid; width: 10%; margin-left: 0; " +
-                            "margin-top: {}em; text-align: left; ' />".format(self.pvs))
+                            "margin-top: {}em; text-align: left; '>".format(self.pvs))
         self.pvs = 0
       else:
         self.wb[self.cl] = ("<hr style='border: none; border-bottom: thin solid; width: 10%; margin-left: 0; " +
-                            "margin-top: 1em; text-align: left; ' />")
+                            "margin-top: 1em; text-align: left; '>")
       self.cl += 1
     else:
       rend = False
@@ -10309,7 +10320,7 @@ class Pph(Book):
         del self.fnlist[:]  # remove everything we handled
         self.fnlist = []
         if rend and rendafter:
-          self.wb.append("<hr style='border: none; border-bottom: thin solid; width: 10%; margin-left: 0; margin-top: 1em; text-align: left; ' />")
+          self.wb.append("<hr style='border: none; border-bottom: thin solid; width: 10%; margin-left: 0; margin-top: 1em; text-align: left; '>")
           self.cl += 1
       else:
         self.warn_w_context("No footnotes saved for this landing zone.", self.cl)
@@ -10416,7 +10427,7 @@ class Pph(Book):
         self.wb[self.cl] = "<div class='footnote' id='f{}'>".format(fnname)
       if self.footnoteLzH: # if special footnote landing zone processing in effect
         self.footnoteStart = self.cl # remember where this footnote started
-      s = "<span class='label'><a href='#r{0}'>{0}</a>.&nbsp;&nbsp;</span>".format(fnname)
+      s = "<span class='label'><a href='#r{0}'>{0}</a>.&#160;&#160;</span>".format(fnname) #(&nbsp; replaced with &#160;)
       self.cl += 1
       self.wb[self.cl] = s + self.wb[self.cl]
 
@@ -10717,18 +10728,23 @@ class Pph(Book):
       ix = len(self.table_list) - 1
       self.css.addcss("[1670] .table{0} {{ {1} }}".format(ix, s))
       if left_indent_pct or right_indent_pct or epw:
-        self.css.addcss("[1671] @media handheld {{ .table{} {{ margin-left: {}%; margin-right: {}%; width: {}%; }} }}".format(ix,
+        self.css.addcss("[1671] .x-ebookmaker { .table{} {{ margin-left: {}%; margin-right: {}%; width: {}%; }} }".format(ix,
                                                                                                                               left_indent_pct,
                                                                                                                               right_indent_pct,
                                                                                                                               epw))
 
-    t.append("<table class='table{}' summary='{}'{}>".format(ix, tsum, tid))
+    if tsum:
+     t.append("<table class='table{}' summary='{}'{}>".format(ix, tsum, tid))
+    else:
+      t.append("<table class='table{}' {}>".format(ix, tid))
 
     # set relative widths of columns
     if tw_html != "none":
       t.append("<colgroup>")
       for (i,w) in enumerate(widths):
-       t.append("<col width='{}%' />".format(pwidths[i]))
+       #t.append("<col width='{}%'>".format(pwidths[i]))
+       t.append("<col class='colwidth{}'>".format(pwidths[i])) # col is a VOID element
+       self.css.addcss("[1700] .colwidth{} {{ width:{}% ;}}".format(pwidths[i],pwidths[i]))
       t.append("</colgroup>")
 
     startloc = self.cl
@@ -10746,7 +10762,7 @@ class Pph(Book):
 
       # see if blank line (will not have borders)
       if "" == self.wb[self.cl]:
-        t.append("  <tr><td>&nbsp;</td></tr>")
+        t.append("  <tr><td>&#160;</td></tr>") #(replaced &nbsp; with &#160;)
         self.cl += 1
         data_row_found = False
         border_top = ''
@@ -10836,7 +10852,7 @@ class Pph(Book):
         # cells on a line are blank. I'm not sure whether setting the blank cells to &nbsp; is the
         # proper fix, but it seems to work.
         if not v[k]:
-          v[k] = '&nbsp;' # force blank cells to nbsp
+          v[k] = '&#160;' # force blank cells to nbsp (&#160;)
         if k == 0: # for first cell, check for <th> flag to indicate a header row
           if len(v[k]) >= 4 and v[k][0:4] == "<th>": # header row?
             cell_type1 = "<th"
@@ -10912,7 +10928,7 @@ class Pph(Book):
 
           # force a spanning cell that is all blank to be &nbsp; so it doesn't disappear
           if colspan and not v[k].strip():
-            v[k] = '&nbsp;'
+            v[k] = '&#160;'
 
           border_classes = border_top + ' ' + border_bottom + ' ' + bbefore[k] + ' ' + border_after
           border_classes = border_classes.strip()
@@ -10962,17 +10978,17 @@ class Pph(Book):
     if type == "p":
       self.css.addcss("[1921] p.drop-capi{} {{ text-indent: 0; margin-top: {}em; margin-bottom: {}em; }}".format(di["s_adj"],mtop,mbot))
       self.css.addcss("[1922] p.drop-capi{}:first-letter {{ color: transparent; visibility: hidden; margin-left: -{}em; }}".format(di["s_adj"],d_adj))
-      self.css.addcss("[1923] @media handheld {")
-      self.css.addcss("[1924]   img.drop-capi { display: none; visibility: hidden; }")
-      self.css.addcss("[1925]   p.drop-capi{}:first-letter {{ color: inherit; visibility: visible; margin-left: 0em; }}".format(di["s_adj"]))
-      self.css.addcss("[1926] }")
+      # self.css.addcss("[1923] /* */") RT this markup causes HTML5 to fail
+      self.css.addcss("[1924]  .x-ebookmaker img.drop-capi { display: none; visibility: hidden; }")
+      self.css.addcss("[1925]  .x-ebookmaker  p.drop-capi{}:first-letter {{ color: inherit; visibility: visible; margin-left: 0em; }}".format(di["s_adj"]))
+      # self.css.addcss("[1926] /* */}") RT this markup causes HTML5 to fail
     else:
       self.css.addcss("[1941] div.drop-capinf{} {{ text-indent: 0; margin-top: {}em; margin-bottom: {}em}}".format(di["s_adj"],mtop,mbot))
       self.css.addcss("[1942] div.drop-capinf{}:first-letter {{ color: transparent; visibility: hidden; margin-left: -{}em; }}".format(di["s_adj"],d_adj))
-      self.css.addcss("[1943] @media handheld {")
-      self.css.addcss("[1944]   img.drop-capinf { display: none; visibility: hidden; }")
-      self.css.addcss("[1945]   div.drop-capinf{}:first-letter {{ color: inherit; visibility: visible; margin-left: 0em; }}".format(di["s_adj"]))
-      self.css.addcss("[1946] }")
+      # self.css.addcss("[1943] /* */ {") RT this markup causes HTML5 to fail
+      self.css.addcss("[1944]  .x-ebookmaker img.drop-capinf { display: none; visibility: hidden; }")
+      self.css.addcss("[1945]  .x-ebookmaker div.drop-capinf{}:first-letter {{ color: inherit; visibility: visible; margin-left: 0em; }}".format(di["s_adj"]))
+      # self.css.addcss("[1946] /* */}") RT this markup causes HTML5 to fail
     self.warn("CSS3 drop-cap. Please note in upload.")
     return di
 
@@ -10986,9 +11002,9 @@ class Pph(Book):
     t = []
     t.append("<div>")
     if di["d_height"] == "":
-      t.append("  <img class='drop-capi' src='images/{}' width='{}' alt='' />".format(di["d_image"],di["d_width"]))
+      t.append("  <img class='drop-capi' src='images/{}' width='{}' alt='' >".format(di["d_image"],di["d_width"]))
     else:
-      t.append("  <img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' />".format(di["d_image"],di["d_width"],di["d_height"]))
+      t.append("  <img class='drop-capi' src='images/{}' width='{}' height='{}' alt='' >".format(di["d_image"],di["d_width"],di["d_height"]))
     t.append("</div><p class='drop-capi{}'>".format(di["s_adj"]))
     self.wb[self.cl:self.cl+1] = t
 
@@ -11012,18 +11028,18 @@ class Pph(Book):
     if type == "p":
       self.css.addcss("[1930] p.drop-capa{} {{ text-indent: -{}em; }}".format(dcadjs,dcadj))
       self.css.addcss("[1931] p.drop-capa{}:first-letter {{ float: left; margin: {:0.3f}em {:0.3f}em 0em 0em; font-size: {}; line-height: {}em; text-indent: 0; }}".format(dcadjs,mt,mr,self.nregs["dcs"],dclh))
-      self.css.addcss("[1933] @media handheld {")
-      self.css.addcss("[1935]   p.drop-capa{} {{ text-indent: 0; }}".format(dcadjs))
-      self.css.addcss("[1936]   p.drop-capa{}:first-letter {{ float: none; margin: 0; font-size: 100%; }}".format(dcadjs))
-      self.css.addcss("[1937] }")
+      # self.css.addcss("[1933] /* */") RT this markup causes HTML5 to fail
+      self.css.addcss("[1935] .x-ebookmaker p.drop-capa{} {{ text-indent: 0; }}".format(dcadjs))
+      self.css.addcss("[1936] .x-ebookmaker   p.drop-capa{}:first-letter {{ float: none; margin: 0; font-size: 100%; }}".format(dcadjs))
+      # self.css.addcss("[1937] /* */") RT this markup causes HTML5 to fail
       self.pdc = "drop-capa{}".format(dcadjs)
     else:
       self.css.addcss("[1950] div.drop-capanf{} {{ text-indent: -{}em; }}".format(dcadjs,dcadj))
       self.css.addcss("[1951] div.drop-capanf{}:first-letter {{ float: left; margin: {:0.3f}em {:0.3f}em 0em 0em; font-size: {}; line-height: {}em; text-indent: 0; }}".format(dcadjs,mt,mr,self.nregs["dcs"],dclh))
-      self.css.addcss("[1953] @media handheld {")
-      self.css.addcss("[1955]   div.drop-capanf{} {{ text-indent: 0; }}".format(dcadjs))
-      self.css.addcss("[1956]   div.drop-capanf{}:first-letter {{ float: none; margin:0; font-size: 100%; }}".format(dcadjs))
-      self.css.addcss("[1957] }")
+      # self.css.addcss("[1953] /* */") RT this markup causes HTML5 to fail
+      self.css.addcss("[1955] .x-ebookmaker div.drop-capanf{} {{ text-indent: 0; }}".format(dcadjs))
+      self.css.addcss("[1956] .x-ebookmaker div.drop-capanf{}:first-letter {{ float: none; margin:0; font-size: 100%; }}".format(dcadjs))
+      # self.css.addcss("[1957] /* */") RT this markup causes HTML5 to fail
       self.pdc = "drop-capanf{}".format(dcadjs)
     del self.wb[line]
 
@@ -11059,9 +11075,11 @@ class Pph(Book):
           h1cnt += 1
 
     i = 0
-    while not re.search(r"<style type=\"text/css\">", self.wb[i]):
+    #while not re.search(r"<style type=\"text/css\">", self.wb[i]):
+    while not re.search(r"<style>", self.wb[i]): # RT removed deprecated CDATA comment opening
       i += 1
-    while not re.search(r"<\/style>", self.wb[i]):
+    #while not re.search(r"<\/style>", self.wb[i]):
+    while not re.search(r"<\/style>", self.wb[i]):  # RT removed deprecated CDATA comment closing
       if len(self.wb[i]) > 90:
         s = self.wb[i]
         splitat = s.rfind(';', 0, 90)
@@ -11224,7 +11242,7 @@ class Pph(Book):
       t = m.group(1).split("|") # split sidenote on | characters if any
       for i in range(len(t)):
         t[i] = t[i].strip()
-      t = "<br />".join(t)
+      t = "<br>".join(t)
       if self.pvs > 0: # handle any pending vertical space before the .sn
         # need to apply vertical space separately so sidenote and following text are placed
         # properly
@@ -11779,7 +11797,7 @@ class Pph(Book):
       # "Print" debugging info (place it into the output text) if requested
       def print_debug(self, info):
         b = self.book
-        buff = "<p>" + "<br />\n".join(info) + "</p>"
+        buff = "<p>" + "<br>\n".join(info) + "</p>"
         self.dlbuffer = buff.split("\n")
         self.emit()
 
@@ -11975,7 +11993,7 @@ class Pph(Book):
           b.css.addcss(dtparms.format(self.dl_class))
           b.css.addcss(ddparms.format(self.dl_class))
           if dtmparms: # if anything added to dtmparms
-            dtmparms = "[1241] @media handheld {{ .{} dt {{" + dtmparms + " }} }}"
+            dtmparms = "[1241] .x-ebookmaker  .{} dt {{" + dtmparms + " }} "
             b.css.addcss(dtmparms.format(self.dl_class))
 
         else:  # <p> style output
@@ -12111,9 +12129,9 @@ class Pph(Book):
           term += self.pageinfo
           self.pageinfo = ""
         if not term:
-          term = "&nbsp;"
+          term = "&#160;"
         if self.options["style"] == "d": # style=d
-          if self.options["float"] or term != "&nbsp;":
+          if self.options["float"] or term != "&#160;":
             self.dlbuffer.append(self.dtddspaces + "<dt{}>".format(self.cvs) + term + "</dt>")
 
         else: # style=p
@@ -12155,7 +12173,7 @@ class Pph(Book):
         self.dd_active = True
 
         if self.options["style"] == "d" and not s:
-          s = "&nbsp;"
+          s = "&#160;"
 
         if not self.options["combine"]: ### why only combine=n?
           # calculate leading spaces in definition line if needed (non-combining only)
@@ -12713,6 +12731,8 @@ def main():
 
   ppgen_stdout.write("done." + '\n')
 
+
+
 if __name__ == '__main__':
     main()
 
@@ -12853,6 +12873,7 @@ if __name__ == '__main__':
 # 1670      .table<number> width
 # 1671      .table<number> width in epub
 # 1672      table border class definitions
+# 1700      table column width
 # 1873      .nf c: .nf-center
 # 1876             .nf-center-c0 (if indented paragraphs)
 # 1876             .nf-center-c1 (if block paragraphs)
