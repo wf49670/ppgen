@@ -32,10 +32,10 @@ import shlex
 import random, inspect
 from math import sqrt
 import struct
-import imghdr
+# import imghdr  wbf: deprecated in 3.11, to be removed in 3.13. We don't actually seem to use it.
 import traceback
 
-VERSION="3.57d_GHS_H5" + with_regex   # 03-Mar-2023
+VERSION="3.57e" + with_regex   # 14-Aug-2023
 #3.57a:
 #  Initial 3.57 release
 #  Enh: Provide context for "Unclosed tags in .nf block" error
@@ -54,6 +54,9 @@ VERSION="3.57d_GHS_H5" + with_regex   # 03-Mar-2023
 #  Bug: Fix Python trap during execution introduced by 3.57a while checking continued .h<n> and .il directives.
 #3.57d:
 #  Enh: Updated HTML processing to HTML5.
+#3.57e:
+#  Bug: Not detecting UTF-8 input files due to still using a deprecated (now removed in 3.11) option on open()
+#  Enh: Remove include for imghdr. We don't really use it, and it's being deprecated and will cause problems in 3.13.
 
 ###  Todo Bug: In HTML, a .sp placed before a .il does not take effect until the next text after the illustration/caption.
 
@@ -2166,7 +2169,7 @@ class Book(object):
 
     if self.encoding == "":
       try:
-        wbuf = open(fn, "rU", encoding='UTF-8').read()
+        wbuf = open(fn, "r", encoding='UTF-8').read() # wbf U (rU) was deprecated and removed in 3.11
         self.encoding = "utf_8"
         self.wb = wbuf.split("\n")
         # remove BOM on first line if present
