@@ -6023,8 +6023,8 @@ class Ppt(Book):
         while m:
           bnInLine = True
           t = " 'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG wants a 1-based count)
-          t = re.sub("[","{",t,1)
-          t = re.sub("]","}",t,1)
+          t = re.sub("\\[","{",t,1)
+          t = re.sub("\\]","}",t,1)
           self.bb.append(t)
           self.jb[m.group(2)] = {"index": f"{i+1}.{len(m.group(1))}", "style": '"', "number": "0", "label": ""}
           if self.ppqt2:
