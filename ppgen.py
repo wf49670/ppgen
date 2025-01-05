@@ -34,6 +34,7 @@ from math import sqrt
 import struct
 # import imghdr  wbf: deprecated in 3.11, to be removed in 3.13. We don't actually seem to use it.
 import traceback
+import json
 
 VERSION="3.57e" + with_regex   # 14-Aug-2023
 #3.57a:
@@ -112,7 +113,8 @@ class Book(object):
 
   wb = [] # working buffer
   eb = [] # emit buffer
-  bb = [] # GG .bin file buffer
+  bb = [] # GG1 .bin file buffer
+  jb = {} # GG2 .json file data (not technically a "buffer").
   gk_user = [] # PPer-supplied Greek characters
   diacritics_user = [] # PPer-supplied diacritic characters
   srw = []    # .sr "which" array
@@ -1546,6 +1548,7 @@ class Book(object):
     del self.wb[:]
     del self.eb[:]
     del self.bb[:]
+    self.jb.clear()
     del self.fnlist[:]
     del self.gk_user[:]
     del self.diacritics_user[:]
@@ -1959,6 +1962,7 @@ class Book(object):
   def createsbin(self):
     bb = []
     bb.append("%::pagenumbers = (") # insert the .bin header into the bb array
+    jb = {}                         # store a json version for guiguts2
     if self.ppqt2:
       self.ppqt = []
       self.ppqtentries = 0
@@ -1973,6 +1977,7 @@ class Book(object):
           t = re.sub("\[","{",t,1)
           t = re.sub("]","}",t,1)
           bb.append(t)
+          jb[m.group(1)] = {"index": f"{i+1}.0", "style": '"', "number": "0", "label": ""}
           if self.ppqt2:
             self.ppqtpage(m.group(1), ccount)
       ccount += len(line) + 1
@@ -1990,10 +1995,16 @@ class Book(object):
       for index,t in enumerate(bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
-      self.print_msg("Terminating as requested after creating -src.txt.bin file: {}".format(binfn))
+      jsonfn = self.srcfile + ".json"
+      f2 = codecs.open(jsonfn, "w", "ISO-8859-1")
+      f2.write(json.dumps({ "pagedetails": jb,
+                            "languages": self.nregs["lang"],
+                          }, sort_keys=True, indent=4))
+      f2.close()
+      self.print_msg("Terminating as requested after creating Guiguts files: {}, {}".format(binfn, jsonfn))
     else:
       self.print_msg("Terminating after -sbin processing, but no .bn commands found;\n" +
-            "-src.txt.bin file not generated.")
+            "Guiguts files not generated.")
     exit(1)
 
 
@@ -6011,6 +6022,7 @@ class Ppt(Book):
           t = re.sub("\[","{",t,1)
           t = re.sub("]","}",t,1)
           self.bb.append(t)
+          self.jb[m.group(2)] = {"index": f"{i+1}.{len(m.group(1))}", "style": '"', "number": "0", "label": ""}
           if self.ppqt2:
             ccount += len(m.group(1)) - offset1 # count characters we haven't counted so far
             offset1 = len(m.group(1))
@@ -6053,11 +6065,18 @@ class Ppt(Book):
     # save GG .bin file if needed
     if self.bnPresent:
       fnb = fn + ".bin"
+      fnj = fn + ".json"
       f1 = codecs.open(fnb, "w", "ISO-8859-1")
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
-      self.print_msg("GG .bin file {} created.".format(fnb))
+      self.print_msg("GG1 .bin file {} created.".format(fnb))
+      f2 = codecs.open(fnj, "w", "ISO-8859-1")
+      f2.write(json.dumps({ "pagedetails": self.jb,
+                            "languages": self.nregs["lang"],
+                          }, sort_keys=True, indent=4))
+      f2.close()
+      self.print_msg("GG2 .json file {} created.".format(fnj))
       if self.ppqt2: # and PPQTv2 metadata, if requested
         self.ppqtpage("", 0, fn=fn)
 
@@ -6125,7 +6144,14 @@ class Ppt(Book):
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
-      self.print_msg("GG .bin file {} created.".format(fnb))
+      self.print_msg("GG1 .bin file {} created.".format(fnb))
+      fnj = fn + ".json"
+      f2 = codecs.open(fnj, "w", "ISO-8859-1")
+      f2.write(json.dumps({ "pagedetails": self.jb,
+                            "languages": self.nregs["lang"],
+                          }, sort_keys=True, indent=4))
+      f2.close()
+      self.print_msg("GG2 .json file {} created.".format(fnj))
       if self.ppqt2: # and PPQTv2 metadata, if requested
         self.ppqtpage("", 0, fn=fn)
 
@@ -9007,11 +9033,18 @@ class Pph(Book):
     # save GG .bin file if needed
     if self.bnPresent:
       fnb = fn + ".bin"
+      fnj = fn + ".json"
       f1 = codecs.open(fnb, "w", "ISO-8859-1")
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
-      self.print_msg("GG .bin file {} created.".format(fnb))
+      self.print_msg("GG1 .bin file {} created.".format(fnb))
+      f2 = codecs.open(fnj, "w", "ISO-8859-1")
+      f2.write(json.dumps({ "pagedetails": self.jb,
+                            "languages": self.nregs["lang"],
+                          }, sort_keys=True, indent=4))
+      f2.close()
+      self.print_msg("GG2 .json file {} created.".format(fnj))
       if self.ppqt2: # and PPQTv2 metadata, if requested
         self.ppqtpage("", 0, fn=fn)
 
@@ -11138,6 +11171,7 @@ class Pph(Book):
           t = re.sub("\[","{",t,1)
           t = re.sub("]","}",t,1)
           self.bb.append(t)
+          self.jb[m.group(2)] = {"index": f"{i+1}.{len(m.group(1))}", "style": '"', "number": "0", "label": ""}
           if self.ppqt2:
             ccount += len(m.group(1)) - offset1 # count characters we haven't counted so far
             offset1 = len(m.group(1))
