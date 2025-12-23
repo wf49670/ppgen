@@ -36,7 +36,7 @@ import struct
 import traceback
 import json
 
-VERSION="3.57f" + with_regex   # 23-Dec-2025
+VERSION="3.57g" + with_regex   # 23-Dec-2025
 #3.57a:
 #  Initial 3.57 release
 #  Enh: Provide context for "Unclosed tags in .nf block" error
@@ -58,8 +58,10 @@ VERSION="3.57f" + with_regex   # 23-Dec-2025
 #3.57e:
 #  Bug: Not detecting UTF-8 input files due to still using a deprecated (now removed in 3.11) option on open()
 #  Enh: Remove include for imghdr. We don't really use it, and it's being deprecated and will cause problems in 3.13.
-#3.57f: rfrank 23-Dec-2025
-#  invalid escape sequences fixed in regex patterns for Python 3.11+
+#3.57f:
+#  Bug: Using a backslash to escape "regular" characters is deprecated starting in Python 3.6, but triggers many visible warnings in 3.12.
+#3.57g: 
+#  Bug: merged additional regex corrections
 
 ###  Todo Bug: In HTML, a .sp placed before a .il does not take effect until the next text after the illustration/caption.
 
@@ -364,6 +366,8 @@ class Book(object):
   # 1. character(s) the user enters
   # 2. character(s) ppgen outputs
   # 3. printable form for .cvglist output listing
+  # 4. ???
+  # 5. A suggestion/note message
   gk = [                              # builtin Greek transliterations
 
      ('ï/', 'i/+', 'ï/', None, 'ΐ (i/+ is the preferred form)'), # i/u/y alternatives using dieresis
@@ -372,9 +376,9 @@ class Book(object):
      ('ï~', 'i~+', 'ï~', None, 'ῗ (i~+ is preferred)'),
      ('ü~', 'y~+', 'ü~', None, 'ῧ (y~+ is preferred)'),
      ('ÿ~', 'y~+', 'ÿ~', None, 'ῧ (y~+ is preferred)'),
-     (r'ï\\', r'i\+', 'ï\\', None, r'ῒ (i\+ is preferred)'),
-     (r'ü\\', r'y\+', 'ü\\', None, r'ῢ (y\+ is preferred)'),
-     (r'ÿ\\', r'y\+', 'ÿ\\', None, r'ῢ (y\+ is preferred)'),
+     (r'ï\\', 'i+', 'ï\\', None, 'ῒ (i+ is preferred)'),
+     (r'ü\\', 'y+', 'ü\\', None, 'ῢ (y+ is preferred)'),
+     (r'ÿ\\', 'y+', 'ÿ\\', None, 'ῢ (y+ is preferred)'),
      ('Ï', '\u03AA', 'Ï'),           # just put these directly to the character (because that's the way Tony did it for GG)
      ('ï', '\u03CA', 'ï'),
      ('Ü', '\u03AB', 'Ü'),
@@ -4733,7 +4737,10 @@ class Book(object):
       self.wb[i] = self.wb[i].replace("....", "ⓓⓓⓓⓓ") # four dot ellipsis
       self.wb[i] = self.wb[i].replace("...", "ⓓⓓⓓ") # 3 dot ellipsis
       self.wb[i] = self.wb[i].replace(". . .", "ⓓⓢⓓⓢⓓ") # 3 dot ellipsis, spaced
-      self.wb[i] = self.wb[i].replace(r"\. \. \.", "ⓓⓢⓓⓢⓓ") # 3 dot ellipsis, spaced
+      # next line was both commented out and incorrect.
+      # line is now corrected but still left commented out.
+      # it may be policy to disallow spaced out ellipsis
+      #self.wb[i] = self.wb[i].replace(r"\. \. \.", "ⓓⓢⓓⓢⓓ") # 3 dot ellipsis, spaced
       # spacing
       self.wb[i] = self.wb[i].replace(r'\ ', "ⓢ") # non-breaking space
       self.wb[i] = self.wb[i].replace(r'\_', "ⓢ") # alternate non-breaking space
@@ -6022,7 +6029,7 @@ class Ppt(Book):
           bnInLine = True
           t = " 'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG wants a 1-based count)
           t = re.sub(r"\[","{",t,1)
-          t = re.sub("]","}",t,1)
+          t = re.sub(r"\]","}",t,1)
           self.bb.append(t)
           self.jb[m.group(2)] = {"index": f"{i+1}.{len(m.group(1))}", "style": '"', "number": "0", "label": ""}
           if self.ppqt2:
@@ -8574,7 +8581,7 @@ class Pph(Book):
             # find all tags on this line; ignore <a and </a tags completely for this purpose
             tmpline = re.sub("<a [^>]*>", "", self.wb[i])
             tmpline = re.sub("</a>", "", tmpline)
-            t = re.findall(r"<\/?[^>]*>", tmpline)
+            t = re.findall(r"</?[^>]*>", tmpline)
             sstart = "" # what to prepend to the line
             for s in tagstack: # build the start string
               sstart += s
@@ -8592,7 +8599,7 @@ class Pph(Book):
                   self.warn("Nested {} tags in .nf block: {}".format(s, tmpline))
                 tagstack.append(s) # save it on the stack
               else:  # it is of form </..> a closing tag
-                tmp = re.sub(r"<\/", "<", s) # decide what its opening tag would be
+                tmp = re.sub("</", "<", s) # decide what its opening tag would be
                 try:
                   if tmp[0:2] != tagstack[-1][0:2]: # needs close the one most recently open
                     self.fatal("mismatched tag {}".format(s))
@@ -8790,53 +8797,53 @@ class Pph(Book):
         if use_class == "fss":
           self.wb[i] = re.sub("<sc>", "<span class='fss'>", self.wb[i], 1)
           self.css.addcss("[1200] .fss { font-size: 75%; }")
-        self.wb[i] = re.sub(r"<\/sc>", "</span>", self.wb[i], 1) # since we had a <sc> replace 1 </sc> if present on this line
+        self.wb[i] = re.sub("</sc>", "</span>", self.wb[i], 1) # since we had a <sc> replace 1 </sc> if present on this line
         m = re.search("<sc>", self.wb[i]) # look for another opening small cap tag
 
       # common closing, may be on separate line
-      self.wb[i] = re.sub(r"<\/sc>", "</span>", self.wb[i])
+      self.wb[i] = re.sub("</sc>", "</span>", self.wb[i])
 
       m = re.search("<l>", self.wb[i])
       if m:
         self.css.addcss("[1201] .large { font-size: large; }")
       self.wb[i] = re.sub("<l>", "<span class='large'>", self.wb[i])
-      self.wb[i] = re.sub(r"<\/l>", "</span>", self.wb[i])
+      self.wb[i] = re.sub("</l>", "</span>", self.wb[i])
 
       m = re.search("<xl>", self.wb[i])
       if m:
         self.css.addcss("[1202] .xlarge { font-size: x-large; }")
       self.wb[i] = re.sub("<xl>", "<span class='xlarge'>", self.wb[i])
-      self.wb[i] = re.sub(r"<\/xl>", "</span>", self.wb[i])
+      self.wb[i] = re.sub("</xl>", "</span>", self.wb[i])
 
       m = re.search("<xxl>", self.wb[i])
       if m:
         self.css.addcss("[1202] .xxlarge { font-size: xx-large; }")
       self.wb[i] = re.sub("<xxl>", "<span class='xxlarge'>", self.wb[i])
-      self.wb[i] = re.sub(r"<\/xxl>", "</span>", self.wb[i])
+      self.wb[i] = re.sub("</xxl>", "</span>", self.wb[i])
 
       m = re.search("<s>", self.wb[i])
       if m:
         self.css.addcss("[1203] .small { font-size: small; }")
       self.wb[i] = re.sub("<s>", "<span class='small'>", self.wb[i])
-      self.wb[i] = re.sub(r"<\/s>", "</span>", self.wb[i])
+      self.wb[i] = re.sub("</s>", "</span>", self.wb[i])
 
       m = re.search("<xs>", self.wb[i])
       if m:
         self.css.addcss("[1204] .xsmall { font-size: x-small; }")
       self.wb[i] = re.sub("<xs>", "<span class='xsmall'>", self.wb[i])
-      self.wb[i] = re.sub(r"<\/xs>", "</span>", self.wb[i])
+      self.wb[i] = re.sub("</xs>", "</span>", self.wb[i])
 
       m = re.search("<xxs>", self.wb[i])
       if m:
         self.css.addcss("[1205] .xxsmall { font-size: xx-small; }")
       self.wb[i] = re.sub("<xxs>", "<span class='xxsmall'>", self.wb[i])
-      self.wb[i] = re.sub(r"<\/xxs>", "</span>", self.wb[i])
+      self.wb[i] = re.sub("</xxs>", "</span>", self.wb[i])
 
       m = re.search("<u>", self.wb[i])
       if m:
         self.css.addcss("[1205] .under { text-decoration: underline; }")
       self.wb[i] = re.sub("<u>", "<span class='under'>", self.wb[i])
-      self.wb[i] = re.sub(r"<\/u>", "</span>", self.wb[i])
+      self.wb[i] = re.sub("</u>", "</span>", self.wb[i])
 
       m = re.search(r"<c=[\"']?(.*?)[\"']?>", self.wb[i])
       while m:
@@ -8845,7 +8852,7 @@ class Pph(Book):
         self.css.addcss("[1209] .color_{0} {{ color: {1}; }}".format(safename,thecolor))
         self.wb[i] = re.sub(re.escape(m.group(0)), "<span class='color_{0}'>".format(safename), self.wb[i])
         m = re.search(r"<c=[\"']?(.*?)[\"']?>", self.wb[i])
-      self.wb[i] = re.sub(r"<\/c>", "</span>", self.wb[i])
+      self.wb[i] = re.sub("</c>", "</span>", self.wb[i])
 
       # <g> is now a stylized em in HTML
       # using a @media handheld, in epub/mobi it is italicized, with normal letter spacing
@@ -8854,13 +8861,13 @@ class Pph(Book):
         self.wb[i] = re.sub(r"<g>", "<em class='gesperrt'>", self.wb[i])
         self.css.addcss("[1378] em.gesperrt { font-style: normal; letter-spacing: 0.2em; margin-right: -0.2em; }")
         self.css.addcss("[1379] .x-ebookmaker em.gesperrt { font-style: italic; letter-spacing: 0; margin-right: 0;}")
-      self.wb[i] = re.sub(r"<\/g>", "</em>", self.wb[i])
+      self.wb[i] = re.sub("</g>", "</em>", self.wb[i])
 
       m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
       while m:
         self.wb[i] = re.sub(m.group(0), "<span style='font-size⑥ {}; '>".format(m.group(1)), self.wb[i], 1)
         m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
-      self.wb[i] = re.sub(r"<\/fs>", "</span>", self.wb[i])
+      self.wb[i] = re.sub("</fs>", "</span>", self.wb[i])
 
       # <sn>...</sn> becomes a span
       tmpline = self.wb[i]
@@ -8920,12 +8927,6 @@ class Pph(Book):
     text = re.sub("⑭", "]", text)
     text = re.sub("⓮", "^", text)
     text = re.sub("⓯", "_{", text)
-
-    # unprotect temporarily protected characters from Greek strings
-    text = re.sub("⑩", r"\|", text) # restore temporarily protected \| and \(space)
-    text = re.sub("⑮", r"\ ", text)
-
-
     return text
 
 
@@ -11172,7 +11173,7 @@ class Pph(Book):
           bnInLine = True
           t = " 'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG expects 1-based line number)
           t = re.sub(r"\[","{",t,1)
-          t = re.sub("]","}",t,1)
+          t = re.sub(r"\]","}",t,1)
           self.bb.append(t)
           self.jb[m.group(2)] = {"index": f"{i+1}.{len(m.group(1))}", "style": '"', "number": "0", "label": ""}
           if self.ppqt2:
