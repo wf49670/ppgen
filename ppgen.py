@@ -25,7 +25,6 @@ except:
 import sys, string, os, platform
 import configparser
 import textwrap
-import codecs
 import unicodedata
 from collections import defaultdict
 import shlex
@@ -1898,7 +1897,7 @@ class Book(object):
 
   def cvglist(self):
     if self.listcvg:
-      f1 = codecs.open("ppgen-cvglist.txt", "w", encoding="UTF-8")
+      f1 = open("ppgen-cvglist.txt", "w", encoding="UTF-8")
       f1.write("\r\n\r\nppgen {}\r\n".format(VERSION))
       f1.write("\r\nBuilt-in Greek Characters:\r\n")
       f1.write("User enters:  ppgen generates:\r\n\r\n")
@@ -1921,7 +1920,7 @@ class Book(object):
   # Create special output file after .gk or .cv if requested, and quit
   def cvgbailout(self):
     bailfn = re.sub("-src", "", self.srcfile.split('.')[0]) + "-cvgout-utf8.txt"
-    f1 = codecs.open(bailfn, "w", encoding="UTF-8")
+    f1 = open(bailfn, "w", encoding="UTF-8")
     for index,t in enumerate(self.wb):
       # unprotect temporarily protected characters from Greek strings
       t = t.replace("⑩", r"\|") # restore temporarily protected \| and \(space)
@@ -1956,7 +1955,7 @@ class Book(object):
       self.ppqt.append('  ]')
       self.ppqt.append('}')
       ppqtfn = fn + ".ppqt"
-      f1 = codecs.open(ppqtfn, "w", "ISO-8859-1")
+      f1 = open(ppqtfn, "w", encoding="ISO-8859-1")
       for index,t in enumerate(self.ppqt):
         f1.write("{:s}\r\n".format(t))
       f1.close()
@@ -1997,12 +1996,12 @@ class Book(object):
       bb.append(r"$::pngspath = '{}';".format(os.path.join(os.path.dirname(os.path.realpath(self.srcfile)),"pngs","")))
       bb.append("1;")
       binfn = self.srcfile + ".bin"
-      f1 = codecs.open(binfn, "w", "ISO-8859-1")
+      f1 = open(binfn, "w", encoding="ISO-8859-1")
       for index,t in enumerate(bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
       jsonfn = self.srcfile + ".json"
-      f2 = codecs.open(jsonfn, "w", "ISO-8859-1")
+      f2 = open(jsonfn, "w", encoding="ISO-8859-1")
       f2.write(json.dumps({ "pagedetails": jb,
                             "languages": self.nregs["lang"],
                           }, sort_keys=True, indent=4))
@@ -5061,7 +5060,7 @@ class Ppt(Book):
       encoding = "UTF-8"
     else:
       encoding = "ISO-8859-1"
-    f1 = codecs.open("bailout.txt", "w", encoding=encoding)
+    f1 = open("bailout.txt", "w", encoding=encoding)
     for index,t in enumerate(buffer):
       f1.write( "{:s}\r\n".format(t.rstrip()) )
     f1.close()
@@ -6059,7 +6058,7 @@ class Ppt(Book):
     longcount = 0
     while (len(self.eb) > 0) and not self.eb[-1]:
       self.eb.pop()
-    f1 = codecs.open(fn, "w", "utf-8")
+    f1 = open(fn, "w", encoding="utf-8")
     for index,t in enumerate(self.eb):
       s = t.rstrip()
       if self.truelen(s) > self.linelimitwarning:
@@ -6075,12 +6074,12 @@ class Ppt(Book):
     if self.bnPresent:
       fnb = fn + ".bin"
       fnj = fn + ".json"
-      f1 = codecs.open(fnb, "w", "ISO-8859-1")
+      f1 = open(fnb, "w", encoding="ISO-8859-1")
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
       self.print_msg("GG1 .bin file {} created.".format(fnb))
-      f2 = codecs.open(fnj, "w", "ISO-8859-1")
+      f2 = open(fnj, "w", encoding="ISO-8859-1")
       f2.write(json.dumps({ "pagedetails": self.jb,
                             "languages": self.nregs["lang"],
                           }, sort_keys=True, indent=4))
@@ -6131,9 +6130,9 @@ class Ppt(Book):
   # save emit buffer in Latin-1 encoding to specified latfile
   def saveLat1(self, fn):
     # write Latin-1 file (text output, Latin-1)
-    # note: using codecs.open allows specific line terminators.
+    # note: using open allows specific line terminators.
     # using .open would write platform-specific line terminators.
-    f1 = codecs.open(fn, "w", "ISO-8859-1")
+    f1 = open(fn, "w", encoding="ISO-8859-1")
     longcount = 0
     for index,t in enumerate(self.eb):
       s = t.rstrip()
@@ -6149,13 +6148,13 @@ class Ppt(Book):
     # save GG .bin file if needed
     if self.bnPresent:
       fnb = fn + ".bin"
-      f1 = codecs.open(fnb, "w", "ISO-8859-1")
+      f1 = open(fnb, "w", encoding="ISO-8859-1")
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
       self.print_msg("GG1 .bin file {} created.".format(fnb))
       fnj = fn + ".json"
-      f2 = codecs.open(fnj, "w", "ISO-8859-1")
+      f2 = open(fnj, "w", encoding="ISO-8859-1")
       f2.write(json.dumps({ "pagedetails": self.jb,
                             "languages": self.nregs["lang"],
                           }, sort_keys=True, indent=4))
@@ -8171,7 +8170,7 @@ class Pph(Book):
 
   # bailout after saving working buffer in bailout.txt
   def bailout(self, buffer):
-    f1 = codecs.open("bailout.txt", "w", encoding='utf-8')
+    f1 = open("bailout.txt", "w", encoding='utf-8')
     for index,t in enumerate(buffer):
       f1.write( "{:s}\r\n".format(t.rstrip()) )
     f1.close()
@@ -9024,7 +9023,7 @@ class Pph(Book):
   # -------------------------------------------------------------------------------------
   # save buffer to specified dstfile (HTML output)
   def saveFile(self, fn):
-    f1 = codecs.open(fn, "w", self.encoding)
+    f1 = open(fn, "w", encoding=self.encoding)
     for index,t in enumerate(self.wb):
       try:
         f1.write( "{:s}\r\n".format(t))
@@ -9037,12 +9036,12 @@ class Pph(Book):
     if self.bnPresent:
       fnb = fn + ".bin"
       fnj = fn + ".json"
-      f1 = codecs.open(fnb, "w", "ISO-8859-1")
+      f1 = open(fnb, "w", encoding="ISO-8859-1")
       for index,t in enumerate(self.bb):
         f1.write("{:s}\r\n".format(t))
       f1.close()
       self.print_msg("GG1 .bin file {} created.".format(fnb))
-      f2 = codecs.open(fnj, "w", "ISO-8859-1")
+      f2 = open(fnj, "w", encoding="ISO-8859-1")
       f2.write(json.dumps({ "pagedetails": self.jb,
                             "languages": self.nregs["lang"],
                           }, sort_keys=True, indent=4))
