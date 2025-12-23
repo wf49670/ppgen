@@ -14,7 +14,7 @@ locale.setlocale(category=locale.LC_ALL, locale="en_US.utf-8") # RT correct inva
 import argparse
 from time import gmtime, strftime
 try:
-  import regex as re
+  import regex as re  # type: ignore
   re.DEFAULT_VERSION = re.VERSION0
   with_regex = " (with regex)"
 except:
@@ -2455,7 +2455,7 @@ class Book(object):
           try:
             dopts["width"] = int(temp)
           except:
-            b.crash_w_context("Invalid w= value: {}".format(w), b.cl)
+            b.crash_w_context("Invalid w= value: {}".format(temp), b.cl)
         b.list_item_width = dopts["width"]
 
         if "debug=" in options:
@@ -3304,7 +3304,7 @@ class Book(object):
           try:
             self.list_item_width = int(w) + 2 # specified width of number, + 2 for separator and a space
           except:
-            self.crash_w_context("Invalid w= value: {}".format(indent), self.cl)
+            self.crash_w_context("Invalid w= value: {}".format(w), self.cl)
         else:
           self.list_item_width = 4 # default 2 for width of number, + 2 for separator and a space
 
@@ -3356,7 +3356,7 @@ class Book(object):
         elif space.lower().startswith("n"):
           self.list_space = False
         else:
-          self.warn_w_context("Unknown spaced value: {}. spaced=no assumed".format(spaced), self.cl)
+          self.warn_w_context("Unknown spaced value: {}. spaced=no assumed".format(space), self.cl)
           self.list_space = False
       else:
         self.list_space = False
