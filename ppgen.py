@@ -10732,7 +10732,7 @@ class Pph(Book):
       ix = len(self.table_list) - 1
       self.css.addcss("[1670] .table{0} {{ {1} }}".format(ix, s))
       if left_indent_pct or right_indent_pct or epw:
-        self.css.addcss("[1671] .x-ebookmaker { .table{} {{ margin-left: {}%; margin-right: {}%; width: {}%; }} }".format(ix,
+        self.css.addcss("[1671] .x-ebookmaker .table{} {{ margin-left: {}%; margin-right: {}%; width: {}%; }}".format(ix,
                                                                                                                               left_indent_pct,
                                                                                                                               right_indent_pct,
                                                                                                                               epw))
