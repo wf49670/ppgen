@@ -36,7 +36,7 @@ import struct
 import traceback
 import json
 
-VERSION="3.57e" + with_regex   # 14-Aug-2023
+VERSION="3.57f" + with_regex   # 23-Dec-2025
 #3.57a:
 #  Initial 3.57 release
 #  Enh: Provide context for "Unclosed tags in .nf block" error
@@ -58,6 +58,8 @@ VERSION="3.57e" + with_regex   # 14-Aug-2023
 #3.57e:
 #  Bug: Not detecting UTF-8 input files due to still using a deprecated (now removed in 3.11) option on open()
 #  Enh: Remove include for imghdr. We don't really use it, and it's being deprecated and will cause problems in 3.13.
+#3.57f: rfrank 23-Dec-2025
+#  invalid escape sequences fixed in regex patterns for Python 3.11+
 
 ###  Todo Bug: In HTML, a .sp placed before a .il does not take effect until the next text after the illustration/caption.
 
@@ -370,181 +372,181 @@ class Book(object):
      ('ï~', 'i~+', 'ï~', None, 'ῗ (i~+ is preferred)'),
      ('ü~', 'y~+', 'ü~', None, 'ῧ (y~+ is preferred)'),
      ('ÿ~', 'y~+', 'ÿ~', None, 'ῧ (y~+ is preferred)'),
-     (r'ï\\', 'i\+', 'ï\\', None, 'ῒ (i\+ is preferred)'),
-     (r'ü\\', 'y\+', 'ü\\', None, 'ῢ (y\+ is preferred)'),
-     (r'ÿ\\', 'y\+', 'ÿ\\', None, 'ῢ (y\+ is preferred)'),
+     (r'ï\\', r'i\+', 'ï\\', None, r'ῒ (i\+ is preferred)'),
+     (r'ü\\', r'y\+', 'ü\\', None, r'ῢ (y\+ is preferred)'),
+     (r'ÿ\\', r'y\+', 'ÿ\\', None, r'ῢ (y\+ is preferred)'),
      ('Ï', '\u03AA', 'Ï'),           # just put these directly to the character (because that's the way Tony did it for GG)
      ('ï', '\u03CA', 'ï'),
      ('Ü', '\u03AB', 'Ü'),
      ('ü', '\u03CB', 'ü'),
      ('ÿ', '\u03CB', 'ÿ'),
-     (r'a\)\\\|', '\u1F82', 'a)\\|'), # Triply marked letters
-     (r'a\(\\\|', '\u1F83', 'a(\\|'),
-     ('a\)/\|',   '\u1F84', 'a)/|'),
-     ('a\(/\|',   '\u1F85', 'a(/|'),
-     ('a~\)\|',   '\u1F86', 'a~)|'),
-     ('a~\(\|',   '\u1F87', 'a~(|'),
-     (r'A\)\\\|', '\u1F8A', 'A)\\|'),
-     (r'A\(\\\|', '\u1F8B', 'A(\\|'),
-     ('A\)/\|',   '\u1F8C', 'A)/|'),
-     ('A\(/\|',   '\u1F8D', 'A(/|'),
-     ('A~\)\|',   '\u1F8E', 'A~)|'),
-     ('A~\(\|',   '\u1F8F', 'A~(|'),
-     (r'ê\)\\\|', '\u1F92', 'ê)\\|'),
-     (r'ê\(\\\|', '\u1F93', 'ê(\\|'),
+     (r'a\)\\\|', '\u1F82', r'a)\\|'), # Triply marked letters
+     (r'a\(\\\|', '\u1F83', r'a(\\|'),
+     (r'a\)/\|',   '\u1F84', 'a)/|'),
+     (r'a\(/\|',   '\u1F85', 'a(/|'),
+     (r'a~\)\|',   '\u1F86', 'a~)|'),
+     (r'a~\(\|',   '\u1F87', 'a~(|'),
+     (r'A\)\\\|', '\u1F8A', r'A)\\|'),
+     (r'A\(\\\|', '\u1F8B', r'A(\\|'),
+     (r'A\)/\|',   '\u1F8C', 'A)/|'),
+     (r'A\(/\|',   '\u1F8D', 'A(/|'),
+     (r'A~\)\|',   '\u1F8E', 'A~)|'),
+     (r'A~\(\|',   '\u1F8F', 'A~(|'),
+     (r'ê\)\\\|', '\u1F92', r'ê)\\|'),
+     (r'ê\(\\\|', '\u1F93', r'ê(\\|'),
      (r'ê\)/\|',  '\u1F94', 'ê)/|'),
      (r'ê\(/\|',  '\u1F95', 'ê(/|'),
-     ('ê~\)\|',   '\u1F96', 'ê~)|'),
-     ('ê~\(\|',   '\u1F97', 'ê~(|'),
-     (r'Ê\)\\\|', '\u1F9A', 'Ê)\\|'),
-     (r'Ê\(\\\|', '\u1F9B', 'Ê(\\|'),
-     ('Ê\)/\|',   '\u1F9C', 'Ê)/|'),
-     ('Ê\(/\|',   '\u1F9D', 'Ê(/|'),
-     ('Ê~\)\|',   '\u1F9E', 'Ê~)|'),
-     ('Ê~\(\|',   '\u1F9F', 'Ê~(|'),
-     (r'ô\)\\\|', '\u1FA2', 'ô)\\|'),
-     (r'ô\(\\\|', '\u1FA3', 'ô(\\|'),
-     ('ô\)/\|',   '\u1FA4', 'ô)/|'),
-     ('ô\(/\|',   '\u1FA5', 'ô(/|'),
-     ('ô~\)\|',   '\u1FA6', 'ô~)|'),
-     ('ô~\(\|',   '\u1FA7', 'ô~(|'),
-     (r'Ô\)\\\|', '\u1FAA', 'Ô)\\|'),
-     (r'Ô\(\\\|', '\u1FAB', 'Ô(\\|'),
-     ('Ô\)/\|',   '\u1FAC', 'Ô)/|'),
-     ('Ô\(/\|',   '\u1FAD', 'Ô(/|'),
-     ('Ô~\)\|',   '\u1FAE', 'Ô~)|'),
-     ('Ô~\(\|',   '\u1FAF', 'Ô~(|'),
+     (r'ê~\)\|',   '\u1F96', 'ê~)|'),
+     (r'ê~\(\|',   '\u1F97', 'ê~(|'),
+     (r'Ê\)\\\|', '\u1F9A', r'Ê)\\|'),
+     (r'Ê\(\\\|', '\u1F9B', r'Ê(\\|'),
+     (r'Ê\)/\|',   '\u1F9C', 'Ê)/|'),
+     (r'Ê\(/\|',   '\u1F9D', 'Ê(/|'),
+     (r'Ê~\)\|',   '\u1F9E', 'Ê~)|'),
+     (r'Ê~\(\|',   '\u1F9F', 'Ê~(|'),
+     (r'ô\)\\\|', '\u1FA2', r'ô)\\|'),
+     (r'ô\(\\\|', '\u1FA3', r'ô(\\|'),
+     (r'ô\)/\|',   '\u1FA4', 'ô)/|'),
+     (r'ô\(/\|',   '\u1FA5', 'ô(/|'),
+     (r'ô~\)\|',   '\u1FA6', 'ô~)|'),
+     (r'ô~\(\|',   '\u1FA7', 'ô~(|'),
+     (r'Ô\)\\\|', '\u1FAA', r'Ô)\\|'),
+     (r'Ô\(\\\|', '\u1FAB', r'Ô(\\|'),
+     (r'Ô\)/\|',   '\u1FAC', 'Ô)/|'),
+     (r'Ô\(/\|',   '\u1FAD', 'Ô(/|'),
+     (r'Ô~\)\|',   '\u1FAE', 'Ô~)|'),
+     (r'Ô~\(\|',   '\u1FAF', 'Ô~(|'),
      (r'a\)\\',   '\u1F02', 'a)\\'),  # Doubly marked letters
      (r'a\(\\',   '\u1F03', 'a(\\'),
-     ('a\)/',     '\u1F04', 'a)/'),
-     ('a\(/',     '\u1F05', 'a(/'),
-     ('a~\)',     '\u1F06', 'a~)'),
-     ('a~\(',     '\u1F07', 'a~('),
+     (r'a\)/',     '\u1F04', 'a)/'),
+     (r'a\(/',     '\u1F05', 'a(/'),
+     (r'a~\)',     '\u1F06', 'a~)'),
+     (r'a~\(',     '\u1F07', 'a~('),
      (r'A\)\\',   '\u1F0A', 'A)\\'),
      (r'A\(\\',   '\u1F0B', 'A(\\'),
-     ('A\)/',     '\u1F0C', 'A)/'),
-     ('A\(/',     '\u1F0D', 'A(/'),
-     ('A~\)',     '\u1F0E', 'A~)'),
-     ('A~\(',     '\u1F0F', 'A~('),
+     (r'A\)/',     '\u1F0C', 'A)/'),
+     (r'A\(/',     '\u1F0D', 'A(/'),
+     (r'A~\)',     '\u1F0E', 'A~)'),
+     (r'A~\(',     '\u1F0F', 'A~('),
      (r'e\)\\',   '\u1F12', 'e)\\'),
      (r'e\(\\',   '\u1F13', 'e(\\'),
-     ('e\)/',     '\u1F14', 'e)/'),
-     ('e\(/',     '\u1F15', 'e(/'),
+     (r'e\)/',     '\u1F14', 'e)/'),
+     (r'e\(/',     '\u1F15', 'e(/'),
      (r'E\)\\',   '\u1F1A', 'E)\\'),
      (r'E\(\\',   '\u1F1B', 'E(\\'),
-     ('E\)/',     '\u1F1C', 'E)/'),
-     ('E\(/',     '\u1F1D', 'E(/'),
+     (r'E\)/',     '\u1F1C', 'E)/'),
+     (r'E\(/',     '\u1F1D', 'E(/'),
      (r'ê\)\\',   '\u1F22', 'ê)\\'),
      (r'ê\(\\',   '\u1F23', 'ê(\\'),
-     ('ê\)/',     '\u1F24', 'ê)/'),
-     ('ê\(/',     '\u1F25', 'ê(/'),
-     ('ê~\)',     '\u1F26', 'ê~)'),
-     ('ê~\(',     '\u1F27', 'ê~('),
+     (r'ê\)/',     '\u1F24', 'ê)/'),
+     (r'ê\(/',     '\u1F25', 'ê(/'),
+     (r'ê~\)',     '\u1F26', 'ê~)'),
+     (r'ê~\(',     '\u1F27', 'ê~('),
      (r'Ê\)\\',   '\u1F2A', 'Ê)\\'),
      (r'Ê\(\\',   '\u1F2B', 'Ê(\\'),
-     ('Ê\)/',     '\u1F2C', 'Ê)/'),
-     ('Ê\(/',     '\u1F2D', 'Ê(/'),
-     ('Ê~\)',     '\u1F2E', 'Ê~)'),
-     ('Ê~\(',     '\u1F2F', 'Ê~('),
+     (r'Ê\)/',     '\u1F2C', 'Ê)/'),
+     (r'Ê\(/',     '\u1F2D', 'Ê(/'),
+     (r'Ê~\)',     '\u1F2E', 'Ê~)'),
+     (r'Ê~\(',     '\u1F2F', 'Ê~('),
      (r'i\)\\',   '\u1F32', 'i)\\'),
      (r'i\(\\',   '\u1F33', 'i(\\'),
-     ('i\)/',     '\u1F34', 'i)/'),
-     ('i\(/',     '\u1F35', 'i(/'),
-     ('i~\)',     '\u1F36', 'i~)'),
-     ('i~\(',     '\u1F37', 'i~('),
+     (r'i\)/',     '\u1F34', 'i)/'),
+     (r'i\(/',     '\u1F35', 'i(/'),
+     (r'i~\)',     '\u1F36', 'i~)'),
+     (r'i~\(',     '\u1F37', 'i~('),
      (r'I\)\\',   '\u1F3A', 'I)\\'),
      (r'I\(\\',   '\u1F3B', 'I(\\'),
-     ('I\)/',     '\u1F3C', 'I)/'),
-     ('I\(/',     '\u1F3D', 'I(/'),
-     ('I~\)',     '\u1F3E', 'I~)'),
-     ('I~\(',     '\u1F3F', 'I~('),
+     (r'I\)/',     '\u1F3C', 'I)/'),
+     (r'I\(/',     '\u1F3D', 'I(/'),
+     (r'I~\)',     '\u1F3E', 'I~)'),
+     (r'I~\(',     '\u1F3F', 'I~('),
      (r'o\)\\',   '\u1F42', 'o)\\'),
      (r'o\(\\',   '\u1F43', 'o(\\'),
-     ('o\)/',     '\u1F44', 'o)/'),
-     ('o\(/',     '\u1F45', 'o(/'),
+     (r'o\)/',     '\u1F44', 'o)/'),
+     (r'o\(/',     '\u1F45', 'o(/'),
      (r'O\)\\',   '\u1F4A', 'O)\\'),
      (r'O\(\\',   '\u1F4B', 'O(\\'),
-     ('O\)/',     '\u1F4C', 'O)/'),
-     ('O\(/',     '\u1F4D', 'O(/'),
+     (r'O\)/',     '\u1F4C', 'O)/'),
+     (r'O\(/',     '\u1F4D', 'O(/'),
      (r'y\)\\',   '\u1F52', 'y)\\'),
      (r'y\(\\',   '\u1F53', 'y(\\'),
-     ('y\)/',     '\u1F54', 'y)/'),
-     ('y\(/',     '\u1F55', 'y(/'),
-     ('y~\)',     '\u1F56', 'y~)'),
-     ('y~\(',     '\u1F57', 'y~('),
+     (r'y\)/',     '\u1F54', 'y)/'),
+     (r'y\(/',     '\u1F55', 'y(/'),
+     (r'y~\)',     '\u1F56', 'y~)'),
+     (r'y~\(',     '\u1F57', 'y~('),
      (r'Y\(\\',   '\u1F5B', 'Y(\\'),
-     ('Y\(/',     '\u1F5D', 'Y(/'),
-     ('Y~\(',     '\u1F5F', 'Y~('),
+     (r'Y\(/',     '\u1F5D', 'Y(/'),
+     (r'Y~\(',     '\u1F5F', 'Y~('),
      (r'ô\)\\',   '\u1F62', 'ô)\\'),
      (r'ô\(\\',   '\u1F63', 'ô(\\'),
-     ('ô\)/',     '\u1F64', 'ô)/'),
-     ('ô\(/',     '\u1F65', 'ô(/'),
-     ('ô~\)',     '\u1F66', 'ô~)'),
-     ('ô~\(',     '\u1F67', 'ô~('),
+     (r'ô\)/',     '\u1F64', 'ô)/'),
+     (r'ô\(/',     '\u1F65', 'ô(/'),
+     (r'ô~\)',     '\u1F66', 'ô~)'),
+     (r'ô~\(',     '\u1F67', 'ô~('),
      (r'Ô\)\\',   '\u1F6A', 'Ô)\\'),
      (r'Ô\(\\',   '\u1F6B', 'Ô(\\'),
-     ('Ô\)/',     '\u1F6C', 'Ô)/'),
-     ('Ô\(/',     '\u1F6D', 'Ô(/'),
-     ('Ô~\)',     '\u1F6E', 'Ô~)'),
-     ('Ô~\(',     '\u1F6F', 'Ô~('),
-     ('a\)\|',    '\u1F80', 'a)|'),
-     ('a\(\|',    '\u1F81', 'a(|'),
-     ('A\)\|',    '\u1F88', 'A)|'),
-     ('A\(\|',    '\u1F89', 'A(|'),
-     ('ê\)\|',    '\u1F90', 'ê)|'),
-     ('ê\(\|',    '\u1F91', 'ê(|'),
-     ('Ê\)\|',    '\u1F98', 'Ê)|'),
-     ('Ê\(\|',    '\u1F99', 'Ê(|'),
-     ('ô\)\|',    '\u1FA0', 'ô)|'),
-     ('ô\(\|',    '\u1FA1', 'ô(|'),
-     ('Ô\)\|',    '\u1FA8', 'Ô)|'),
-     ('Ô\(\|',    '\u1FA9', 'Ô(|'),
-     (r'a\\\|',   '\u1FB2', 'a\\|'),
-     ('a/\|',     '\u1FB4', 'a/|'),
-     ('a~\|',     '\u1FB7', 'a~|'),
-     (r'ê\\\|',   '\u1FC2', 'ê\\|'),
-     ('ê/\|',     '\u1FC4', 'ê/|'),
-     ('ê~\|',     '\u1FC7', 'ê~|'),
-     (r'i\\\+',   '\u1FD2', 'i\\+'),
-     ('i/\+',     '\u1FD3', 'i/+'),
-     ('i~\+',     '\u1FD7', 'i~+'),
-     (r'y\\\+',   '\u1FE2', 'y\\+'),
-     ('y/\+',     '\u1FE3', 'y/+'),
-     ('y~\+',     '\u1FE7', 'y~+'),
-     (r'ô\\\|',   '\u1FF2', 'ô\\|'),
-     ('ô/\|',     '\u1FF4', 'ô/|'),
-     ('ô~\|',     '\u1FF7', 'ô~|'),
-     ('i/\+',     '\u0390', 'i/+'),
-     ('y/\+',     '\u03B0', 'y/+'),
-     ('a\)',      '\u1F00', 'a)'),  # Singly marked letters
-     ('a\(',      '\u1F01', 'a('),
-     ('A\)',      '\u1F08', 'A)'),
-     ('A\(',      '\u1F09', 'A('),
+     (r'Ô\)/',     '\u1F6C', 'Ô)/'),
+     (r'Ô\(/',     '\u1F6D', 'Ô(/'),
+     (r'Ô~\)',     '\u1F6E', 'Ô~)'),
+     (r'Ô~\(',     '\u1F6F', 'Ô~('),
+     (r'a\)\|',    '\u1F80', 'a)|'),
+     (r'a\(\|',    '\u1F81', 'a(|'),
+     (r'A\)\|',    '\u1F88', 'A)|'),
+     (r'A\(\|',    '\u1F89', 'A(|'),
+     (r'ê\)\|',    '\u1F90', 'ê)|'),
+     (r'ê\(\|',    '\u1F91', 'ê(|'),
+     (r'Ê\)\|',    '\u1F98', 'Ê)|'),
+     (r'Ê\(\|',    '\u1F99', 'Ê(|'),
+     (r'ô\)\|',    '\u1FA0', 'ô)|'),
+     (r'ô\(\|',    '\u1FA1', 'ô(|'),
+     (r'Ô\)\|',    '\u1FA8', 'Ô)|'),
+     (r'Ô\(\|',    '\u1FA9', 'Ô(|'),
+     (r'a\\\|',   '\u1FB2', r'a\\|'),
+     (r'a/\|',     '\u1FB4', 'a/|'),
+     (r'a~\|',     '\u1FB7', 'a~|'),
+     (r'ê\\\|',   '\u1FC2', r'ê\\|'),
+     (r'ê/\|',     '\u1FC4', 'ê/|'),
+     (r'ê~\|',     '\u1FC7', 'ê~|'),
+     (r'i\\\+',   '\u1FD2', r'i\\+'),
+     (r'i/\+',     '\u1FD3', 'i/+'),
+     (r'i~\+',     '\u1FD7', 'i~+'),
+     (r'y\\\+',   '\u1FE2', r'y\\+'),
+     (r'y/\+',     '\u1FE3', 'y/+'),
+     (r'y~\+',     '\u1FE7', 'y~+'),
+     (r'ô\\\|',   '\u1FF2', r'ô\\|'),
+     (r'ô/\|',     '\u1FF4', 'ô/|'),
+     (r'ô~\|',     '\u1FF7', 'ô~|'),
+     (r'i/\+',     '\u0390', 'i/+'),
+     (r'y/\+',     '\u03B0', 'y/+'),
+     (r'a\)',      '\u1F00', 'a)'),  # Singly marked letters
+     (r'a\(',      '\u1F01', 'a('),
+     (r'A\)',      '\u1F08', 'A)'),
+     (r'A\(',      '\u1F09', 'A('),
      (r'O\\',     '\u1FF8', 'O\\'),
      ('O/',       '\u1FF9', 'O/'),
-     ('e\)',      '\u1F10', 'e)'),
-     ('e\(',      '\u1F11', 'e('),
-     ('E\)',      '\u1F18', 'E)'),
-     ('E\(',      '\u1F19', 'E('),
-     ('ê\)',      '\u1F20', 'ê)'),
-     ('ê\(',      '\u1F21', 'ê('),
-     ('Ê\)',      '\u1F28', 'Ê)'),
-     ('Ê\(',      '\u1F29', 'Ê('),
-     ('i\)',      '\u1F30', 'i)'),
-     ('i\(',      '\u1F31', 'i('),
-     ('I\)',      '\u1F38', 'I)'),
-     ('I\(',      '\u1F39', 'I('),
-     ('o\)',      '\u1F40', 'o)'),
-     ('o\(',      '\u1F41', 'o('),
-     ('O\)',      '\u1F48', 'O)'),
-     ('O\(',      '\u1F49', 'O('),
-     ('y\)',      '\u1F50', 'y)'),
-     ('y\(',      '\u1F51', 'y('),
-     ('Y\(',      '\u1F59', 'Y('),
-     ('ô\)',      '\u1F60', 'ô)'),
-     ('ô\(',      '\u1F61', 'ô('),
-     ('Ô\)',      '\u1F68', 'Ô)'),
-     ('Ô\(',      '\u1F69', 'Ô('),
+     (r'e\)',      '\u1F10', 'e)'),
+     (r'e\(',      '\u1F11', 'e('),
+     (r'E\)',      '\u1F18', 'E)'),
+     (r'E\(',      '\u1F19', 'E('),
+     (r'ê\)',      '\u1F20', 'ê)'),
+     (r'ê\(',      '\u1F21', 'ê('),
+     (r'Ê\)',      '\u1F28', 'Ê)'),
+     (r'Ê\(',      '\u1F29', 'Ê('),
+     (r'i\)',      '\u1F30', 'i)'),
+     (r'i\(',      '\u1F31', 'i('),
+     (r'I\)',      '\u1F38', 'I)'),
+     (r'I\(',      '\u1F39', 'I('),
+     (r'o\)',      '\u1F40', 'o)'),
+     (r'o\(',      '\u1F41', 'o('),
+     (r'O\)',      '\u1F48', 'O)'),
+     (r'O\(',      '\u1F49', 'O('),
+     (r'y\)',      '\u1F50', 'y)'),
+     (r'y\(',      '\u1F51', 'y('),
+     (r'Y\(',      '\u1F59', 'Y('),
+     (r'ô\)',      '\u1F60', 'ô)'),
+     (r'ô\(',      '\u1F61', 'ô('),
+     (r'Ô\)',      '\u1F68', 'Ô)'),
+     (r'Ô\(',      '\u1F69', 'Ô('),
      (r'a\\',     '\u1F70', 'a\\'),
      ('a/',       '\u1F71', 'a/'),
      (r'e\\',     '\u1F72', 'e\\'),
@@ -561,20 +563,20 @@ class Book(object):
      ('ô/',       '\u1F7D', 'ô/'),
      ('a=',       '\u1FB0', 'a='),
      ('a_',       '\u1FB1', 'a_'),
-     ('a\|',      '\u1FB3', 'a|'),
+     (r'a\|',      '\u1FB3', 'a|'),
      ('a~',       '\u1FB6', 'a~'),
      ('A=',       '\u1FB8', 'A='),
      ('A_',       '\u1FB9', 'A_'),
      (r'A\\',     '\u1FBA', 'A\\'),
      ('A/',       '\u1FBB', 'A/'),
-     ('A\|',      '\u1FBC', 'A|'),
-     ('ê\|',      '\u1FC3', 'ê|'),
+     (r'A\|',      '\u1FBC', 'A|'),
+     (r'ê\|',      '\u1FC3', 'ê|'),
      ('ê~',       '\u1FC6', 'ê~'),
      (r'E\\',     '\u1FC8', 'E\\'),
      ('E/',       '\u1FC9', 'E/'),
      (r'Ê\\',     '\u1FCA', 'Ê\\'),
      ('Ê/',       '\u1FCB', 'Ê/'),
-     ('Ê\|',      '\u1FCC', 'Ê|'),
+     (r'Ê\|',      '\u1FCC', 'Ê|'),
      ('i=',       '\u1FD0', 'i='),
      ('i_',       '\u1FD1', 'i_'),
      ('i~',       '\u1FD6', 'i~'),
@@ -584,60 +586,60 @@ class Book(object):
      ('I/',       '\u1FDB', 'I/'),
      ('y=',       '\u1FE0', 'y='),
      ('y_',       '\u1FE1', 'y_'),
-     ('r\)',      '\u1FE4', 'r)'),
-     ('r\(',      '\u1FE5', 'r('),
+     (r'r\)',      '\u1FE4', 'r)'),
+     (r'r\(',      '\u1FE5', 'r('),
      ('y~',       '\u1FE6', 'y~'),
      ('Y=',       '\u1FE8', 'Y='),
      ('Y_',       '\u1FE9', 'Y_'),
      (r'Y\\',     '\u1FEA', 'Y\\'),
      ('Y/',       '\u1FEB', 'Y/'),
-     ('R\(',      '\u1FEC', 'R('),
+     (r'R\(',      '\u1FEC', 'R('),
      ('ô~',       '\u1FF6', 'ô~'),
-     ('ô\|',      '\u1FF3', 'ô|'),
+     (r'ô\|',      '\u1FF3', 'ô|'),
      (r'Ô\\',     '\u1FFA', 'Ô\\'),
      ('Ô/',       '\u1FFB', 'Ô/'),
-     ('Ô\|',      '\u1FFC', 'Ô|'),
-     ('I\+',      '\u03AA', 'I+'),
-     ('Y\+',      '\u03AB', 'Y+'),
-     ('i\+',      '\u03CA', 'i+'),
-     ('y\+',      '\u03CB', 'y+'),
+     (r'Ô\|',      '\u1FFC', 'Ô|'),
+     (r'I\+',      '\u03AA', 'I+'),
+     (r'Y\+',      '\u03AB', 'Y+'),
+     (r'i\+',      '\u03CA', 'i+'),
+     (r'y\+',      '\u03CB', 'y+'),
      #
      #   Basic Greek transliterations
      #
-     (r'u\\\+',   '\u1FE2', 'u\\\+'), # U/u alternatives to Y/y
-     ('u/\+',     '\u1FE3', 'u/+'),
-     ('u~\+',     '\u1FE7', 'u~+'),
+     (r'u\\\+',   '\u1FE2', r'u\\\+'), # U/u alternatives to Y/y
+     (r'u/\+',     '\u1FE3', 'u/+'),
+     (r'u~\+',     '\u1FE7', 'u~+'),
      (r'u\)\\',   '\u1F52', 'u)\\'),
      (r'u\(\\',   '\u1F53', 'u(\\'),
-     ('u\)\/',    '\u1F54', 'u)/'),
-     ('u\(\/',    '\u1F55', 'u(/'),
-     ('u~\)',     '\u1F56', 'u~)'),
-     ('u~\(',     '\u1F57', 'u~('),
+     (r'u\)\/',    '\u1F54', 'u)/'),
+     (r'u\(\/',    '\u1F55', 'u(/'),
+     (r'u~\)',     '\u1F56', 'u~)'),
+     (r'u~\(',     '\u1F57', 'u~('),
      (r'U\(\\',   '\u1F5B', 'U(\\'),
-     ('U\(\/',    '\u1F5D', 'U(/'),
-     ('U~\(',     '\u1F5F', 'U~('),
-     ('u\+',      '\u03CB', 'u+'),
-     ('U\+',      '\u03AB', 'U+'),
+     (r'U\(\/',    '\u1F5D', 'U(/'),
+     (r'U~\(',     '\u1F5F', 'U~('),
+     (r'u\+',      '\u03CB', 'u+'),
+     (r'U\+',      '\u03AB', 'U+'),
      ('u=',       '\u1FE0', 'u='),
      ('u_',       '\u1FE1', 'u_'),
      ('u~',       '\u1FE6', 'u~'),
      ('U=',       '\u1FE8', 'U='),
      ('U_',       '\u1FE9', 'U_'),
      (r'U\\',     '\u1FEA', 'U\\'),
-     ('U\/',      '\u1FEB', 'U/'),
+     (r'U\/',      '\u1FEB', 'U/'),
      (r'u\\',     '\u1F7A', 'u\\'),
-     ('u\/',      '\u1F7B', 'u/'),
-     ('u\)',      '\u1F50', 'u)'),
-     ('u\(',      '\u1F51', 'u('),
-     ('U\(',      '\u1F59', 'U('),
-     ('\?',       '\u037E', '?'),
+     (r'u\/',      '\u1F7B', 'u/'),
+     (r'u\)',      '\u1F50', 'u)'),
+     (r'u\(',      '\u1F51', 'u('),
+     (r'U\(',      '\u1F59', 'U('),
+     (r'\?',       '\u037E', '?'),
      (';',        '\u0387', ';'),
-     ('r\)',      '\u1FE4', 'r)'),
-     ('r\(',      '\u1FE5', 'r('),
+     (r'r\)',      '\u1FE4', 'r)'),
+     (r'r\(',      '\u1FE5', 'r('),
      ('th',       '\u03B8', 'th'),
      ('T[Hh]',    '\u0398', 'TH or Th'),
-     ('\{S[Tt]}', '\u03DA', 'ST or St (Stigma)'),      # must handle stigmas before s (note unusual form
-     ('\{st}',    '\u03DB', 'st (stigma)'),            # to uniquely indicate stigma vs sigma tau
+     (r'\{S[Tt]}', '\u03DA', 'ST or St (Stigma)'),      # must handle stigmas before s (note unusual form
+     (r'\{st}',    '\u03DB', 'st (stigma)'),            # to uniquely indicate stigma vs sigma tau
      ('^s\'',     '\u03C3\'', 's may be regular', "\u03c3"),    # handle s' as regular sigma as the first characters of the string
      ('([^Pp])s\'', '\\1\u03C3\'', ' sigma or', ""),            # handle s' as regular sigma elsewhere in string
      ('^s($|\\W)', '\u03C2\\1', 'final sigma based', "\u03c2"), # handle solo s at start of string as final sigma
@@ -1970,11 +1972,11 @@ class Book(object):
     ccount = 0
     for i, line in enumerate(self.wb):
       if line.startswith(".bn"):
-        m = re.search("(\w+?)\.(png|jpg|jpeg)",self.wb[i])
+        m = re.search(r"(\w+?)\.(png|jpg|jpeg)",self.wb[i])
         if m:
           t = " 'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],"
           t = t.format(m.group(1), i+1, 0)  # format a line in the .bn array (GG wants a 1-based count)
-          t = re.sub("\[","{",t,1)
+          t = re.sub(r"\[","{",t,1)
           t = re.sub("]","}",t,1)
           bb.append(t)
           jb[m.group(1)] = {"index": f"{i+1}.0", "style": '"', "number": "0", "label": ""}
@@ -2966,7 +2968,7 @@ class Book(object):
 
     # handle python macros as replacement strings
     if self.srr[srnum].startswith("{{python"): # Possibly a python macro call as replace string?
-      m = re.match("\{\{python ([^ ]+) ?(.*?)\}\}", self.srr[srnum]) # yes, check syntax
+      m = re.match(r"\{\{python ([^ ]+) ?(.*?)\}\}", self.srr[srnum]) # yes, check syntax
       if m:  # yes, a Python macro call
         restore_srr = self.srr[srnum] # remember original srr string so we can restore it
         self.srr[srnum] = pythonSR    # set srr so it will invoke the pythonSR function during replace processing
@@ -3516,7 +3518,7 @@ class Book(object):
       temp_gkstring = gkstring
       if "</g>" in temp_gkstring: # make sure that </g> doesn't trigger the warning
         temp_gkstring = re.sub("</?g>", "", temp_gkstring)
-      if " \[" in temp_gkstring: # make sure that \[ (escaped [) doesn't trigger the warning
+      if r" \[" in temp_gkstring: # make sure that \[ (escaped [) doesn't trigger the warning
         temp_gkstring = re.sub(r" \\\[", "", temp_gkstring)
       m = re.search(r"[~=_)(/\\|+]", temp_gkstring)
       if m:
@@ -3585,7 +3587,7 @@ class Book(object):
         m = re.match(r"(.*?)//(.*)$", buffer[i])
         if m:
           if m.group(1).endswith("http:") or m.group(1).endswith("https:"):
-            self.warn("Use /\/ rather than // if you want this to be a URL instead of the start of a comment: {}".format(buffer[i]))
+            self.warn(r"Use /\/ rather than // if you want this to be a URL instead of the start of a comment: {}".format(buffer[i]))
 
           buffer[i] = m.group(1)
 
@@ -4423,7 +4425,7 @@ class Book(object):
     image_type = ""
     while i < len(self.wb):
       if self.wb[i].startswith(".bn"):
-        m = re.search("(\w+?)\.(png|jpg|jpeg)",self.wb[i])
+        m = re.search(r"(\w+?)\.(png|jpg|jpeg)",self.wb[i])
         if m:
           self.bnPresent = True
           self.wb[i] = "⑱{}⑱".format(m.group(1))
@@ -4528,7 +4530,7 @@ class Book(object):
           while i < len(self.wb) - 1 and self.wb[i].endswith("\\"):
             if self.wb[i+1].startswith(".pn") or self.wb[i+1].startswith(".bn"):
               self.crash_w_context(".pn or .bn not allowed within a continued dot directive", i)
-            elif self.wb[i+1].startswith(".") and re.match("\.[a-z]", self.wb[i+1]):
+            elif self.wb[i+1].startswith(".") and re.match(r"\.[a-z]", self.wb[i+1]):
               self.warn_w_context("Possible continuation problem: next line looks like a dot directive.", i)
             self.wb[i] = re.sub(r"\\$", "", self.wb[i]) + " " + self.wb[i+1]
             del self.wb[i+1]
@@ -4599,7 +4601,7 @@ class Book(object):
           # look for illegal condition: a continued dot directive is followed by a .bn or .pn
           if (self.wb[i].startswith(".") and
                 (self.wb[i+1].startswith("⑱") or self.wb[i+1].startswith("⑯"))):
-            if (re.match("\.[a-z]", self.wb[i]) and
+            if (re.match(r"\.[a-z]", self.wb[i]) and
                   (self.bnmatch.match(self.wb[i+1]) or
                    self.pnmatch.match(self.wb[i+1]))):
               self.crash_w_context("Continued dot directive cannot be followed by .pn or .bn", i)
@@ -4615,7 +4617,7 @@ class Book(object):
               continue
 
           # now see if the next line is some other dot directive, and warn if so as this is probably not intended
-          elif self.wb[i+1].startswith(".") and re.match("\.[a-z]", self.wb[i+1]):
+          elif self.wb[i+1].startswith(".") and re.match(r"\.[a-z]", self.wb[i+1]):
             self.warn_w_context("Possible continuation problem: next line looks like a dot directive.", i)
 
           self.wb[i] = re.sub(r"\\$", "", self.wb[i]) + " " + self.wb[i+1]
@@ -4731,7 +4733,7 @@ class Book(object):
       self.wb[i] = self.wb[i].replace("....", "ⓓⓓⓓⓓ") # four dot ellipsis
       self.wb[i] = self.wb[i].replace("...", "ⓓⓓⓓ") # 3 dot ellipsis
       self.wb[i] = self.wb[i].replace(". . .", "ⓓⓢⓓⓢⓓ") # 3 dot ellipsis, spaced
-      self.wb[i] = self.wb[i].replace("\. \. \.", "ⓓⓢⓓⓢⓓ") # 3 dot ellipsis, spaced
+      self.wb[i] = self.wb[i].replace(r"\. \. \.", "ⓓⓢⓓⓢⓓ") # 3 dot ellipsis, spaced
       # spacing
       self.wb[i] = self.wb[i].replace(r'\ ', "ⓢ") # non-breaking space
       self.wb[i] = self.wb[i].replace(r'\_', "ⓢ") # alternate non-breaking space
@@ -4899,9 +4901,9 @@ class Book(object):
     #   3. If you have a book that has the text _{...} in it, on one line, use __{ for the
     #      opening characters (2 underscores, then the { character).
 
-    pat1 = re.compile("\^([^\{])")   # single-character superscript
-    pat2 = re.compile("\^\{(.*?)\}") # multi-character superscript
-    pat3 = re.compile("_\{(.*?)\}")  # subscript
+    pat1 = re.compile(r"\^([^\{])")   # single-character superscript
+    pat2 = re.compile(r"\^\{(.*?)\}") # multi-character superscript
+    pat3 = re.compile(r"_\{(.*?)\}")  # subscript
     for i in range(len(self.wb)):
 
       m = re.search(pat1, self.wb[i]) # single character superscript
@@ -5107,7 +5109,7 @@ class Ppt(Book):
       s = "⑧" * ti + s
 
     # Convert any <br> in the line to ⓬ for easier processing
-    s = re.sub(" ?\<br\> ?", BR, s)
+    s = re.sub(r" ?\<br\> ?", BR, s)
 
     # handle super/subscripts if necessary
     if expand_supsub:
@@ -5449,14 +5451,14 @@ class Ppt(Book):
     while i < len(self.wb):
       if self.wb[i].startswith('.gu'):
         if self.renc == "u":
-          self.wb[i] = re.sub("^\.gu ", "", self.wb[i])
+          self.wb[i] = re.sub(r"^\.gu ", "", self.wb[i])
           i += 1
         else:
           del(self.wb[i])
         continue
       if self.wb[i].startswith('.gl'):
         if self.renc == "l":
-          self.wb[i] = re.sub("^\.gl ", "", self.wb[i])
+          self.wb[i] = re.sub(r"^\.gl ", "", self.wb[i])
           i += 1
         else:
           del(self.wb[i])
@@ -5513,21 +5515,21 @@ class Ppt(Book):
 
       s = self.wb[i]
       explicit = False
-      m = re.search("\[(\d+)\]", s) # explicit
+      m = re.search(r"\[(\d+)\]", s) # explicit
       while m:
         explicit = True
         fncr = int(m.group(1)) + 1
         s = re.sub(re.escape(m.group(0)), "", s, 1)
-        m = re.search("\[(\d+)\]", s)
+        m = re.search(r"\[(\d+)\]", s)
       if explicit: # don't support mixing # and explicit in the same line
         i += 1
         continue
 
-      m = re.search("\[#\]", self.wb[i])
+      m = re.search(r"\[#\]", self.wb[i])
       while m:
-        self.wb[i] = re.sub("\[#\]", "[{}]".format(fncr), self.wb[i], 1)
+        self.wb[i] = re.sub(r"\[#\]", "[{}]".format(fncr), self.wb[i], 1)
         fncr += 1
-        m = re.search("\[#\]", self.wb[i])
+        m = re.search(r"\[#\]", self.wb[i])
       i += 1
     # must do separately
     fncr = 1
@@ -5675,12 +5677,12 @@ class Ppt(Book):
         m = re.match(r"\.nr Sidenote (.+)", self.wb[i])
         if m:
           tempSidenote = m.group(1) # remember new Sidenote name value
-      m = re.match("(.*?<sn(?: class=[^>]+)?>)(.*?\|.*?)(</sn>.*?)$", self.wb[i])
+      m = re.match(r"(.*?<sn(?: class=[^>]+)?>)(.*?\|.*?)(</sn>.*?)$", self.wb[i])
       while m:
         tmp = m.group(2)
         tmp = re.sub(r"\s*\|\s*", " ", tmp)
         self.wb[i] = m.group(1) + tmp + m.group(3)
-        m = re.match("(.*?<sn(?: class=[^>]+)?>)(.*?\|.*?)(</sn>.*?)$", self.wb[i])
+        m = re.match(r"(.*?<sn(?: class=[^>]+)?>)(.*?\|.*?)(</sn>.*?)$", self.wb[i])
       self.wb[i], l = re.subn("<sn(?: class=[^>]+)?>", "[{}: ".format(tempSidenote), self.wb[i])
       self.wb[i] = re.sub("</sn>", "]", self.wb[i])
       if l and (in_nf or in_ta or in_fn):
@@ -6019,7 +6021,7 @@ class Ppt(Book):
         while m:
           bnInLine = True
           t = " 'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG wants a 1-based count)
-          t = re.sub("\[","{",t,1)
+          t = re.sub(r"\[","{",t,1)
           t = re.sub("]","}",t,1)
           self.bb.append(t)
           self.jb[m.group(2)] = {"index": f"{i+1}.{len(m.group(1))}", "style": '"', "number": "0", "label": ""}
@@ -6366,7 +6368,7 @@ class Ppt(Book):
             i = self.cl
             while j < len(model) and self.cl < len(self.wb):
               t = []
-              ss = "\${}".format(k)
+              ss = r"\${}".format(k)
               s = model[j]
               if re.search(ss,s): # if caption line has a $"n" marker in it, perform substitution
                 if self.wb[self.cl].startswith(".ca-"):
@@ -6547,7 +6549,7 @@ class Ppt(Book):
       else:                                                 # else wrap it with a hanging indent
         s = line
         wi = 0
-        m = re.match("^(\s+)(.*)", s)
+        m = re.match(r"^(\s+)(.*)", s)
         if m:
           wi = len(m.group(1))
           s = m.group(2)
@@ -6669,7 +6671,7 @@ class Ppt(Book):
       # a .ti lets it wrap
       if self.truelen(s) > self.regLL:
         wi = 0
-        m = re.match("^(\s+)(.*)", s)
+        m = re.match(r"^(\s+)(.*)", s)
         if m:
           wi = len(m.group(1))
           s = m.group(2)
@@ -6741,7 +6743,7 @@ class Ppt(Book):
       s = (" " * self.regIN + " " * lmar + self.wb[i].rstrip())
       if self.truelen(s) > self.regLL:
         wi = 0
-        m = re.match("^(\s+)(.*)", s)
+        m = re.match(r"^(\s+)(.*)", s)
         if m:
           wi = len(m.group(1))
           s = m.group(2)
@@ -6822,7 +6824,7 @@ class Ppt(Book):
       s = (" " * fixed_indent + self.wb[i].rstrip())
       if self.truelen(self.wb[i].rstrip()) > self.regLL:
         wi = 0
-        m = re.match("^(\s+)(.*)", s)
+        m = re.match(r"^(\s+)(.*)", s)
         if m:
           wi = len(m.group(1))
           s = m.group(2)
@@ -7567,7 +7569,7 @@ class Ppt(Book):
       # wrapping
       if self.truelen(self.squashBlanks(s)[0]) > self.regLL:
         wi = 0
-        m = re.match("^(\s+)(.*)", s)
+        m = re.match(r"^(\s+)(.*)", s)
         if m:
           wi = len(m.group(1))
           s = m.group(2)
@@ -8220,7 +8222,7 @@ class Pph(Book):
         m = re.search(r"'(.*?)'", ck3)
         ck3c = m.group(1)
         self.wb[i] = re.sub(ck0, "class='{0} {1}' {2} ".format(ck1c, ck3c, ck2), self.wb[i])
-        self.wb[i] = re.sub("\s\s*", " ", self.wb[i]) # courtesy whitespace cleanup
+        self.wb[i] = re.sub(r"\s\s*", " ", self.wb[i]) # courtesy whitespace cleanup
     # fix FF problem with interaction between pageno and drop-caps
     i = 0
     while i < len(self.wb):
@@ -8299,7 +8301,7 @@ class Pph(Book):
     i = 0
     while i < len(self.wb):
       if self.wb[i].startswith('.gu'):
-        self.wb[i] = re.sub("^\.gu ", "", self.wb[i])
+        self.wb[i] = re.sub(r"^\.gu ", "", self.wb[i])
       if self.wb[i].startswith('.gl'):
         del(self.wb[i])
         i -= 1
@@ -8411,21 +8413,21 @@ class Pph(Book):
 
       s = self.wb[i]
       explicit = False
-      m = re.search("\[(\d+)\]", s) # explicit
+      m = re.search(r"\[(\d+)\]", s) # explicit
       while m:
         explicit = True
         fncr = int(m.group(1)) + 1
         s = re.sub(re.escape(m.group(0)), "", s, 1)
-        m = re.search("\[(\d+)\]", s)
+        m = re.search(r"\[(\d+)\]", s)
       if explicit: # don't support mixing # and explicit in the same line
         i += 1
         continue
 
-      m = re.search("\[#\]", self.wb[i]) # auto-assigned
+      m = re.search(r"\[#\]", self.wb[i]) # auto-assigned
       while m:
         self.wb[i] = re.sub(re.escape(m.group(0)), "[{}]".format(fncr), self.wb[i], 1)
         fncr += 1
-        m = re.search("\[#\]", self.wb[i])
+        m = re.search(r"\[#\]", self.wb[i])
       i += 1
 
     # must do separately
@@ -8572,7 +8574,7 @@ class Pph(Book):
             # find all tags on this line; ignore <a and </a tags completely for this purpose
             tmpline = re.sub("<a [^>]*>", "", self.wb[i])
             tmpline = re.sub("</a>", "", tmpline)
-            t = re.findall("<\/?[^>]*>", tmpline)
+            t = re.findall(r"<\/?[^>]*>", tmpline)
             sstart = "" # what to prepend to the line
             for s in tagstack: # build the start string
               sstart += s
@@ -8590,7 +8592,7 @@ class Pph(Book):
                   self.warn("Nested {} tags in .nf block: {}".format(s, tmpline))
                 tagstack.append(s) # save it on the stack
               else:  # it is of form </..> a closing tag
-                tmp = re.sub("<\/", "<", s) # decide what its opening tag would be
+                tmp = re.sub(r"<\/", "<", s) # decide what its opening tag would be
                 try:
                   if tmp[0:2] != tagstack[-1][0:2]: # needs close the one most recently open
                     self.fatal("mismatched tag {}".format(s))
@@ -8788,53 +8790,53 @@ class Pph(Book):
         if use_class == "fss":
           self.wb[i] = re.sub("<sc>", "<span class='fss'>", self.wb[i], 1)
           self.css.addcss("[1200] .fss { font-size: 75%; }")
-        self.wb[i] = re.sub("<\/sc>", "</span>", self.wb[i], 1) # since we had a <sc> replace 1 </sc> if present on this line
+        self.wb[i] = re.sub(r"<\/sc>", "</span>", self.wb[i], 1) # since we had a <sc> replace 1 </sc> if present on this line
         m = re.search("<sc>", self.wb[i]) # look for another opening small cap tag
 
       # common closing, may be on separate line
-      self.wb[i] = re.sub("<\/sc>", "</span>", self.wb[i])
+      self.wb[i] = re.sub(r"<\/sc>", "</span>", self.wb[i])
 
       m = re.search("<l>", self.wb[i])
       if m:
         self.css.addcss("[1201] .large { font-size: large; }")
       self.wb[i] = re.sub("<l>", "<span class='large'>", self.wb[i])
-      self.wb[i] = re.sub("<\/l>", "</span>", self.wb[i])
+      self.wb[i] = re.sub(r"<\/l>", "</span>", self.wb[i])
 
       m = re.search("<xl>", self.wb[i])
       if m:
         self.css.addcss("[1202] .xlarge { font-size: x-large; }")
       self.wb[i] = re.sub("<xl>", "<span class='xlarge'>", self.wb[i])
-      self.wb[i] = re.sub("<\/xl>", "</span>", self.wb[i])
+      self.wb[i] = re.sub(r"<\/xl>", "</span>", self.wb[i])
 
       m = re.search("<xxl>", self.wb[i])
       if m:
         self.css.addcss("[1202] .xxlarge { font-size: xx-large; }")
       self.wb[i] = re.sub("<xxl>", "<span class='xxlarge'>", self.wb[i])
-      self.wb[i] = re.sub("<\/xxl>", "</span>", self.wb[i])
+      self.wb[i] = re.sub(r"<\/xxl>", "</span>", self.wb[i])
 
       m = re.search("<s>", self.wb[i])
       if m:
         self.css.addcss("[1203] .small { font-size: small; }")
       self.wb[i] = re.sub("<s>", "<span class='small'>", self.wb[i])
-      self.wb[i] = re.sub("<\/s>", "</span>", self.wb[i])
+      self.wb[i] = re.sub(r"<\/s>", "</span>", self.wb[i])
 
       m = re.search("<xs>", self.wb[i])
       if m:
         self.css.addcss("[1204] .xsmall { font-size: x-small; }")
       self.wb[i] = re.sub("<xs>", "<span class='xsmall'>", self.wb[i])
-      self.wb[i] = re.sub("<\/xs>", "</span>", self.wb[i])
+      self.wb[i] = re.sub(r"<\/xs>", "</span>", self.wb[i])
 
       m = re.search("<xxs>", self.wb[i])
       if m:
         self.css.addcss("[1205] .xxsmall { font-size: xx-small; }")
       self.wb[i] = re.sub("<xxs>", "<span class='xxsmall'>", self.wb[i])
-      self.wb[i] = re.sub("<\/xxs>", "</span>", self.wb[i])
+      self.wb[i] = re.sub(r"<\/xxs>", "</span>", self.wb[i])
 
       m = re.search("<u>", self.wb[i])
       if m:
         self.css.addcss("[1205] .under { text-decoration: underline; }")
       self.wb[i] = re.sub("<u>", "<span class='under'>", self.wb[i])
-      self.wb[i] = re.sub("<\/u>", "</span>", self.wb[i])
+      self.wb[i] = re.sub(r"<\/u>", "</span>", self.wb[i])
 
       m = re.search(r"<c=[\"']?(.*?)[\"']?>", self.wb[i])
       while m:
@@ -8843,7 +8845,7 @@ class Pph(Book):
         self.css.addcss("[1209] .color_{0} {{ color: {1}; }}".format(safename,thecolor))
         self.wb[i] = re.sub(re.escape(m.group(0)), "<span class='color_{0}'>".format(safename), self.wb[i])
         m = re.search(r"<c=[\"']?(.*?)[\"']?>", self.wb[i])
-      self.wb[i] = re.sub("<\/c>", "</span>", self.wb[i])
+      self.wb[i] = re.sub(r"<\/c>", "</span>", self.wb[i])
 
       # <g> is now a stylized em in HTML
       # using a @media handheld, in epub/mobi it is italicized, with normal letter spacing
@@ -8852,13 +8854,13 @@ class Pph(Book):
         self.wb[i] = re.sub(r"<g>", "<em class='gesperrt'>", self.wb[i])
         self.css.addcss("[1378] em.gesperrt { font-style: normal; letter-spacing: 0.2em; margin-right: -0.2em; }")
         self.css.addcss("[1379] .x-ebookmaker em.gesperrt { font-style: italic; letter-spacing: 0; margin-right: 0;}")
-      self.wb[i] = re.sub("<\/g>", "</em>", self.wb[i])
+      self.wb[i] = re.sub(r"<\/g>", "</em>", self.wb[i])
 
       m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
       while m:
         self.wb[i] = re.sub(m.group(0), "<span style='font-size⑥ {}; '>".format(m.group(1)), self.wb[i], 1)
         m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
-      self.wb[i] = re.sub("<\/fs>", "</span>", self.wb[i])
+      self.wb[i] = re.sub(r"<\/fs>", "</span>", self.wb[i])
 
       # <sn>...</sn> becomes a span
       tmpline = self.wb[i]
@@ -8920,8 +8922,8 @@ class Pph(Book):
     text = re.sub("⓯", "_{", text)
 
     # unprotect temporarily protected characters from Greek strings
-    text = re.sub("⑩", "\|", text) # restore temporarily protected \| and \(space)
-    text = re.sub("⑮", "\ ", text)
+    text = re.sub("⑩", r"\|", text) # restore temporarily protected \| and \(space)
+    text = re.sub("⑮", r"\ ", text)
 
 
     return text
@@ -9410,7 +9412,7 @@ class Pph(Book):
         self.wb[i] = self.wb[i] + self.wb[i+1]
         del self.wb[i+1]
     s = re.sub(r"\|\|", "<br> <br>", self.wb[self.cl]) # required for epub
-    s = re.sub("\|", "<br>", s)
+    s = re.sub(r"\|", "<br>", s)
     t = []
 
     endDiv = False
@@ -9671,7 +9673,7 @@ class Pph(Book):
 
       # no "=" should remain in .il string
       if "=" in s:
-        s = re.sub("\.il", "", s).strip()
+        s = re.sub(r"\.il", "", s).strip()
         self.warn_w_context("unprocessed value in illustration: {}".format(s), self.cl)
       return(ia)
 
@@ -11169,7 +11171,7 @@ class Pph(Book):
         while m:
           bnInLine = True
           t = " 'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG expects 1-based line number)
-          t = re.sub("\[","{",t,1)
+          t = re.sub(r"\[","{",t,1)
           t = re.sub("]","}",t,1)
           self.bb.append(t)
           self.jb[m.group(2)] = {"index": f"{i+1}.{len(m.group(1))}", "style": '"', "number": "0", "label": ""}
