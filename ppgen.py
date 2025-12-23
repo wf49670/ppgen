@@ -1983,7 +1983,7 @@ class Book(object):
       temp = os.path.dirname(temp)
       temp = os.path.join(temp, "pngs")
       bb.append(");")  # finish building GG .bin file
-      bb.append(r"$::pngspath = '{}\\';".format(os.path.join(os.path.realpath(self.srcfile),"pngs")))
+      bb.append(r"$::pngspath = '{}';".format(os.path.join(os.path.dirname(os.path.realpath(self.srcfile)),"pngs","")))
       bb.append("1;")
       binfn = self.srcfile + ".bin"
       f1 = codecs.open(binfn, "w", "ISO-8859-1")
@@ -6029,7 +6029,7 @@ class Ppt(Book):
           i += 1
       self.bb.append(");")  # finish building GG .bin file
       #self.bb.append("$::pngspath = '{}\\';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
-      self.bb.append(r"$::pngspath = '{}\\';".format(os.path.join(os.path.realpath(self.srcfile),"pngs")))
+      self.bb.append(r"$::pngspath = '{}';".format(os.path.join(os.path.dirname(os.path.realpath(self.srcfile)),"pngs","")))
       self.bb.append("1;")
 
   # -------------------------------------------------------------------------------------
@@ -11164,7 +11164,7 @@ class Pph(Book):
           i += 1
       self.bb.append(");")
       #self.bb.append("$::pngspath = '{}\\';".format(os.path.join(os.path.dirname(self.srcfile),"pngs")))
-      self.bb.append(r"$::pngspath = '{}\\';".format(os.path.join(os.path.realpath(self.srcfile),"pngs")))
+      self.bb.append(r"$::pngspath = '{}';".format(os.path.join(os.path.dirname(os.path.realpath(self.srcfile)),"pngs","")))
       self.bb.append("1;")
 
 
