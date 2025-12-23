@@ -1980,8 +1980,8 @@ class Book(object):
         if m:
           t = " 'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],"
           t = t.format(m.group(1), i+1, 0)  # format a line in the .bn array (GG wants a 1-based count)
-          t = re.sub(r"\[","{",t,1)
-          t = re.sub("]","}",t,1)
+          t = re.sub(r"\[","{",t,count=1)
+          t = re.sub("]","}",t,count=1)
           bb.append(t)
           jb[m.group(1)] = {"index": f"{i+1}.0", "style": '"', "number": "0", "label": ""}
           if self.ppqt2:
@@ -2833,9 +2833,9 @@ class Book(object):
     while m:
       supstr = m.group(1)
       if len(supstr) == 1 or self.truelen(supstr, expand_supsub=False) == 1:
-        s = re.sub(r"◸.◹", "^"+supstr, s, 1)
+        s = re.sub(r"◸.◹", "^"+supstr, s, count=1)
       else:
-        s = re.sub(r"◸.*?◹", "^{" + supstr + "}", s, 1)
+        s = re.sub(r"◸.*?◹", "^{" + supstr + "}", s, count=1)
       m = re.search(r"◸(.*?)◹", s)
     # subscripts
     s = s.replace("◺", "_{")
@@ -3475,7 +3475,7 @@ class Book(object):
       while m:
         pm_found = True
         pm_list.append(m.group(2))
-        gkstring = re.sub(m.group(0), m.group(1) + "<\u2ac9" + m.group(3) + ">", gkstring, 1)
+        gkstring = re.sub(m.group(0), m.group(1) + "<\u2ac9" + m.group(3) + ">", gkstring, count=1)
         m = re.search(r"(^|[^\\])<(pm +[^ >]+)( .*?[^\\])>", gkstring)
 
       if len(self.gk_user) > 0:   # if PPer provided any additional Greek mappings apply them first
@@ -3508,7 +3508,7 @@ class Book(object):
       # Restore any protected <pm> tags
       if pm_found:
         for i, pm_string in enumerate(pm_list):
-          gkstring = re.sub("\u2ac9", pm_string, gkstring, 1)
+          gkstring = re.sub("\u2ac9", pm_string, gkstring, count=1)
 
       gkorigb = ""
       gkoriga = ""
@@ -4120,7 +4120,7 @@ class Book(object):
               if 'm' in self.debug:
                 self.print_msg("Macro line {} before: {}".format(j, t[j]))
               try:
-                t[j] = re.sub(subst, tlex[pnum+1], t[j], 1)
+                t[j] = re.sub(subst, tlex[pnum+1], t[j], count=1)
                 if 'm' in self.debug:
                   self.print_msg("Macro line {} after: {}".format(j, t[j]))
               except:
@@ -4131,7 +4131,7 @@ class Book(object):
                   self.crash_w_context("Error occurred while substituting parameter number {} in {}".format(pnum, line), i)
             else:
               self.warn_w_context("Incorrect macro invocation (argument ${} missing): {}".format(pnum, line), i)
-              t[j] = re.sub(subst, "***missing***", t[j], 1)
+              t[j] = re.sub(subst, "***missing***", t[j], count=1)
             m = re.search(r'\$(\d{1,2})', t[j]) # another substitution on same line
 
       else: # python format macro
@@ -4691,7 +4691,7 @@ class Book(object):
         else:
           aadbg1 = m.group(0)
           aadbg2 = m.group(1)
-          self.wb[i], count = re.subn(re.escape(m.group(0)), m.group(1) + t[0], self.wb[i], 1)
+          self.wb[i], count = re.subn(re.escape(m.group(0)), m.group(1) + t[0], self.wb[i], count=1)
           if count == 0:
             self.warn_w_context("Substituting {} for inline macro <{}> failed.".format(t[0], m.group(2)), i)
             break
@@ -4916,19 +4916,19 @@ class Book(object):
       m = re.search(pat1, self.wb[i]) # single character superscript
       while m:
         suptext = m.group(1)
-        self.wb[i] = re.sub(pat1, "◸{}◹".format(suptext), self.wb[i], 1)
+        self.wb[i] = re.sub(pat1, "◸{}◹".format(suptext), self.wb[i], count=1)
         m = re.search(pat1, self.wb[i])
 
       m = re.search(pat2, self.wb[i])
       while m:
         suptext = m.group(1)
-        self.wb[i] = re.sub(pat2, "◸{}◹".format(suptext), self.wb[i], 1)
+        self.wb[i] = re.sub(pat2, "◸{}◹".format(suptext), self.wb[i], count=1)
         m = re.search(pat2, self.wb[i])
 
       m = re.search(pat3, self.wb[i])
       while m:
         subtext = m.group(1)
-        self.wb[i] = re.sub(pat3, "◺{}◿".format(subtext), self.wb[i], 1)
+        self.wb[i] = re.sub(pat3, "◺{}◿".format(subtext), self.wb[i], count=1)
         m = re.search(pat3, self.wb[i])
 
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -5526,7 +5526,7 @@ class Ppt(Book):
       while m:
         explicit = True
         fncr = int(m.group(1)) + 1
-        s = re.sub(re.escape(m.group(0)), "", s, 1)
+        s = re.sub(re.escape(m.group(0)), "", s, count=1)
         m = re.search(r"\[(\d+)\]", s)
       if explicit: # don't support mixing # and explicit in the same line
         i += 1
@@ -5534,7 +5534,7 @@ class Ppt(Book):
 
       m = re.search(r"\[#\]", self.wb[i])
       while m:
-        self.wb[i] = re.sub(r"\[#\]", "[{}]".format(fncr), self.wb[i], 1)
+        self.wb[i] = re.sub(r"\[#\]", "[{}]".format(fncr), self.wb[i], count=1)
         fncr += 1
         m = re.search(r"\[#\]", self.wb[i])
       i += 1
@@ -6028,8 +6028,8 @@ class Ppt(Book):
         while m:
           bnInLine = True
           t = " 'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG wants a 1-based count)
-          t = re.sub(r"\[","{",t,1)
-          t = re.sub(r"\]","}",t,1)
+          t = re.sub(r"\[","{",t,count=1)
+          t = re.sub(r"\]","}",t,count=1)
           self.bb.append(t)
           self.jb[m.group(2)] = {"index": f"{i+1}.{len(m.group(1))}", "style": '"', "number": "0", "label": ""}
           if self.ppqt2:
@@ -6037,7 +6037,7 @@ class Ppt(Book):
             offset1 = len(m.group(1))
             offset2 = len(m.group(3))
             self.ppqtpage(m.group(2), ccount)
-          self.eb[i] = re.sub("⑱.*?⑱", "", self.eb[i], 1)  # remove the .bn information
+          self.eb[i] = re.sub("⑱.*?⑱", "", self.eb[i], count=1)  # remove the .bn information
           m = re.search("(.*?)⑱(.*?)⑱(.*)",self.eb[i])  # look for another one on the same line
         if self.ppqt2:
           if not bnInLine: # if no bn info in this line
@@ -6455,7 +6455,7 @@ class Ppt(Book):
       try:
         self.regIN = self.instack.pop()
       except:
-        self.crash_w_context("indent error: no indent to undo", self.cl, 2)
+        self.crash_w_context("indent error: no indent to undo", self.cl, r=2)
       handled = True
 
     if handled:
@@ -6496,7 +6496,7 @@ class Ppt(Book):
       try:
         self.regLL = self.llstack.pop()
       except:
-        self.crash_w_context("line length error: no line length to undo", self.cl, 2)
+        self.crash_w_context("line length error: no line length to undo", self.cl, r=2)
       self.cl += 1
       return
 
@@ -6988,7 +6988,7 @@ class Ppt(Book):
         if len(t) >= 4 and t[0:4] == "<th>": # if cell starts with <th> remove it
           t = t[4:]
         if len(t) >= 6 and t[0:4] == "<al=": # possible alignment directive?
-          t = re.sub(r"^<al=[lrch]>", "", t, 1) # ignore any alignment directives
+          t = re.sub(r"^<al=[lrch]>", "", t, count=1) # ignore any alignment directives
         if t != "<span>": # ignore <span> cells for purposes of figuring max width of this column
           maxw = max(maxw, self.truelen(t)) # ignore lead/trail whitespace and account for non-spacing characters
         j += 1
@@ -7016,7 +7016,7 @@ class Ppt(Book):
 
     # remove table summary if present.
     if "s=" in self.wb[self.cl]:
-      self.wb[self.cl] = self.get_id("s", self.wb[self.cl], 1)
+      self.wb[self.cl] = self.get_id("s", self.wb[self.cl], np=1)
 
     # pull out optional user-specified Epub//Mobi width %
     tw_epub = ""
@@ -7030,7 +7030,7 @@ class Ppt(Book):
 
     # remove id= if present
     if "id=" in self.wb[self.cl]:
-      self.wb[self.cl] = self.get_id("id", self.wb[self.cl], 1)
+      self.wb[self.cl] = self.get_id("id", self.wb[self.cl], np=1)
 
     # pull out bl= (blank line) option
     # bl=none (PPer in total control; don't add any blank lines) or
@@ -7206,7 +7206,7 @@ class Ppt(Book):
         if len(t1) >= 4 and t1[0:4] == "<th>": # if <th> at start of cell remove it
           t1 = t1[4:]
         if len(t1) >= 6 and t1[0:4] == "<al=":
-          t1 = re.sub(r"^<al=[lrch]>", "", t1, 1) # ignore any alignment directives
+          t1 = re.sub(r"^<al=[lrch]>", "", t1, count=1) # ignore any alignment directives
         if t1.strip() != "<span>":
           w1 = widths[i]
           for j in range(i+1, ncols):
@@ -8203,7 +8203,7 @@ class Pph(Book):
         lookup = m.group(1)
         if lookup not in classarray:
           classarray.append(lookup)
-        lcopy = re.sub("style='(.*?)'", "", lcopy, 1) # multiples possible on same line
+        lcopy = re.sub("style='(.*?)'", "", lcopy, count=1) # multiples possible on same line
         m = re.search("style='(.*?)'", lcopy)
     for i, line in enumerate(classarray):
       self.css.addcss("[{}] .c{:03d} {{ {} }}".format(2000+i, i, line))
@@ -8213,7 +8213,7 @@ class Pph(Book):
       while m:
         lookup = m.group(1)
         ix = classarray.index(lookup)
-        self.wb[i] = re.sub("style='.*?'", "class='c{:03d}'".format(ix), self.wb[i], 1)
+        self.wb[i] = re.sub("style='.*?'", "class='c{:03d}'".format(ix), self.wb[i], count=1)
         m = re.search("style='(.*?)'", self.wb[i])
     # combine multiple classes
     # needs to handle <p class='class1' class='class2'>...
@@ -8257,14 +8257,14 @@ class Pph(Book):
         # it's a duplicate forward reference
         self.warn("duplicate footnote reference: [{}]".format(name))
         self.wb[i] = re.sub(string, \
-        "⑪a href='⑦f{0}' style='text-decoration: none; '⑫⑪sup⑫⑬{0}⑭⑪/sup⑫⑪/a⑫".format(name), \
-        self.wb[i], 1)
+        "⑪a href='⑦f{0}' style='text-decoration: none; '⑫⑪sup⑫⑬{0}⑭⑪/sup⑦⑪/a⑫".format(name), \
+        self.wb[i], count=1)
       else:
         # it's the first reference
         fnlist.append(name)
         self.wb[i] = re.sub(string, \
         "⑪a id='r{0}'⑫⑪/a⑫⑪a href='⑦f{0}' style='text-decoration: none; '⑫⑪sup⑫⑬{0}⑭⑪/sup⑫⑪/a⑫".format(name), \
-        self.wb[i], 1)
+        self.wb[i], count=1)
 
     self.preProcessCommon()
 
@@ -8424,7 +8424,7 @@ class Pph(Book):
       while m:
         explicit = True
         fncr = int(m.group(1)) + 1
-        s = re.sub(re.escape(m.group(0)), "", s, 1)
+        s = re.sub(re.escape(m.group(0)), "", s, count=1)
         m = re.search(r"\[(\d+)\]", s)
       if explicit: # don't support mixing # and explicit in the same line
         i += 1
@@ -8432,7 +8432,7 @@ class Pph(Book):
 
       m = re.search(r"\[#\]", self.wb[i]) # auto-assigned
       while m:
-        self.wb[i] = re.sub(re.escape(m.group(0)), "[{}]".format(fncr), self.wb[i], 1)
+        self.wb[i] = re.sub(re.escape(m.group(0)), "[{}]".format(fncr), self.wb[i], count=1)
         fncr += 1
         m = re.search(r"\[#\]", self.wb[i])
       i += 1
@@ -8515,7 +8515,7 @@ class Pph(Book):
           fnlist2[name] += 1 # remember we saw a reference to it
           fnDupCheck(name)
         name = '[' + name + ']'
-        line = re.sub(re.escape(name), "", line, 1) # remove the hit so we can look for another
+        line = re.sub(re.escape(name), "", line, count=1) # remove the hit so we can look for another
         m2 = re.search(r"\[([A-Za-z0-9\-_\:\.]+)\]", line)
 
       i += 1
@@ -8537,23 +8537,23 @@ class Pph(Book):
       if "<target id" in self.wb[i]:
         m = re.search("<target id='(.*?)'>", self.wb[i])
         while m:
-          self.wb[i] = re.sub("<target id='(.*?)'>", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], 1)
+          self.wb[i] = re.sub("<target id='(.*?)'>", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], count=1)
           self.checkId(m.group(1), id_loc=i)
           m = re.search("<target id='(.*?)'>", self.wb[i])
         m = re.search("<target id=\"(.*?)\">", self.wb[i])
         while m:
-          self.wb[i] = re.sub("<target id=\"(.*?)\">", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], 1)
+          self.wb[i] = re.sub("<target id=\"(.*?)\">", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], count=1)
           self.checkId(m.group(1), id_loc=i)
           m = re.search("<target id=\"(.*?)\">", self.wb[i])
         m = re.search("<target id=(.*?)>", self.wb[i])
         while m:
-          self.wb[i] = re.sub("<target id=(.*?)>", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], 1)
+          self.wb[i] = re.sub("<target id=(.*?)>", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], count=1)
           self.checkId(m.group(1), id_loc=i)
           m = re.search("<target id=(.*?)>", self.wb[i])
       elif "<target=" in self.wb[i]:
         m = re.search("<target=(.*?)>", self.wb[i])
         while m:
-          self.wb[i] = re.sub("<target(.*?)>", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], 1)
+          self.wb[i] = re.sub("<target(.*?)>", "<a id='{0}'></a>".format(m.group(1)), self.wb[i], count=1)
           self.checkId(m.group(1), id_loc=i)
           m = re.search("<target(.*?)>", self.wb[i])
 
@@ -8792,12 +8792,12 @@ class Pph(Book):
         else:
           self.warn("Unexpected problem interpreting <sc> string, assuming mixed-case.\nLine number:{}\nCurrent line: {}\nCurrent string:{}".format(i, self.wb[i],stmp))
         if use_class == "sc":
-          self.wb[i] = re.sub("<sc>", "<span class='sc'>", self.wb[i], 1)
+          self.wb[i] = re.sub("<sc>", "<span class='sc'>", self.wb[i], count=1)
           self.css.addcss("[1200] .sc { font-variant: small-caps; }")
         if use_class == "fss":
-          self.wb[i] = re.sub("<sc>", "<span class='fss'>", self.wb[i], 1)
+          self.wb[i] = re.sub("<sc>", "<span class='fss'>", self.wb[i], count=1)
           self.css.addcss("[1200] .fss { font-size: 75%; }")
-        self.wb[i] = re.sub("</sc>", "</span>", self.wb[i], 1) # since we had a <sc> replace 1 </sc> if present on this line
+        self.wb[i] = re.sub("</sc>", "</span>", self.wb[i], count=1) # since we had a <sc> replace 1 </sc> if present on this line
         m = re.search("<sc>", self.wb[i]) # look for another opening small cap tag
 
       # common closing, may be on separate line
@@ -8865,7 +8865,7 @@ class Pph(Book):
 
       m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
       while m:
-        self.wb[i] = re.sub(m.group(0), "<span style='font-size⑥ {}; '>".format(m.group(1)), self.wb[i], 1)
+        self.wb[i] = re.sub(m.group(0), "<span style='font-size⑥ {}; '>".format(m.group(1)), self.wb[i], count=1)
         m = re.search(r"<fs=[\"']?(.*?)[\"']?>", self.wb[i])
       self.wb[i] = re.sub("</fs>", "</span>", self.wb[i])
 
@@ -8986,26 +8986,26 @@ class Pph(Book):
       m = re.search(r"⑲(\d+?)⑲", self.wb[i])
       while m: # page number reference
         s = "<a href='⫉Page_{0}'>{0}</a>".format(m.group(1)) # link to it
-        self.wb[i] = re.sub(m.group(0), s, self.wb[i], 1)
+        self.wb[i] = re.sub(m.group(0), s, self.wb[i], count=1)
         m = re.search(r"⑲(\d+?)⑲", self.wb[i])
 
       m = re.search(r"⑲([iIvVxXlLcCdDmM]+)⑲", self.wb[i]) # Roman numeral reference
       while m:
         s = "<a href='⫉Page_{0}'>{0}</a>".format(m.group(1)) # link to that
-        self.wb[i] = re.sub(m.group(0), s, self.wb[i], 1)
+        self.wb[i] = re.sub(m.group(0), s, self.wb[i], count=1)
         m = re.search(r"⑲([iIvVxXlLcCdDmM]+)⑲", self.wb[i])
 
       m = re.search(r"⑲(.*?):(music/.*\.mid)⑲", self.wb[i]) # named music file reference
       while m:
         s = "<a href='{}'>{}</a>".format(m.group(2), m.group(1)) # link to that
-        self.wb[i] = re.sub(re.escape(m.group(0)), s, self.wb[i], 1)
+        self.wb[i] = re.sub(re.escape(m.group(0)), s, self.wb[i], count=1)
         m = re.search(r"⑲(.*?):(music/.*\.mid)⑲", self.wb[i])
 
       m = re.search(r"⑲(.*?):(.*?)⑲", self.wb[i]) # named text reference
       while m:
         s = "<a href='⫉{}'>{}</a>".format(m.group(2), m.group(1)) # link to that
         self.checkId(m.group(2), id_loc=i)
-        self.wb[i] = re.sub(re.escape(m.group(0)), s, self.wb[i], 1)
+        self.wb[i] = re.sub(re.escape(m.group(0)), s, self.wb[i], count=1)
         m = re.search(r"⑲(.*?):(.*?)⑲", self.wb[i])
 
       self.wb[i] = re.sub("⫉", '#', self.wb[i])
@@ -9017,7 +9017,7 @@ class Pph(Book):
       # lang specifications
       m = re.search(r"ᒪ'(.+?)'", self.wb[i])
       while m:
-        self.wb[i] = re.sub(m.group(0), "<span lang=\"{0}\">".format(m.group(1)), self.wb[i], 1) # RT remove the deprecated xml declaration
+        self.wb[i] = re.sub(m.group(0), "<span lang=\"{0}\">".format(m.group(1)), self.wb[i], count=1) # RT remove the deprecated xml declaration
         m = re.search(r"ᒪ'(.+?)'", self.wb[i])
       self.wb[i] = re.sub("ᒧ", "</span>", self.wb[i])
 
@@ -9921,7 +9921,7 @@ class Pph(Book):
       try:
         self.regIN = self.instack.pop()
       except:
-        self.crash_w_context("indent error: no indent to undo", self.cl, 2)
+        self.crash_w_context("indent error: no indent to undo", self.cl, r=2)
       del self.wb[self.cl]
       return
 
@@ -9961,7 +9961,7 @@ class Pph(Book):
       try:
         self.regLL = self.llstack.pop()
       except:
-        self.crash_w_context("line length error: no line length to undo", self.cl, 2)
+        self.crash_w_context("line length error: no line length to undo", self.cl, r=2)
       del self.wb[self.cl]
       return
 
@@ -10217,8 +10217,8 @@ class Pph(Book):
         m = re.match(r"^(⑯\w+⑰)", tmp)
         while m:
           ss += m.group(0)
-          #tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp, 1)
-          tmp = re.sub(r"^⑯\w+⑰", "", tmp, 1)
+          #tmp = re.sub(r"^<[^>]+>|⑯\w+⑰", "", tmp, count=1)
+          tmp = re.sub(r"^⑯\w+⑰", "", tmp, count=1)
           #m = re.match(r"^<[^>]+>|⑯\w+⑰", tmp)
           m = re.match(r"⑯\w+⑰", tmp)
         leadsp = len(tmp) - len(tmp.lstrip())
@@ -10347,7 +10347,7 @@ class Pph(Book):
                 if s.startswith("<div class='footnote' id='f"):
                   s2 = "margin-top: {}em; ".format(self.pvs)
                   self.pvs = 0
-                  s, count = re.subn("style='font-size", "style='{}font-size".format(s2), s, 1)
+                  s, count = re.subn("style='font-size", "style='{}font-size".format(s2), s, count=1)
                   if not count:
                     self.warn("Footnote HTML substitution failed for: {}::{}".format(s, s2))
                 else:
@@ -10509,7 +10509,7 @@ class Pph(Book):
         if len(t) >= 4 and t[0:4] == "<th>": # if cell starts with <th> remove it
           t = t[4:]
         if len(t) >= 6 and t[0:4] == "<al=": # possible alignment directive?
-          t = re.sub(r"^<al=[lrch]>", "", t, 1) # ignore any alignment directives
+          t = re.sub(r"^<al=[lrch]>", "", t, count=1) # ignore any alignment directives
         if t != "<span>": # ignore <span> cells for purposes of figuring max width of this column
           maxw = max(maxw, self.truelen(t))
         j += 1
@@ -11172,8 +11172,8 @@ class Pph(Book):
         while m:
           bnInLine = True
           t = " 'Pg{}' => ['offset' => '{}.{}', 'label' => '', 'style' => '', 'action' => '', 'base' => ''],".format(m.group(2),i+1,len(m.group(1)))  # format a line in the .bn array (GG expects 1-based line number)
-          t = re.sub(r"\[","{",t,1)
-          t = re.sub(r"\]","}",t,1)
+          t = re.sub(r"\[","{",t,count=1)
+          t = re.sub(r"\]","}",t,count=1)
           self.bb.append(t)
           self.jb[m.group(2)] = {"index": f"{i+1}.{len(m.group(1))}", "style": '"', "number": "0", "label": ""}
           if self.ppqt2:
@@ -11181,7 +11181,7 @@ class Pph(Book):
             offset1 = len(m.group(1))
             offset2 = len(m.group(3))
             self.ppqtpage(m.group(2), ccount)
-          self.wb[i] = re.sub("⑱.*?⑱","",self.wb[i],1)  # remove the .bn information
+          self.wb[i] = re.sub("⑱.*?⑱","",self.wb[i],count=1)  # remove the .bn information
           temp = self.wb[i]
           m = re.search("(.*?)⑱(.*?)⑱(.*)",self.wb[i])  # look for another one on the same line
         if self.ppqt2:
@@ -11539,9 +11539,9 @@ class Pph(Book):
     if (self.list_item_active and self.cl < len(self.wb) and
        (self.wb[self.cl].startswith(".it") or self.wb[self.cl].startswith(".ul") or
         self.wb[self.cl].startswith(".ol"))):
-      self.wb[pstart], count = re.subn("li-p-mid", "li-p-last", self.wb[pstart], 1)
+      self.wb[pstart], count = re.subn("li-p-mid", "li-p-last", self.wb[pstart], count=1)
       if count == 0:
-        self.wb[pstart], count = re.subn("li-p-first", "li-p-only", self.wb[pstart], 1)
+        self.wb[pstart], count = re.subn("li-p-first", "li-p-only", self.wb[pstart], count=1)
 
     self.regTI = 0 # any temporary indent has been used.
 
@@ -12223,7 +12223,7 @@ class Pph(Book):
           m = re.match(r"^(⑯\w+⑰)", tmp) # remove any leading .bn info before calculating
           while m:
             ss += m.group(0)
-            tmp = re.sub(r"^⑯\w+⑰", "", tmp, 1)
+            tmp = re.sub(r"^⑯\w+⑰", "", tmp, count=1)
             m = re.match(r"^⑯\w+⑰", tmp)
           leadsp = len(tmp) - len(tmp.lstrip())
 
@@ -12407,7 +12407,7 @@ class Pph(Book):
             self.linkinfo.add("[7]Note: duplicate link: {}".format(t))
         else:
           links[t] = 1
-        line = re.sub(re.escape(m.group(0)), "", line, 1) # remove the one we found
+        line = re.sub(re.escape(m.group(0)), "", line, count=1) # remove the one we found
         m = re.search(r"href=[\"']#(.*?)[\"']", line)  # look for another one
 
       m = re.search(r"href=[\"']([^#].*?)[\"']", line) # now look for external links that we can't check
@@ -12419,7 +12419,7 @@ class Pph(Book):
         elif not t.startswith("images/"):    # don't worry about links to our image files
           self.linkinfo.add("[4] ")
           self.linkinfo.add("[4]Warning: cannot validate external link: {}".format(t))
-        line = re.sub(re.escape(m.group(0)), "", line, 1) # remove the one we found
+        line = re.sub(re.escape(m.group(0)), "", line, count=1) # remove the one we found
         m = re.search(r"href=[\"']([^#].*?)[\"']", line)  # look for another one
 
     # build targets
@@ -12441,7 +12441,7 @@ class Pph(Book):
           self.linkinfo.add("[3]Error: Duplicate target: {}".format(t))
         else:
           targets[t] = 1
-        line = re.sub(re.escape(m.group(0)), "", line, 1)
+        line = re.sub(re.escape(m.group(0)), "", line, count=1)
         m = re.search(r"id=[\"'](.+?)[\"']", line)
 
     # match links to targets
