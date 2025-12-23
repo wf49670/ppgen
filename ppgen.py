@@ -9059,6 +9059,7 @@ class Pph(Book):
     t.append("<!DOCTYPE html>")
     t.append("<html lang=\"" + self.nregs["lang"] + "\">") # include base language in header RT removed deprecated xmlns and xml declarations
     t.append("  <head>")
+    t.append("    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">")
 
     if self.encoding == "utf_8":
       #t.append("    <meta http-equiv=\"Content-Type\" content=\"text/html;charset=UTF-8\">")
