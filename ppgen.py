@@ -6539,6 +6539,26 @@ class Ppt(Book):
   def doNfc(self, mo):
     t = []
     i = self.cl + 1 # skip the .nf c line
+
+    # First pass: check if we'll need padding (to avoid making lines too long)
+    # We need padding if any centered line would hit the left margin
+    need_pad = False
+    j = i
+    while self.wb[j] != ".nf-":
+      if not (self.bnPresent and self.is_bn_line(self.wb[j])):
+        if not (self.wb[j].startswith(".dc") or self.wb[j].startswith(".di")):
+          xt_check = self.regLL - self.regIN
+          line_check = self.wb[j].strip()
+          len_check = self.truelen(line_check)
+          # Check if this line, when centered, would start at column 0
+          if len_check >= xt_check or (xt_check - len_check) // 2 == 0:
+            need_pad = True
+            break
+      j += 1
+
+    # Adjust width if padding will be needed
+    width_adjustment = 1 if need_pad else 0
+
     while self.wb[i] != ".nf-":
       bnInBlock = False
       if self.bnPresent and self.is_bn_line(self.wb[i]): #just copy .bn info lines, don't change them at all
@@ -6551,7 +6571,7 @@ class Ppt(Book):
         del self.wb[i]
         continue
 
-      xt = self.regLL - self.regIN # width of centered line
+      xt = self.regLL - self.regIN - width_adjustment # width of centered line (reduced if padding needed)
       xs = "{:^" + str(xt) + "}"
       line = self.wb[i].strip()
       len2 = self.truelen(line) # actual length of line, ignoring non-spacing Unicode characters
@@ -6587,15 +6607,9 @@ class Ppt(Book):
 
       i += 1
     self.cl = i + 1 # skip the closing .nf-
-    # see if the block has hit the left margin
-    need_pad = False
-    for line in t:
-      if line and line[0] != " ":
-        if not bnInBlock or not self.is_bn_line(line):
-          need_pad = True
-          break
+    # Add padding if needed (now the lines are already the right length)
     if need_pad:
-      self.warn("inserting leading space in wide .nf c (or .ce)")
+      self.info("inserting leading space in wide .nf c (or .ce)")
       for i,line in enumerate(t):
         t[i] = " "+ t[i]
     t.insert(0, ".RS 1")
@@ -6780,7 +6794,7 @@ class Ppt(Book):
           need_pad = True
           break
     if need_pad:
-      self.warn_w_context("inserting leading space in wide .nf b", firstline)
+      self.info("inserting leading space in wide .nf b")
       for i,line in enumerate(t):
         t[i] = " "+ t[i]
     t.insert(0, ".RS 1")
