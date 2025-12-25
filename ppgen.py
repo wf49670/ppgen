@@ -35,7 +35,7 @@ import struct
 import traceback
 import json
 
-VERSION="3.57g" + with_regex   # 23-Dec-2025
+VERSION="3.57g" + with_regex   # 24-Dec-2025
 #3.57a:
 #  Initial 3.57 release
 #  Enh: Provide context for "Unclosed tags in .nf block" error
@@ -61,6 +61,17 @@ VERSION="3.57g" + with_regex   # 23-Dec-2025
 #  Bug: Using a backslash to escape "regular" characters is deprecated starting in Python 3.6, but triggers many visible warnings in 3.12.
 #3.57g: 
 #  Bug: merged additional regex corrections
+#  Bug: Fixed deprecation warnings related to codecs.open()
+#  Bug: Fixed all instances where numeric count arguments were positional instead of using keyword arguments
+#  Bug: resolved missing/confused variables (temp, w, spaced, space)
+#  Bug: Fix invalid escape sequence SyntaxWarnings for Python 3.12+
+#  Bug: Other Python 3.12 deprecation
+#  Enh: Add support for Guiguts2 JSON metadata files
+#  Bug: Correct pngspath in Guiguts .bin files
+#  Bug: Fix incorrectly escaped format string
+#  Bug: resolve re exception in processing .bn command
+#  Enh: Skip over dotfiles when reviewing image extensions
+#  Enh: Add "viewport" meta tag per current HTML5 guidelines
 
 ###  Todo Bug: In HTML, a .sp placed before a .il does not take effect until the next text after the illustration/caption.
 
