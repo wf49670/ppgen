@@ -1,0 +1,566 @@
+﻿// This is a ppgen source file.
+
+// Title      : How can I help to abolish slavery?
+// Author     : Chapman, Maria Weston
+// Project ID : projectID617bdc5072212
+
+.dt How can I help to abolish slavery?, by Chapman, Maria Weston—A Project Gutenberg eBook
+
+.if h
+.de div.tnotes { padding-left:1em;padding-right:1em;background-color:#E3E4FA;border:1px solid silver; margin:2em 10% 0 10%; }
+.de .covernote { visibility: hidden; display: none; }
+.de div.tnotes p { text-align:left; }
+.de @media handheld { .covernote { visibility: visible; display: block;} }
+.dv class="tnotes covernote"
+<b>Transcriber's Note:</b>
+
+The cover image was created by the transcriber and is placed in the public domain.
+.dv-
+.if-
+
+.pb
+
+// 001.png
+.bn 001.png
+.pn 1
+
+.ce
+<xl><i>ANTI-SLAVERY TRACTS. No. 14.</i></xl>
+
+.hr
+
+.sp 4
+
+.h1
+“HOW CAN I HELP TO ABOLISH SLAVERY?”
+
+.ce
+<s>OR,</s>
+
+.ce
+<l>COUNSELS TO THE NEWLY CONVERTED.</l>
+
+.ce
+BY MARIA WESTON CHAPMAN.
+
+Yes, my friend, I can resolve your question. Twenty years of
+actual experience qualify one to reply. I have stood, as you now
+stand, on the threshold of this grandest undertaking of any age—this
+effort to elevate a whole people in the scale of moral being—with
+my head full of plans, and my heart of devotedness, asking
+the same question. I really longed for this coming of millennial
+glory, and therefore soon found the road on which to go forth to
+meet it. My disgust was unutterable, as yours, too, will be, if you
+desire the abolition of slavery more than the temporary triumph of
+sect or party, at the stupid schemes by which selfish men were
+then, as now, trying to make capital for themselves out of the
+sacred cause of human rights—seeking to sell the gift of the Holy
+Ghost for money. Hear them clamorously and meanly taking advantage
+of ignorance, for the promotion of self-interest.
+
+First, hear the agents of slavery presenting the colonization scheme
+as the instrument of abolition.
+
+“Aid the Colonization Society.” Yes; to make slavery stronger
+by exalting prejudice as an ordination of divine Providence; to
+make slavery safer by eliminating that dangerous element, the free
+black; to make its term longer by stultifying national conscience.
+See that society making the laws of slave States more cruel, the
+men of the free States more obdurate, the situation of the free men
+of color more difficult and insupportable, as a part of its plan. It
+// 002.png
+.bn 002.png
+.pn +1
+could not, if it would, transport three millions of souls to Africa;
+the navies and revenues of the world would be insufficient. It
+would not, if it could; for slavery has no intention of parting with
+its three millions of victims; unless induced to free them out of
+generosity, it will keep them on speculation. Its forty years of colonization
+labor, and its million of gold and silver, have exiled
+fewer to Liberia than have escaped into Canada in spite of it—less
+in that period than the monthly increase of the slaves! It
+can do nothing for Christianizing Africa, for it sends a slaveholding
+gospel, which is anti-Christ. Be not deceived, then, by a tyrannical
+mockery like this, working to perpetuate slavery, and not to
+abolish it. Aid the American Anti-Slavery Society, which deals
+with the heart and conscience of this slaveholding nation, demanding
+immediate, unconditional emancipation, without expatriation;
+the abolition of slavery by the spirit of repentance, in conformity
+with all your own principles and traditions, whether religious or
+political.
+
+Hear another cry, (coming, not like the first, from the enemies of
+abolition, but from friends, generally those of more pretension than
+devotedness:) “Form a political party, free soil or other, to vote
+down slavery.”
+
+Yes, don’t <em>kill</em> the growing monster—call to him to stop growing;
+merge immediatism, which always succeeds, in gradualism, which
+never does. Substitute a secondary object for the primary one.
+Strive in the first place not to abolish slavery, but to get one set of
+men out of office and another in, to learn by the event that the last
+are as incapable to turn back the whirlpool that masters the government
+as the first were. Make an appeal to force of numbers in a
+case where you know it is against you; in a case, too, where, having
+sworn assistance, you must lose influence by such an appeal.
+Spend your time and money, not in making new abolitionists, but
+in counting the old ones, that at every count diminish. Politics, in
+the common, small sense of the term, merely takes the circumstances
+it finds, and does its best with them. But the present circumstances
+are unfavorable. <sc>Then create new ones.</sc> This is true politics,
+in the enlarged, real meaning of the word. Here is a building to
+be erected, and no sufficient materials. A <em>little</em> untempered mortar,
+a <em>few</em> unbaked bricks—that is all. Go to the deep quarries of the
+human heart, and make of your sons and daughters polished stones
+// 003.png
+.bn 003.png
+.pn +1
+to build the temple of the Lord. It is this cleaving into the living
+rock the <sc>American Anti-Slavery Society</sc> girds itself to do.
+Under its operations men become better and better abolitionists.
+Under the labors of political partisanship they necessarily grow
+worse and worse. They must ever ask themselves how <em>little</em> anti-slavery
+feeling and principle they can make serve the temporary
+turn; because the less of either, the greater the chance. They must
+always be sacrificing the end to the means. Call them to the witness
+box in their capacity of philosophical observers, and out of
+their little circumventing political characters, and themselves will
+tell you that the effect of electioneering on anti-slavery is most unfavorable,
+adding to the existing opposition to right the fury of party
+antagonism, throwing away the balance of power, lowering the tone
+of moral and religious feeling and action, and thus letting a sacred
+enterprise degenerate into a scramble for office. But labor with the
+<sc>American Anti-Slavery Society</sc> <em>directly</em> to the great end, and
+even Franklin Pierce and Co., pro-slavery as they are, will grovel to
+do your bidding. The administration now <em>on</em> the throne is as good
+for your bidding as any other. In a republican land the power behind
+the throne is <em>the</em> power. Save yourself the trouble of calling
+caucuses, printing party journals, distributing ballots, and the like.
+Let men who are fit for nothing of more consequence do this little
+work, which is best done by mere nobodies. <em>More</em> than enough of
+them are always ready for it. You, who are smitten by the sacred
+beauty of the great cause, should serve it greatly. Don’t drag the
+engine, like an ignoramus, but bring wood and water and flame,
+like an engineer. The <sc>American Anti-Slavery Society</sc> has
+laid the track.
+
+“Buy slaves and set them free.” Yes; lop the branches and
+strengthen the root; make the destruction of the system more difficult
+by practising upon it; create a demand for the slave breeder to
+supply; compromise with crime; raise the market price, when you
+ought to stop the market; put a philanthropic mark upon the slave
+trade; spend money enough in buying one man to free fifty gratis,
+and convert a thousand. But there is a <em>wholesale</em> way, cries one.
+“Sell the public lands, and set every means in motion, from the
+merely mercantile donation of a million to the infant cent society, and
+thus raise two thousand millions of dollars, and beg the slaveholders
+to take it, (not as compensation, but as a token of good will,) and
+// 004.png
+.bn 004.png
+.pn +1
+let their bondmen go.” I marvel at this insufficient notion of the
+heart of a slaveholder. I wonder exceedingly at such a want of
+imagination. “Not as compensation” is well put; for what sum
+can compensate a monarch for his throne? This system of slavery
+makes the south the parent of long lines of princes. It gives to her
+diabolical dominions
+
+.in +4
+.ll -4
+“Kingdoms, and sway, and strength, and length of days.”
+.in
+.ll
+
+I am strangely divided in sympathy. I feel at once the generosity
+of the proposal, and have the feeling of contempt with which its
+insufficient inappropriateness is received.
+
+“Organize vigilance committees, and establish underground railroads.”
+Yes; hide from tyranny, instead of defying it; <em>whisper</em> a
+testimony; form a bad habit of mind in regard to despotism; try to
+keep out the sea with a mop, when you ought to build a dike; flatter
+your sense of compassion by taking private retail measures to
+have suffering ameliorated, when you might, with the <sc>American
+Anti-Slavery Society</sc>, be taking public wholesale measures to
+have <em>wrong</em> (the cause of suffering) <em>righted</em>. You may safely leave
+with the half and quarter converted, with the slaveholders, nay,
+even with the Curtises, the charge of all these things, which without
+the American Anti-Slavery Society are but as hydrogen and
+nitrogen without oxygen, however good with it, as the natural fruits
+of its labors. What I would discourage is, not mercy and compassion
+in an individual case, but a disgraceful mistake in the economy
+of well doing; spending in salving a sore finger what would
+buy the elixir vitæ; preferring the less, which <em>ex</em>cludes the greater,
+to the greater, which <em>in</em>cludes the less. Slavery can only be abolished
+by raising the character of the people who compose the nation;
+and <em>that</em> can be done only by showing them a higher one.
+Now, there is <em>one</em> thing that can’t be done in <em>secret</em>; you can’t <em>set a
+good example under a bushel</em>.
+
+“But instruction! instruction! found schools and churches for
+the blacks, and thus <em>prepare</em> for the abolition of slavery.” O, shallow
+and shortsighted! the <em>demand</em> is the <em>preparation</em>; nothing can
+supply the place of <em>that</em>. And <em>exclusive</em> instruction, teaching for
+<em>blacks</em>, a school founded on color, a church in which men are herded
+ignominiously, apart from the refining influence of association with
+// 005.png
+.bn 005.png
+.pn +1
+the more highly educated and accomplished,—what are they? A
+direct way of fitting white men for tyrants, and black men for slaves.
+No; if you would teach and Christianize the nation, strengthen the
+<sc>American Anti-Slavery Society</sc>, the <em>only</em> American institution
+founded on the Christian and republican idea of the equal brotherhood
+of man, and in opposition to a church and state which deny
+human brotherhood by sanctioning slavery, and pull down Christ to
+their own level. The American Anti-Slavery Society is church and
+university, high school and common school to all who need real
+instruction and true religion. Of it what a throng of authors, editors,
+lawyers, orators, and accomplished gentlemen of color have
+taken their degree! It has equally implanted hopes and aspirations,
+noble thoughts and sublime purposes in the hearts of both races.
+It has prepared the white man for the freedom of the black man,
+and it has made the black man scorn the thought of enslavement,
+as does a white man, as far as its influence has extended. <em>Strengthen
+that noble influence.</em> Before its organization, the country only saw
+here and there in slavery some “faithful Cudjoe or Dinah,” whose
+strong natures blossomed even in bondage, like a fine plant beneath
+a heavy stone. Now, under the elevating and cherishing influence
+of the American Anti-Slavery Society, the colored race, like
+the white, furnishes Corinthian capitals for the noblest temples.
+Aroused by the American Anti-Slavery Society, the very white men
+who had forgotten and denied the claim of the black man to the
+rights of humanity now thunder that claim at every gate, from cottage
+to capital, from school house to university, from the railroad
+carriage to the house of God. He has a place at their firesides, a
+place in their hearts—the man whom they once cruelly hated for
+his color. So feeling, they <em>cannot</em> send him to Coventry with a horn-book
+in his hand, and call it <em>instruction</em>! They inspire him to climb
+to their side by a visible acted gospel of freedom. Thus, instead
+of bowing to prejudice, they conquer it.
+
+“Establish free-labor warehouses.” Indeed! is that a good business
+calculation that leads to expend in search of the products of
+free labor the time and money that would make all labor free?
+While wrong exists in the world, you cannot (short of suicide) but
+draw your every life breath in involuntary connection with it; nor
+is conscience to be satisfied with any thing short of a complete devotion
+to the anti-slavery cause of the life that is sustained by slavery.
+// 006.png
+.bn 006.png
+.pn +1
+We <em>may</em> draw good out of evil: we <em>must not</em> do evil, that
+good may come. Yet I counsel you to honor those who eat no
+sugar, as <em>you</em> ask no questions for conscience’s sake; while you
+despise those who thrust forward such a call upon conscience, <em>impossible</em>,
+in the nature of things, to be obeyed, and therefore not
+binding, as if it were the end of the law for righteousness, in order
+to injure Garrison, the great and good founder of the American Anti-Slavery
+Society. I have seen men stand drawing bills of exchange
+between England and the United States, while uttering maledictions
+against the American Anti-Slavery Society, because it does
+not, as such, occupy itself with the free produce question. This I
+brand as pro-slavery in disguise—sheer hypocrisy.
+
+You see, my friend, that I have replied to your question in the
+conviction that you desire the abolition of slavery above all other
+things in this world; as one assured that it is the great work of
+Christianity in our age and country, as the conflict with idolatry was
+in other times and climes. Thus you see the salvation of the souls,
+the maintenance of the rights, the fulfilment of the duties, and the
+preservation of the free institutions of Americans, to depend upon
+the extirpation of this accursed and disgraceful disease which is
+destroying them. If I had reason to think you merely desirous to
+make sectarian and political capital out of a holy thought and a
+sacred purpose originated by others—if you were merely contriving
+defences for what is indefensible, and trying to save the credit of
+what is disgraceful, trying to throw dust, and change the issue, and
+pay tithes of cumin to delay justice, in order to spare your own
+insignificant self in this greatest conflict of light and darkness, good
+and evil, which the world has now to show—if you had been trying
+how to <em>seem</em> creditably interested in what ought to be an American’s
+first business, and calculating <em>how little</em> instead of <em>how much</em>
+you might sacrifice to the soul-exalting cause of freedom—if you
+were but trying to get yourself or some friend into office by the
+judicious use of ideas which, as a republican and a Christian, you
+ought to give yourself wholly to be used by—if you were the hired
+agent of some demisemiquaver of a movement which tacked anti-slavery
+to its other titles, in order to establish a claim on the purses
+of abolitionists—in any of these cases I would not have stopped to
+talk with you. Your interest being the thing you had at heart, I
+should not <em>counsel</em>; I should be called, in the name of all that is
+// 007.png
+.bn 007.png
+.pn +1
+holy, to <em>condemn</em> you, in order that blame might awaken conscience.
+But the case, I trust, is different. I may, then, say to you, with all
+the confidence, nay, certainty, which is inseparable from experience,
+knowledge, and utter self-abnegation in the matter, <sc>Work with
+the American Anti-Slavery Society</sc>. Lavish your time, your
+money, your labors, your prayers, in that field, which is the world,
+and you will reap a thousand fold, now and hereafter. This movement
+<em>moves</em>. It is alive. Hear how every thing mean and selfish
+struggles, hisses, and dies under its influence. Never, since the
+world was, has any effort been so clear, so strong, so uncompromising,
+so ennobling, so holy, and, let me add, so successful. It is “the
+bright consummate flower” of the Christianity of the nineteenth
+century. Look at those who “have not resisted the heavenly vision”
+it presented them of a nation overcoming its evil propensities, and
+doing right at all risks; ask <em>them</em> whether it has not saved their souls
+alive; ask <em>them</em> if it has not made them worshippers of the beauty
+and sublimity of high character, till they are ready to “know nothing
+on earth but Jesus Christ and him crucified.” For this they
+give all—wealth, youth, health, strength, life. Worldly success,
+obtained by slackening their labors against slavery, (and it is easy
+to have it on those terms at any moment, so placable a monster is
+the world,) strikes them like failure and disgrace. They have
+“scorned delights, and lived laborious days,” till at length they feel
+it no sacrifice, but the highest joy. All this the American Anti-Slavery
+Society demands of <em>you</em>. <sc>Do it!</sc> and be most grateful for
+the opportunity of fulfilling a work which is its own exceeding great
+reward. <sc>Do it</sc>, and find yourself the chosen of God, to keep alive
+in this nation, degraded and corrupted by slavery, the noble flame
+of Christian faith, the sentiment of honor and fidelity, the instinct
+of high-mindedness, the sense of absolute, immutable duty, the
+charm of chivalrous and poetic feeling, which would make of the
+poorest Americans the Christian gentlemen of the world.
+
+.nf b
+“Cherish all these high feelings that become
+A giver of the gift of liberty.”
+.nf-
+
+You will find yourself under the necessity of doing it in <em>this</em> noble
+company, or <em>alone</em>. Try it. Strive to be perfect, as God is perfect—to
+act up to your own highest idea, in connection with church or
+state in this land corrupted by slavery, and see if you are helped or
+// 008.png
+.bn 008.png
+.pn +1
+hindered. Be not dragged along by them protesting. It is graceing
+as a slave the chariot wheels of a triumph. But flee from them, as
+one flees out of Babylon. Secure the blessing of union for good,
+and be delivered from the curse of union in evil, by acting with the
+<sc>American Anti-Slavery Society</sc>, its members and friends.
+
+I use this mode of expression advisedly, for I am not speaking of
+a mere form of association. Many are in harmonious coöperation
+with it who have neither signed the constitution nor subscribed the
+annual half dollar. Hence it is neither a formality nor a ceremony,
+but a united, onward-flowing current of noble lives.
+
+If, then, you feel that devotedness of heart which I verily think
+your question indicates, I feel free to counsel you to go <em>immediately</em>
+to the nearest office of the American Anti-Slavery Society,[1] by letter,
+if not in person, subscribe what money you can afford—the
+first fruits of a life-long liberality, and <em>study</em> the cause like a science,
+while promoting it like a gospel, under the cheering and helpful
+sympathy of some of the best company on earth; <em>but not unless</em>;
+for <em>this</em> company despises what politicians, ecclesiastical and other,
+call “getting people committed.” They have a horror of this selfish
+invasion of another’s freedom, as of the encumbrance of selfish
+help. They warn you not to touch the ark with unhallowed hands.
+
+One consideration more—the thought of what you owe to your
+forerunners in what you feel to be the truth. It is, to follow meekly
+after, and be baptized with the baptism that they are baptized with.
+“Thus it <em>becometh</em> us to fulfil all righteousness;” and the more your
+talents, gifts, and graces may, in your own judgment, be superior to
+theirs, the more <em>becoming</em> it will be to seek their fellowship; for in
+the whole land they, and <em>they alone</em>, <em>are right</em>. It is not eulogy, but
+fact, that theirs is the path of the just, shining more and more unto
+the perfect day—denied only by the besotted with injustice, the
+committed to crime. Consider, then, not only what you owe to your
+slavery-cursed country, your enslaving as well as enslaved countrymen,
+your fathers’ memory, your remotest posterity, the Christian
+religion, which forbids the sacrifice of one man’s rights to another
+man’s interests, and which knows no distinction of caste, color, or
+condition,—but consider, also, what you owe to those individuals
+and to that brotherhood who have battled twenty years in the breach
+for <em>your</em> freedom, involved with that of the meanest slave.
+
+.fn 1
+For the local offices, see bottom of page 12.
+.fn-
+// 009.png
+.bn 009.png
+.pn +1
+
+Imagine how the case stood with those who perished by suffocation
+in the Black Hole at Calcutta. Suppose that some of their number
+had felt the sublime impulse to place their bodies in the door,
+and the high devoted hearts to stand the crushing till dawn awoke
+the tyrant; the <em>rest</em> of that doomed band might have passed out
+alive. This is what the American Anti-Slavery Society has been
+unflinchingly doing for you, and for the rest of the nation, amid
+torture, insult, and curses, through a long night of terror and despair.
+The life of the land, its precious moral sense, has been thus kept
+from suffocation. The free agitating air of faithful speech has
+saved it. The soul of the United States is not dead, thanks, under
+Providence, to that noble fellowship of resolute souls, to find whom
+the nation has been winnowed. Do your duty by them, in the
+name of self-respect. Such companionship is an honor accorded
+to but few, and of that worthy few I would fain count you one.
+Strike, then, with them at the existence of slavery, and you will see
+individual slaves made free, anti-slavery leaven introduced into
+parties and churches, instruction diffused, the products of free labor
+multiplied, and fugitives protected, in exact proportion to the energy
+of the grand onset against the civil system.
+
+.tb
+
+<sc>Note.</sc> The work of the American Anti-Slavery Society is carried
+on by newspapers, books, tracts, agents, meetings, and conventions.
+The donor is requested to specify to what department, and
+in what section of country, he wishes his contribution applied.
+
+.fm lz=th
+// 010.png
+.bn 010.png
+.pn +1
+
+.pb
+
+.h2
+CONSTITUTION OF THE AMERICAN ANTI-SLAVERY SOCIETY.
+
+.ce
+FORMED IN PHILADELPHIA, DECEMBER 4, 1833.
+
+Whereas the Most High God “hath made of one blood all nations
+of men to dwell on all the face of the earth,” and hath commanded
+them to love their neighbors as themselves; and whereas
+our national existence is based upon this principle, as recognized
+in the Declaration of Independence, “that all mankind are created
+equal, and that they are endowed by their Creator with certain inalienable
+rights, among which are life, liberty, and the pursuit of
+happiness;” and whereas, after the lapse of nearly sixty years,
+since the faith and honor of the American people were pledged to
+this avowal before Almighty God and the world, nearly one sixth
+part of the nation are held in bondage by their fellow-citizens; and
+whereas slavery is contrary to the principles of natural justice, of
+our republican form of government, and of the Christian religion,
+and is destructive of the prosperity of the country, while it is endangering
+the peace, union, and liberties of the States; and whereas
+we believe it the duty and interest of the masters immediately to
+emancipate their slaves, and that no scheme of expatriation, either
+voluntary or by compulsion, can remove this great and increasing
+evil; and whereas we believe that it is practicable, by appeals to
+the consciences, hearts, and interests of the people, to awaken a
+public sentiment throughout the nation that will be opposed to the
+continuance of slavery in any part of the republic, and by effecting
+the speedy abolition of slavery, prevent a general convulsion; and
+whereas we believe we owe it to the oppressed, to our fellow-citizens
+who hold slaves, to our whole country, to posterity, and to God,
+to do all that is lawfully in our power to bring about the extinction
+of slavery, we do hereby agree, with a prayerful reliance on the
+divine aid, to form ourselves into a society to be governed by the
+following constitution:—
+// 011.png
+.bn 011.png
+.pn +1
+
+<sc>Article I.</sc>—This society shall be called the <sc>American Anti-Slavery
+Society</sc>.
+
+<sc>Article II.</sc>—The objects of this society are the entire abolition
+of slavery in the United States. While it admits that each State
+in which slavery exists has, by the constitution of the United States,
+the exclusive right to <em>legislate</em> in regard to its abolition in said State,
+it shall aim to convince all our fellow-citizens, by arguments addressed
+to their understandings and consciences, that slaveholding
+is a heinous crime in the sight of God, and that the duty, safety,
+and best interests of all concerned require its <em>immediate abandonment</em>,
+without expatriation. The society will also endeavor, in a constitutional
+way, to influence Congress to put an end to the domestic
+slave trade, and to abolish slavery in all those portions of our common
+country which come under its control, especially in the District
+of Columbia, and likewise to prevent the extension of it to any
+State that may be hereafter admitted to the Union.
+
+<sc>Article III.</sc>—This society shall aim to elevate the character
+and condition of the people of color, by encouraging their intellectual,
+moral, and religious improvement, and by removing public
+prejudice, that thus they may, according to their intellectual and
+moral worth, share an equality with the whites of civil and religious
+privileges; but this society will never, in any way, countenance the
+oppressed in vindicating their rights by resorting to physical force.
+
+<sc>Article IV.</sc>—Any person who consents to the principles of this
+constitution, who contributes to the funds of this society, and is not
+a slaveholder, may be a member of this society, and shall be entitled
+to vote at the meetings.
+
+<sc>Article V.</sc>—The officers of this society shall be a president,
+vice-presidents, a recording secretary, corresponding secretaries, a
+treasurer, and an executive committee of not less than five nor more
+than twelve members.
+
+<sc>Article VI.</sc>—The executive committee shall have power to
+enact their own by-laws, fill any vacancy in their body, and in the
+offices of secretary and treasurer, employ agents, determine what
+compensation shall be paid to agents and to the corresponding secretaries,
+direct the treasurer in the application of all moneys, and
+call special meetings of the society. They shall make arrangements
+for all meetings of the society, make an annual written
+report of their doings, the expenditures and funds of the society,
+and shall hold stated meetings, and adopt the most energetic measures
+// 012.png
+.bn 012.png
+.pn +1
+in their power to advance the objects of the society. They
+may, if they shall see fit, appoint a board of assistant managers,
+composed of not less than three nor more than seven persons residing
+in New York city, or its vicinity, whose duty it shall be to render
+such assistance to the committee in conducting the affairs of
+the society as the exigencies of the cause may require. To this
+board they may from time to time confide such of their own powers
+as they may deem necessary to the efficient conduct of the society’s
+business. The board shall keep a record of its proceedings, and
+furnish a copy of the same for the information of the committee, as
+often as may be required.
+
+<sc>Article VII.</sc>—The president shall preside at all meetings of
+the society, or, in his absence, one of the vice-presidents, or, in
+their absence, a president pro tem. The corresponding secretaries
+shall conduct the correspondence of the society. The recording
+secretary shall notify all meetings of the society and of the executive
+committee, and shall keep records of the same in separate
+books. The treasurer shall collect the subscriptions, make payments
+at the direction of the executive committee, and present a
+written and audited account to accompany the annual report.
+
+<sc>Article VIII.</sc>—The annual meeting of the society shall be held
+each year at such time and place as the executive committee may
+direct, when the accounts of the treasurer shall be presented, the
+annual report read, appropriate addresses delivered, the officers
+chosen, and such other business transacted as shall be deemed expedient.
+
+<sc>Article IX.</sc>—Any anti-slavery society or association founded
+on the same principles may become auxiliary to this society. The
+officers of each auxiliary society shall be ex officio members of the
+parent institution, and shall be entitled to deliberate and vote in the
+transactions of its concerns.
+
+<sc>Article X.</sc>—This constitution may be amended, at any annual
+meeting of the society, by a vote of two thirds of the members
+present, provided the amendments proposed have been previously
+submitted, in writing, to the executive committee.
+
+.tb
+
+<i>Published for gratuitous distribution, at the Office of the</i> <sc>American
+Anti-Slavery Society</sc>, <i>No. 138 Nassau Street, New York</i>. <i>Also
+to be had at the Anti-Slavery Offices, No. 21 Cornhill, Boston, and
+No. 31 North Fifth Street, Philadelphia; and at the Anti-Slavery
+Depository, Salem, Columbiana Co., Ohio.</i>
+
+.h2
+Transcriber’s Notes
+
+Some inconsistencies in spelling, hyphenation, punctuation, and
+typography have been retained.
+
+.if t
+This file uses <i>underscores</i> to indicate italic text.
+.if-

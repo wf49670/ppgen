@@ -1,0 +1,23 @@
+%::pagenumbers = (
+ 'Pg001' => {'offset' => '84.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg002' => {'offset' => '139.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg003' => {'offset' => '157.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg004' => {'offset' => '236.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg005' => {'offset' => '287.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg006' => {'offset' => '340.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg007' => {'offset' => '389.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg008' => {'offset' => '462.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg009' => {'offset' => '509.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg010' => {'offset' => '557.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg011' => {'offset' => '605.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg012' => {'offset' => '653.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg013' => {'offset' => '692.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg014' => {'offset' => '741.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg015' => {'offset' => '783.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg016' => {'offset' => '829.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg017' => {'offset' => '844.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg018' => {'offset' => '1170.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+ 'Pg019' => {'offset' => '1496.0', 'label' => '', 'style' => '', 'action' => '', 'base' => ''},
+);
+$::pngspath = '/home/runner/work/ppgen/ppgen/tests/vaxfacts/pngs/';
+1;

@@ -1,0 +1,437 @@
+{
+    "languages": "en",
+    "pagedetails": {
+        "01": {
+            "index": "1.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "02": {
+            "index": "6.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "03": {
+            "index": "6.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "04": {
+            "index": "27.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "05": {
+            "index": "27.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "06": {
+            "index": "51.27",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "07": {
+            "index": "51.27",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "08": {
+            "index": "80.42",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "09": {
+            "index": "108.54",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "10": {
+            "index": "139.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "11": {
+            "index": "166.39",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "12": {
+            "index": "191.36",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "13": {
+            "index": "217.59",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "14": {
+            "index": "248.21",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "15": {
+            "index": "274.35",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "16": {
+            "index": "305.70",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "17": {
+            "index": "334.69",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "18": {
+            "index": "362.54",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "19": {
+            "index": "389.54",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "20": {
+            "index": "417.66",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "21": {
+            "index": "445.3",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "22": {
+            "index": "473.19",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "23": {
+            "index": "503.56",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "24": {
+            "index": "529.7",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "25": {
+            "index": "557.67",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "26": {
+            "index": "587.52",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "27": {
+            "index": "613.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "28": {
+            "index": "639.43",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "29": {
+            "index": "666.8",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "30": {
+            "index": "696.7",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "31": {
+            "index": "724.14",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "32": {
+            "index": "755.55",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "33": {
+            "index": "785.32",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "34": {
+            "index": "814.44",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "35": {
+            "index": "843.49",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "36": {
+            "index": "868.39",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "37": {
+            "index": "895.54",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "38": {
+            "index": "922.11",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "39": {
+            "index": "951.16",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "40": {
+            "index": "978.36",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "41": {
+            "index": "1005.37",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "42": {
+            "index": "1029.56",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "43": {
+            "index": "1056.25",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "44": {
+            "index": "1083.59",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "45": {
+            "index": "1109.15",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "46": {
+            "index": "1138.51",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "47": {
+            "index": "1163.15",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "48": {
+            "index": "1192.44",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "49": {
+            "index": "1222.13",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "50": {
+            "index": "1248.66",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "51": {
+            "index": "1270.43",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "52": {
+            "index": "1298.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "53": {
+            "index": "1324.12",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "54": {
+            "index": "1348.48",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "55": {
+            "index": "1379.66",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "56": {
+            "index": "1407.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "57": {
+            "index": "1435.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "58": {
+            "index": "1461.37",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "59": {
+            "index": "1486.40",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "60": {
+            "index": "1512.43",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "61": {
+            "index": "1539.58",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "62": {
+            "index": "1567.34",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "63": {
+            "index": "1595.46",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "64": {
+            "index": "1622.31",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "65": {
+            "index": "1644.59",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "66": {
+            "index": "1674.32",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "67": {
+            "index": "1702.30",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "68": {
+            "index": "1728.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "69": {
+            "index": "1756.43",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "70": {
+            "index": "1780.61",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "71": {
+            "index": "1809.57",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "72": {
+            "index": "1836.66",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        }
+    }
+}

@@ -1,0 +1,82 @@
+
+name: ppgen
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: 'read'
+
+jobs:
+  build:
+
+    runs-on: 'ubuntu-latest'
+
+    steps:
+    - uses: 'actions/checkout@v3'
+    - name: 'Set up Python 3.10'
+      uses: 'actions/setup-python@v3'
+      with:
+        python-version: '3.10'
+    - name: 'Build project: abolish'
+      run: |
+        cd tests/abolish
+        python3 ../../ppgen.py -i abolish-src.txt -a
+        diff -u expected/abolish-utf8.txt      abolish-utf8.txt
+        diff -u expected/abolish-utf8.txt.bin  abolish-utf8.txt.bin
+        diff -u expected/abolish-utf8.txt.json abolish-utf8.txt.json
+        diff -u expected/abolish.html          abolish.html
+        diff -u expected/abolish.html.bin      abolish.html.bin
+        diff -u expected/abolish.html.json     abolish.html.json
+    - name: 'Build project: eugenics'
+      run: |
+        cd tests/eugenics
+        python3 ../../ppgen.py -i eugenics-src.txt -a
+        diff -u expected/eugenics-utf8.txt      eugenics-utf8.txt
+        diff -u expected/eugenics-utf8.txt.bin  eugenics-utf8.txt.bin
+        diff -u expected/eugenics-utf8.txt.json eugenics-utf8.txt.json
+        diff -u expected/eugenics.html          eugenics.html
+        diff -u expected/eugenics.html.bin      eugenics.html.bin
+        diff -u expected/eugenics.html.json     eugenics.html.json
+    - name: 'Build project: pascal'
+      run: |
+        cd tests/pascal
+        python3 ../../ppgen.py -i pascal-src.txt -a
+        diff -u expected/pascal-utf8.txt      pascal-utf8.txt
+        diff -u expected/pascal-utf8.txt.bin  pascal-utf8.txt.bin
+        diff -u expected/pascal-utf8.txt.json pascal-utf8.txt.json
+        diff -u expected/pascal.html          pascal.html
+        diff -u expected/pascal.html.bin      pascal.html.bin
+        diff -u expected/pascal.html.json     pascal.html.json
+    - name: 'Build project: plagueorders'
+      run: |
+        cd tests/plagueorders
+        python3 ../../ppgen.py -i plagueorders-src.txt -a
+        diff -u expected/plagueorders-utf8.txt      plagueorders-utf8.txt
+        diff -u expected/plagueorders-utf8.txt.bin  plagueorders-utf8.txt.bin
+        diff -u expected/plagueorders-utf8.txt.json plagueorders-utf8.txt.json
+        diff -u expected/plagueorders.html          plagueorders.html
+        diff -u expected/plagueorders.html.bin      plagueorders.html.bin
+        diff -u expected/plagueorders.html.json     plagueorders.html.json
+    - name: 'Build project: vaxfacts'
+      run: |
+        cd tests/vaxfacts
+        python3 ../../ppgen.py -i vaxfacts-src.txt -a
+        diff -u expected/vaxfacts-utf8.txt      vaxfacts-utf8.txt
+        diff -u expected/vaxfacts-utf8.txt.bin  vaxfacts-utf8.txt.bin
+        diff -u expected/vaxfacts-utf8.txt.json vaxfacts-utf8.txt.json
+        diff -u expected/vaxfacts.html          vaxfacts.html
+        diff -u expected/vaxfacts.html.bin      vaxfacts.html.bin
+        diff -u expected/vaxfacts.html.json     vaxfacts.html.json
+    - name: 'Build project: worshiph'
+      run: |
+        cd tests/worshiph
+        python3 ../../ppgen.py -i worshiph-src.txt -a
+        diff -u expected/worshiph-utf8.txt      worshiph-utf8.txt
+        diff -u expected/worshiph-utf8.txt.bin  worshiph-utf8.txt.bin
+        diff -u expected/worshiph-utf8.txt.json worshiph-utf8.txt.json
+        diff -u expected/worshiph.html          worshiph.html
+        diff -u expected/worshiph.html.bin      worshiph.html.bin
+        diff -u expected/worshiph.html.json     worshiph.html.json

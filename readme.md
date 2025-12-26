@@ -11,3 +11,4 @@ Note: If you are preparing a modification to ppgen that you intend to submit for
       branch, and create any pull requests against that branch. That will make it easier to
       validate, test, and merge your changes.
 
+Developers: see tests/README.md for more about the test framework.

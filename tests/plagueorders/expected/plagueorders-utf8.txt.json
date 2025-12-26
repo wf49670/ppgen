@@ -1,0 +1,95 @@
+{
+    "languages": "en",
+    "pagedetails": {
+        "001": {
+            "index": "1.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "002": {
+            "index": "16.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "003": {
+            "index": "16.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "004": {
+            "index": "34.20",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "005": {
+            "index": "58.43",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "006": {
+            "index": "84.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "007": {
+            "index": "113.52",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "008": {
+            "index": "137.19",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "009": {
+            "index": "160.59",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "010": {
+            "index": "186.56",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "011": {
+            "index": "213.4",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "012": {
+            "index": "238.14",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "013": {
+            "index": "263.44",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "014": {
+            "index": "291.17",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "015": {
+            "index": "318.48",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        }
+    }
+}

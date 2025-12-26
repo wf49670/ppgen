@@ -1,0 +1,952 @@
+﻿// This is a ppgen source file.
+
+// Title      : A statement of facts tending to establish an estimate of the true value and present state of vaccination
+// Author     : Blane, Gilbert
+// Project ID : projectID5f3c94069bf78
+
+.dt A statement of facts tending to establish an estimate of the true value and present state of vaccination, by Blane, Gilbert—A Project Gutenberg eBook
+
+// 001.png
+.bn 001.png
+.pn 1
+
+.h1
+<s>A</s> || <xl>STATEMENT OF FACTS,</xl> || \
+<s>TENDING TO</s> || <l>ESTABLISH AN ESTIMATE OF THE TRUE VALUE</l> || \
+<s>AND</s> || <xl>PRESENT STATE</xl> || <s>OF</s> || \
+<xxl>VACCINATION.</xxl>
+
+.hr 15%
+
+.ce
+<l><sc>By</sc> SIR GILBERT BLANE, <sc>Bart.</sc></l>
+
+.ce
+<s><i>F.R.S. of London, Edinburgh, and Göttingen; Member of the Imperial Academy of St. Petersburgh; and Physician in Ordinary to the King.</i></s>
+
+.hr 35%
+
+.ce
+<xs>FROM THE TENTH VOLUME OF THE MEDICO-CHIRURGICAL TRANSACTIONS, PUBLISHED BY THE MEDICAL AND CHIRURGICAL SOCIETY OF LONDON;</xs>
+
+.ce
+<xl>WITH ADDITIONS.</xl>
+
+.hr 35%
+
+.ce
+<l>LONDON:</l>
+
+.ce
+PRINTED FOR THOMAS AND GEORGE UNDERWOOD, 32, FLEET STREET.
+
+.hr 15%
+
+.ce
+1820.
+
+// 002.png
+.bn 002.png
+.pn +1
+.pb
+
+.ce
+<s>J. MOYES, GREVILLE STREET, LONDON.</s>
+
+.if h
+.ce
+Transcriber’s Note:
+
+The cover image was created by the transcriber and is placed in the public domain.
+.if-
+
+// 003.png
+.bn 003.png
+.pn +1
+.pb
+
+.ce
+<s>A</s>
+
+.ce
+<xl>STATEMENT OF FACTS,</xl>
+
+.ce 2
+<s>TENDING TO ESTABLISH AN ESTIMATE OF THE TRUE VALUE AND
+PRESENT STATE OF</s>
+
+.ce
+<xl>VACCINATION.</xl>
+
+.ce
+<l><sc>By</sc> SIR GILBERT BLANE, <sc>Bart.</sc> F.R.S. Lond. &c.</l>
+
+.ce
+<i>Physician in Ordinary to the King.</i>
+
+.hr 35%
+
+.ce
+<i>Read Nov. 10, 1819.</i>
+
+.hr 35%
+
+.dc 0.25 0
+It is now twenty-one years since Vaccination was promulgated
+in this country by Dr. Jenner, and fifteen years since
+it began to produce a sensible effect in diminishing the mortality
+from Small Pox. In regard to the latter period, it is
+coeval with this Society; yet, though no discovery in nature
+nor in medicine has been more important to the interests of
+humanity, nor any which has ever so rapidly and universally
+won the assent and practical adoption of mankind, there are
+no notices of it on our records, except in our second volume,
+in an article by Dr. Bateman, in which he relates a case of a
+mother who was affected with the Small Pox a second time,
+by being exposed to infection, from some of her own children
+who had caught it casually; while her other children, who
+had been vaccinated, resisted it. As it is to be hoped that
+our labours will prove to posterity some of the principal
+sources of reference regarding the medical and chirurgical
+discoveries and improvements of the age; as it is one of the
+reproaches of our country, that it has not availed itself so
+much as any other of the benefits of Vaccination; and as
+there are writers among us who still allege that the failures
+are so numerous that the value of the discovery is very
+ambiguous, it seems one of the duties of the Society to lend
+its aid in placing these important points in their true light.
+
+It seems almost needless to premise, that the Small Pox
+is of all maladies that, which, during the last thousand years,
+has destroyed the largest portion of the human species, and
+been productive of the largest share of human misery. There
+// 004.png
+.bn 004.png
+.pn +1
+is, perhaps, no disease over which medical art has less power;
+and this power, such as it is, has consisted more in abolishing
+pernicious practices, than in ascertaining any positive methods
+of controlling its fatality, unless we except the inoculation
+of it with its own <lang="la"><i>virus</i></lang>. But, though the beneficial effect of
+this on those on whom it is actually practised is undeniable,
+it has no tendency like Vaccination to extirpate the disease;
+and from the impossibility of rendering it universal, it has
+actually been found to add to the general mortality of Small
+Pox, by opening a new source for the diffusion of its <lang="la"><i>virus</i></lang>.
+
+It ought to be stated also, with a view to a decision on
+this question, that Vaccination itself is attended with no
+danger, and frequently takes effect without any visible
+disturbance in the system. There is even reason to believe,
+that in its process it wards off other diseases, by
+pre-occupying the constitution.
+
+In order to bring this matter to the test of calculation, in
+order also to institute a comparison of the mortality of Small
+Pox as influenced by Vaccination, as well as by Inoculation
+from itself, I have selected from the bills of mortality four
+periods, each of fifteen years, for the purpose of exhibiting
+the mortality of Small Pox in each of these series in regard
+to each other. These are thrown into the form of Tables,
+and annexed to this article.
+
+The first series, is the fifteen years immediately preceding
+the introduction of Inoculation; that is, from 1706 to 1720,
+both included. Previous to this period, no account that
+could be depended upon regarding the Small Pox, could be
+derived from the bills of mortality; for down to the beginning
+of last century such was their imperfect construction, that
+Small Pox, Measles, and Flux were blended under one head.
+Exception may be taken against the accuracy of these bills,
+even in this improved state, particularly with regard to the
+discrimination of diseases. This objection, however, is certainly
+less applicable to Small Pox than any other disorder,
+its character being so striking as not to be mistaken by the
+most ignorant and careless observer.
+
+The second series is taken at the middle of the last century,
+when Inoculation had made considerable progress; that is,
+from 1745 to 1759, both included. In comparing this with
+the preceding series, with regard to absolute numbers, it
+ought to be taken into account, that eleven parishes were
+added to the bills of mortality, between the years 1726 and
+1745, both included: so that the progressive improvement of
+general salubrity ought to be estimated still higher than what
+is indicated by the diminished mortality, as it stands in the
+Tables.
+// 005.png
+.bn 005.png
+.pn +1
+
+The third series comprises the fifteen years previous to the
+introduction of Vaccination, when Inoculation had made still
+greater progress; that is, from 1785 to 1798, both included.
+
+The fourth series comprises the time in which the vaccine
+Inoculation has been so far diffused as to produce a notable
+effect on the mortality of Small Pox; that is, from 1804 to
+1818, both included.
+
+The result of these computations stands as follows:—
+
+.ce
+<i>Ratio of the Mortality of Small Pox to the total Mortality.</i>
+
+.ce 4
+From 1706 to 1720, one in 12.7; that is, 78 in 1000.
+From 1745 to 1759, one in 11.2; that is, 89 in 1000.
+From 1785 to 1798, one in 10.6; that is, 94 in 1000.
+From 1804 to 1818, one in 18.9; that is, 53 in 1000.
+
+.ce
+<s>Fractions are not noticed in the last column of numbers.</s>
+
+It appears from this statement, that the proportion of
+deaths from Small Pox to the total mortality, increased in
+the course of last century; so that Inoculation appears to
+have added to the mortality. It is but fair to mention, however,
+that this total mortality is not quite a just scale whereby
+to measure the relative mortality of Small Pox; for in the
+course of that century, the general mortality itself was greatly
+diminished in relation to the population. This diminution of
+general mortality was chiefly owing to the diminished mortality
+of children under two years of age, which, at the time
+when the account began to be kept, 1729, averaged about
+9000; but at the end of the century not more than 5000[#];
+also to the decrease of fevers, and still more of fluxes. The
+relation of the mortality of Small Pox to the population,
+would therefore be a more fair criterion of its increase or
+decrease. In this view it might, at first sight, be thought that
+it had decreased; for the population of the metropolis nearly
+doubled in the course of the last century. But it is to be
+remarked, that there has been little increase of population in
+that portion of the metropolis which is included in the bills of
+// 006.png
+.bn 006.png
+.pn +1
+mortality; the great increase having been in the parishes of
+Mary-le-bone and St. Pancras, which are not included in
+these bills. It is computed in the remarks subjoined to the
+last parliamentary returns of population, that the population
+of London, within the walls, had decreased more than three-fifths
+in the course of last century, from the widening of
+streets, the erection of public buildings and warehouses, and,
+it might have been added, from the migration of mercantile
+families to the west end of the town. As a set-off to this,
+there has certainly been a great addition, in the same time, to
+those parishes within the bills, which stand on the verge of
+the metropolis, such as St. George’s Hanover Square, St.
+George’s Bloomsbury, Poplar, and Stepney. But the addition
+to the population, if any, within the bills of mortality, does not
+seem to be so considerable as to affect the computation. And,
+if this is admitted, the absolute numbers of the deaths from
+Small Pox, estimated in relation to the population, that is,
+exactly as they stand on the Tables, afford a fair comparative
+statement of the mortality in the last century, and seem to
+prove that Inoculation has not added so much to it as has
+been alleged. It was in the rural population that the effect
+of Inoculation in diffusing Small Pox was chiefly felt. In this
+situation there is much less intercourse of persons with each
+other than in towns, so that not only many individuals escaped
+from their not being exposed to infection during their whole
+lives, but whole districts were known to have been exempt
+from it for a long series of years, before it was universally
+diffused by Inoculation.
+
+.fn #
+This diminished mortality of young children is, like that of fevers and
+fluxes, owing chiefly to the improvements in ventilation and cleanliness, but
+greatly also to laying aside the custom of exposing them to the open air in
+winter and early in spring; either from inadvertency, or from the false notion
+of rendering them hardy, whereas they thereby catch inflammations of the
+lungs. Nothing tends more to the health, strength, and growth of children,
+than genial warmth. It seems chiefly owing to the great plenty and cheapness
+of fuel, that the race of people in Lancashire are so superior in their
+form and size. In Buckinghamshire, on the contrary, where fuel is extremely
+scanty and dear, the race of people is small and puny, insomuch that it is
+provided by Act of Parliament that men shall be admitted into the militia
+of a smaller stature in this than other counties.
+.fn-
+
+But the truly important result from these statements consists
+in the clear, undeniable, and great diminution of it since
+the introduction of Vaccination. It appears, that in the last
+fifteen years, the mortality from Small Pox, in the bills of
+mortality, has not been much more than one-half of what it
+was in the two like series of years in the middle and latter
+end of the last century. Nor does this comprise the whole
+benefit derived from this discovery in the metropolis; for,
+besides that the sixth part of it lies without the bills, it was
+found, in levying the tax on burials for the last six months
+of 1794, that the number of unregistered deaths, chiefly those
+of dissenters, amounted in that half year to 3148; and the
+reporter of the parliamentary enumeration thinks that, as
+besides these there were undiscovered interments, the unregistered
+deaths may be computed at one-third of the total
+mortality, that is, about 7000. (<cite>See Abstract of the Parish
+Registers, 1811, printed by authority of Parliament, page 200.</cite>)
+
+Assuming, therefore, that Vaccination had not been practised
+the last fifteen years, and that the mortality from Small
+// 007.png
+.bn 007.png
+.pn +1
+Pox, within the bills, had in that time, that is, from 1804 to
+1818, been the same as from 1784 to 1798, that is, 27,569 in
+place of 14,716; and assuming that there has been the same
+proportional diminution of deaths in the districts without the
+bills, and among the unregistered subjects, the account of
+lives saved in this metropolis by Vaccination in the fifteen
+years, will stand as follows:—
+
+.ta lr
+Within the bills of mortality  |    12,853
+Without the bills of mortality |     2,570
+Unregistered cases             |     7,711
+                               |    ------
+                  <al=r>Total  |    23,134
+.ta-
+
+The first of these numbers is found by subtracting the
+amount of deaths by Small Pox, in the bills of mortality,
+during the practice of Vaccination, from the amount of them,
+during the same number of years, immediately before the
+discovery of Vaccination.
+
+The second number is found by dividing the first by 5.
+The population of the metropolis without the bills is stated
+at one-sixth of the whole, which is evidently one-fifth of that
+within the bills.
+
+The third number is found by dividing the sum of the two
+others by 2; the unregistered cases being, as before stated,
+one-third of the whole.
+
+It appears, therefore, that, even under the very imperfect
+practice of Vaccination which has taken place in this metropolis,
+23,134 lives have been saved in the last fifteen years,
+according to the best computation that the <i>data</i> afford. It
+will be seen, by an inspection of the Table, that in that time
+there have been great fluctuations in the number of deaths.
+This has been owing partly to the Small Pox Inoculation of
+out-patients having, by an unaccountable infatuation, been
+kept up at the Small Pox Hospital for several years after
+the virtue of Vaccination had been fully confirmed. The
+greater number of deaths in 1805 may chiefly be referred to
+this cause. Since the suppression of this practice, the adoption
+of Vaccination, though in a degree so incomplete, in
+consequence of public prejudice, created entirely by mischievous
+publications, has been unable to prevent a considerable,
+though fluctuating, mortality from Small Pox. The
+late mortality from Small Pox, though little more than one
+half of what it was in former times, might have been entirely
+saved, if Vaccination had been carried to the same extent
+as in many cities and whole districts on the continent of
+Europe, in Peru, and Ceylon.
+
+In the summer of 1811 the author was called to visit,
+// 008.png
+.bn 008.png
+.pn +1
+professionally, Don Francisco de Salazar, who had arrived a
+few days before in London, on his route from Lima to Cadiz,
+as a deputy to the Spanish Cortes. He informed him, that
+Vaccination had been practised with so much energy and
+success in Lima, that for the last twelve months there had
+occurred, not only no death from, but no case of, Small Pox;
+that the new-born children of all ranks are carried as regularly
+to the Vaccinating House as to the font of baptism;
+that the Small Pox is entirely extinguished all over Peru;
+nearly so in Chili; and that there has been no compulsory
+interference on the part of the government to promote Vaccination.
+
+It is now matter of irrefragable historical evidence, that
+Vaccination possesses powers adequate to the great end proposed
+by its meritorious discoverer, in his first promulgation
+of it in 1798, namely, the total extirpation of Small Pox.
+The first proof of this was at Vienna, where, in 1804, no
+cases occurred, except two strangers who came into the city
+with the disease upon them. In 1805 there did not occur a
+single death from it in Copenhagen[#]. Dr. Sacco, the indefatigable
+superintendent of Vaccination in Lombardy, stated,
+in his Annual Report, 3d January, 1808, that the Small Pox
+had entirely disappeared in all the large towns in that
+country; and that in the great city of Milan it had not
+appeared for several years. Dr. Odier, of Geneva, so
+favourably known for his high professional, scientific, and
+literary acquirements, testifies, that, after a vigorous perseverance
+in Vaccination for six years, the Small Pox had disappeared
+in that city and the whole surrounding district; and
+that, when casually introduced by strangers, it did not spread,
+the inhabitants not being <em>susceptible</em>. The Central Committee
+in Paris testify, in their Report of 1809, that the
+Small Pox had been extinguished at Lyons and other districts
+of France.
+
+These are selected as some of the earliest and most remarkable
+proofs of the extirpating power. But it is demonstrable,
+that if at the first moment of this singular discovery,
+at any moment since, at the present or any future moment,
+mankind were sufficiently wise and decided to vaccinate the
+whole of the human species who have not gone through the
+Small Pox, from that moment would this most loathsome
+and afflicting of all the scourges of humanity be instantaneously,
+and for ever, banished from the earth.
+
+It is farther manifest, that extirpation being the ultimate
+aim of this discovery, and there being the fullest historical
+// 009.png
+.bn 009.png
+.pn +1
+and practical evidence of its being capable of accomplishing
+this end, all other questions with regard to its expediency
+must be futile and irrelevant. It is in the nature of all
+morbid phenomena to be liable to exception. One of the
+most essential and characteristic laws of Small Pox itself,
+namely, that of its affecting the human subject but once in
+life, is found in rare cases to be violated. It is, therefore,
+perfectly conformable to analogy, and naturally to be expected,
+that it may not in all cases be a complete security
+against Small Pox. But it is obvious, that, admitting these
+exceptions to be very frequent, much more so than the recurrence
+of Small Pox after Small Pox, this can constitute no
+objection to the practice, as long as the extirpating power
+remains unimpaired and unimpeached. Nay, it is obviously
+so far from an objection, that it ought to operate as a powerful
+additional incentive on every benevolent mind, to push Vaccination
+to the utmost, as rapidly as possible, in order that
+those who are still susceptible, either from peculiar natural
+constitution, or from the unskillful manner of conducting the
+operation, or from defective matter, may not, by any possibility,
+catch it; for, in the event of its extirpation, it could
+nowhere be met with. And in order to stimulate the good
+and the wise to aim strenuously at this consummation, let it
+be constantly borne in mind, that the adversary they are
+contending with is the greatest scourge that has ever afflicted
+humanity. That it is so, all history, civil and medical, proclaims:
+for, though the term Plague carries a sound of greater
+horror and dismay, we should probably be within the truth,
+if we were to assert, that Small Pox has destroyed a hundred
+for every one that has perished by the Plague.
+
+.fn #
+See Pfaff Neuen Nord v. Archiv. B. I.
+.fn-
+
+It is true that in its last visitation of this metropolis, one
+hundred and fifty-four years ago, it carried off 70,000 victims
+in a few months; but since that time, the deaths from Small
+Pox, recorded in the bills of mortality, have amounted to
+more than 300,000; and a like number of the survivors have
+been afflicted with blindness, deformity, scrofula, or broken
+constitutions, which is not the case with the survivors of the
+Plague. It appears, by a Report of the Hospital for the
+Indigent Blind, that two thirds of those who apply for relief
+have lost their sight by the Small Pox. It is alleged by some
+of the soundest Political Economists that Small Pox does not
+diminish the numbers of mankind, nor Vaccination increase
+them; for population is determined by subsistence, and the
+indefinite powers of procreation soon repair the ravages of
+disease. But, however true this may be, the miseries incident
+to so many of those who survive Small Pox, whereby they
+become a burden to themselves, their families, and to society,
+// 010.png
+.bn 010.png
+.pn +1
+render this disease uncontrovertibly an evil of the first
+magnitude, not to mention the intense sufferings and afflictions
+inseparable from it; and in this view of the matter the
+objection seriously adduced against Vaccination by one of
+its opponents[#], that <i>Small Pox is a merciful dispensation of
+Providence for the poor man, by diminishing the burden of his
+family</i>, will not hold good, for the burden is not removed.
+
+And when it is considered that there are large portions of
+the globe, India, China, even one whole quarter of it (North
+and South America), besides all the tropical and arctic
+regions, in which the Plague has never been known; and
+that in all the countries liable to it, it seldom appears but at
+one season of the year, and in some at long intervals, the
+ravage which it makes is trifling when compared with the
+unceasing havoc of Small Pox, which spares no nation in any
+climate, or at any season. Yet the Legislative Regulations
+for excluding and checking the Plague are of the most harsh
+and despotic description, while the law touches upon Small
+Pox comparatively with the most lenient hand. It ought to
+be generally known, however, that in a late trial and conviction,
+it was laid down by the judge to be the law of the
+land, that a medical practitioner who neglects to exclude the
+person whom he inoculates from communication with others,
+is liable to fine and imprisonment. Morally considered,
+indeed, it is difficult to conceive a higher degree of flagitious
+turpitude than that of a professional person, in the present
+state of knowledge, exposing his fellow-creatures, from sordid
+motives, to one of the most grievous calamities of which
+human nature is susceptible.
+
+The preceding reasoning is grounded on the supposition of
+extirpation: but, however demonstrable the <em>possibility</em> of
+extirpation may be, it may not in all communities be <em>practicable</em>;
+and may not these alleged failures so operate, as, in
+such circumstances, to render the expediency of the practice
+questionable?
+
+In order to decide this, let the nature and amount of these
+failures be ascertained and estimated.
+
+The description of those cases of Small Pox, (if they can
+be called so,) which occur in vaccinated subjects, is shortly
+as follows:—The invasion and eruption in every respect
+resembles that of the genuine Small Pox. I have seen it
+attended with high fever and a thick crowded crop of <lang="la"><i>papulæ</i></lang>,
+such as precedes the most severe and dangerous cases of the
+confluent kind. This runs on till the fifth day from the
+// 011.png
+.bn 011.png
+.pn +1
+eruption, both days included, at which time some of the
+<lang="la"><i>papulæ</i></lang> begin to be converted into small sized pustules. The
+disorder then abruptly stops short. On the following day
+the fever is found to have subsided, with a shrivelling and
+desiccation of the eruption, and recovery proceeds without
+the least danger or inconvenience. The face is marked, for
+some time after, with brown spots, but without pits. It
+should never be forgotten, that all morbid <lang="la"><i>phænomena</i></lang> are
+full of varieties and exceptions. Accordingly, though the
+fifth day is the most common limit of this disorder, it sometimes
+stops short on the third; sometimes not till the sixth
+or seventh; and, in a very few cases, it has been known to
+run the common course of Small Pox. What forms the
+strong line of distinction from proper Small Pox, is that,
+with a few exceptions, it does not advance to maturation and
+secondary fever, which is the only period of danger. I am
+not prepared to deny that death may not have occurred in a
+few instances; nay, there seems sufficient evidence that it
+actually has; but these adverse cases are so rare, as not
+to form the shadow of an objection to the expediency of the
+general practice. A few weeks ago at a meeting of this
+Society, at which forty members and visitors were present, I
+put the question whether any of these eminent and extensive
+practitioners had met with any fatal cases of this kind. Two
+gentlemen had each seen a single case, and two other gentlemen
+took occasion to say that they had each seen a case
+of second Small Pox, both of which proved fatal. It is evident,
+therefore, that according to that maxim which guides
+mankind in the conduct of life, namely, that of acting on a
+general rule and average, and not on exceptions, these adverse
+instances ought not to have the least influence on practice,
+even though they were much more numerous. Nor indeed
+do they, except in the very rare cases here cited, deserve the
+name of failures; for, though they fail in preventing <em>Small
+Pox</em>, they do not fail to prevent <em>Death</em>. And let me here,
+in the name of humanity, beseech practitioners not to be forward
+in publishing single cases of failures, real or supposed;
+for, when the weak minded and uninformed hear of these
+failures, without hearing at the same time that there are
+hundreds of cases of permanent security for every single case
+of failure, they are guided by the <em>exception</em>, which becomes to
+them the <em>rule</em>; their judgments being thereby most fatally
+perverted.
+
+.fn #
+See Serious Reasons for uniformly opposing Vaccination. By John
+Birch. London, 1807.
+.fn-
+
+As it is of the utmost consequence to establish the strong
+and important distinction between Small Pox, properly so
+called, and that which takes place after Vaccination, which
+may be called the mitigated, or five day Small Pox, a few of
+// 012.png
+.bn 012.png
+.pn +1
+the most impressive testimonies respecting the safe nature of
+the latter may be here recited. Mr. Brown[#], of Musselburgh,
+gives the detail of forty-eight cases, in none of which
+did the secondary fever nor death occur. Here was a saving
+of at least eight lives, at the lowest computation; for this
+is the number which, by the average mortality of natural Small
+Pox, would have died if the constitutions of these forty-eight
+persons had not been modified by previous Vaccination.
+Dr. Dewar, of Edinburgh, hearing that many vaccinated
+subjects had been affected with Small Pox at Cupar in Fife,
+where the natural Small Pox at the same time prevailed, he
+most laudably repaired to the spot to investigate the subject.
+He found that fifty-four vaccinated subjects had caught the
+Small Pox. All these, except one, had the mitigated or five
+day eruptive fever, and livid. The fatal case was that of a
+child, who had a complication of other disorders, and having
+died on the fifth day, the Small Pox, according to its ordinary
+course of fatality, could not of itself be the cause of death.
+All the rest were safe; while of sixteen cases of the natural
+Small Pox at the same time and place, six died; so that, if
+these fifty-three cases had not undergone the mitigating process
+of Vaccination, nineteen or twenty would have perished.
+Between thirty and forty cases of the same kind have occurred
+at Carlisle, on the testimony of Dr. Barnes, a
+respectable practitioner of that city[#]. Many proofs might
+be adduced from the oral testimony of private practitioners,
+which would overswell this article. The only other to be
+mentioned is from the Report of the Central Committee of
+Vaccination at Paris, made in December last, in which the
+description of the disease occurring after Vaccination corresponds
+exactly with the mitigated five day cases which have
+occurred in Britain. They refuse the name of Small Pox to
+it; but as I know from my own observation, as well as from
+the testimony of others, that the matter from it does by Inoculation
+give the Small Pox, we can hardly, perhaps, with
+propriety deny it that name; but it should be distinguished
+by some strong discriminating epithet, such as is suggested
+above.
+
+.fn #
+See Inquiry into the Antivariolous power of Vaccination. Ed. 1809.
+There is an article in the Edinburgh Medical Journal by the same gentleman
+in 1819, in which he mentions that he had heard of several deaths having
+occurred from cases of Small Pox after Vaccination. But, admitting this, it
+is utterly incomprehensible by what process of reasoning Mr. Brown could
+on such premises arrive at the conclusion that Vaccination ought to be
+exploded and abandoned.
+.fn-
+
+.fn #
+See also a clear and able exposition of this subject in the Medical and
+Surgical Journal of Edinburgh for July, 1818, by Mr. Dunning, of Plymouth.
+.fn-
+
+// 013.png
+.bn 013.png
+.pn +1
+
+As the attack of Small Pox in subjects who have undergone
+Vaccination, generally occurs after a long interval, it
+becomes a question whether this is owing merely to the
+chance of such subjects not having been exposed to variolous
+contagion, or to the effect of time in diminishing the antivariolous
+virtue of vaccination. The former is certainly conceivable;
+but when we consider the numberless severe proofs
+to which the recently vaccinated were experimentally exposed
+in the early part of this practice all over Europe, from which
+the most satisfactory evidence resulted; and when it is considered
+that, in the great majority of cases, Small Pox has
+not occurred till several years after vaccination, it seems by
+far most probable that the virtue of it is weakened by time.
+When parents, therefore, become anxious and apprehensive
+regarding the risk of Small Pox after a lapse of years, it
+seems quite reasonable that they should be indulged in having
+the operation repeated.
+
+Let all this be applied to the case of a community, in
+which the total eradication of Small Pox is quite hopeless.
+Let it be admitted that such occurrences as have been
+described do frequently occur: let it even be admitted, for
+argument’s sake, that every vaccinated case whatever must
+of necessity and unavoidably at some time or other in future
+life be affected with this mitigated species of Small Pox,
+would it not even under this great abatement be one of the
+greatest boons that could be conferred on humanity, being
+an instrument or remedy which would disarm Small Pox of
+its danger? Would not the next greatest benefit to the total
+extirpation of Small Pox, be the stripping it of its terrors by
+rendering it safe and harmless?
+
+It may be further remarked, that the benefit derivable from
+the different proportions of the persons vaccinated to the
+total population, advances in a considerably higher progression
+than the simple arithmetical. It is evident that the
+smaller the relative number of the vaccinated, the greater
+their chance of meeting with Small Pox infection, and that
+though the disease which they may catch is of a mitigated
+nature, it would nevertheless be desirable to avoid it on its
+own account, but still more on account of the prejudice it
+creates. This, in the eye of general benevolence, constitutes
+an additional, though secondary motive for extending the
+vaccine inoculation as widely as possible, even though the
+attainment of the <em>maximum</em>, that is, total extirpation, should
+be impracticable and hopeless.
+
+It is of the highest importance to society, that this subject
+should be seen in its true light, and in all its bearings; for the
+// 014.png
+.bn 014.png
+.pn +1
+frequent occurrence of these cases of Small Pox, however
+safe in themselves, have had a most pernicious effect on the
+credulous and ignorant, by giving a check to the practice of
+Vaccination. It ought never to be forgot that the power of
+Vaccination in extirpating Small Pox being established, the
+question of its expediency is completely set at rest. How
+many parents are there now who, from a weak distrust in the
+virtue of Vaccination, have to lament the loss of a child from
+Small Pox, either casual or inoculated? Many such are
+known to myself. It is pleasing, however, to observe, that
+though this unmerited discredit into which Vaccination had
+fallen, swelled the number of deaths in London from Small
+Pox to 1051 in 1817, good sense is likely still to prevail, for
+last year (1818) the deaths have fallen lower than they have
+ever been known since the institution of the bills of mortality,
+the total number being only 421[#].
+
+On the whole matter, I believe I am speaking the language
+of every man of good principles and feelings, capable of reflecting
+seriously and considerately on the subject, when I
+say, that whenever he applies his mind to it, he finds some
+new and increasing cause of complacency and satisfaction.
+Viewed as a mere physical fact in the natural history of the
+animal kingdom, the virtue of the vaccine <lang="la"><i>virus</i></lang> in resisting
+the action of the <lang="la"><i>variolous</i></lang>, is, by its novelty and singularity,
+highly striking and interesting to every one whose taste leads
+him to take delight in contemplating and exploring the
+devious ways and varied forms of Nature, as curious exceptions
+to the uniformity and constancy of her laws. One can
+hardly contemplate with sufficient astonishment, the extraordinary
+fact that a morbid poison taken from a domestic
+animal should, when inserted into the human body, shield it
+against the assault of one of the most fatal and cruel maladies
+to which it is incident. But the importance of this, as a
+physical curiosity, vanishes to nothing when the unexampled
+benefits of it to mankind are fairly weighed; benefits which
+could never have been dreamt of by the most sanguine philanthropist,
+who, in contemplating it, finds himself lost in
+astonishment, at a boon to mankind almost beyond the grasp
+of his mind duly to appreciate: so that what seems at first
+sight merely a sportive aberration from the usual course of
+things, has, by the wise dispensation of Providence, become
+// 015.png
+.bn 015.png
+.pn +1
+subservient to the most beneficent purposes: and how many
+more useful discoveries may there yet be in reserve for the
+alleviation of human misery, from obscure and undetected
+facts still lurking under the very surface of Nature! It will
+in the eyes of future ages be deemed an <lang="la"><i>epocha</i></lang> in the destinies
+of the world, and one of the highest boasts of the
+country in which it took its rise, with a sense of unrequitable
+obligation to the individual[#] who first disclosed and promulgated
+the secret, by drawing it from the dark recesses of
+rural tradition, and rendering it available to the whole human
+race.
+
+.fn #
+Since the first publication of this Tract, it has appeared that in the succeeding
+year (1819), the deaths from the Small Pox had advanced to 712;
+which ought to add to the perseverance, zeal, and vigilance, of the friends of
+humanity in prosecuting Vaccination.
+.fn-
+
+Such are the sentiments which must fill every well constituted
+mind; and it behoves the whole medical profession,
+which has already done itself so much honour by the zealous
+and disinterested encouragement afforded to it, to continue
+its efforts in eradicating every remaining prejudice against it.
+It becomes Englishmen, in particular, to cherish it, not only
+as the native offspring of their country, of which they have
+reason to be proud, but to redeem the character of the nation
+from the reproach of having, of all others, whether savage or
+civilized, done the least justice to this noble discovery. It is
+somewhat humiliating to reflect, that while there is no country
+which has received more striking and unambiguous benefits
+from this discovery, there is none which has prized it less,
+nor availed itself of it so little. I here allude to the unspeakable
+advantage of it to the public service, both by sea and
+land, in the late war, so eventful and portentous in its course,
+and so glorious in its termination. Formerly, Small Pox
+was one of the greatest embarrassments to the operations of
+armies; and ships of war were occasionally under the necessity
+of quitting the sea, from the prevalence of this disorder
+among their crews. Those lately at the head of the navy and
+army, with that vigilant wisdom and humanity which become
+those who direct the affairs of a great and enlightened nation,
+recommended and enforced the practice of Vaccination in
+both these departments, to the great furtherance of the
+public service. Their example has by no means been
+followed among the civil population of England. This is
+chiefly imputable to the abuse of the press, the general
+licentiousness of which may be denounced as one of the
+most grievous evils of this age and country, in regard to
+other subjects interesting to humanity and public happiness,
+as well as this; the votaries of error and depravity being
+more successful, because they find more encouragement in
+disseminating their principles, than the advocates of truth,
+// 016.png
+.bn 016.png
+.pn +1
+virtue, and good order. There is no maxim more true, than
+that the best things do become by abuse the worst, and that
+in proportion to their excellence. What a mortifying contrast
+does England form with Peru, where it was adopted instantly,
+in consequence of a flash of conviction from the light of
+evidence! and was not this conviction fully justified by the
+immediate disappearance of Small Pox from that whole
+region? To those nations who may feel an envy of the glory
+attached to our country by this discovery, it must be no
+small consolation to perceive that a large proportion of the
+English nation has hitherto been so besotted as not to know
+how to appreciate it, nor how to avail themselves of it, and
+that it has encountered more opposition among ourselves
+than in all the world besides.
+
+.fn #
+Dr. Edward Jenner.
+.fn-
+
+// 017.png
+.bn 017.png
+.pn +1
+
+.pb
+
+.ce
+<xl>TABLE I.</xl>
+
+.ta |c:6 |c:10 |c:14 |l:1 c:2 l:6 |r:10|
+_
+<th><al=c>Years.|<al=c>Total Mortality.|<al=c>Mortality from Small Pox.|<al=c>Proportion.|<span>|<span>|<al=c>Proportion to 1000.
+_
+1706 |  22,097  |     1094     |1|in    |20    |    50
+1707 |  21,600  |     1078     |1|<span>|20    |    50
+1708 |  21,291  |     1687     |1|<span>|12-1/2|    79
+1709 |  21,800  |     1024     |1|<span>|21    |    49
+1710 |  24,620  |     3138     |1|<span>|8     |   127
+1711 |  19,833  |      915     |1|<span>|21-1/2|    46
+1712 |  21,198  |     1943     |1|<span>|11    |    92
+1713 |  21,057  |     1614     |1|<span>|13    |    77
+1714 |  26,569  |     2810     |1|<span>|9-1/2 |   106
+1715 |  22,232  |     1057     |1|<span>|21    |    47
+1716 |  24,436  |     2427     |1|<span>|10    |   100
+1717 |  23,446  |     2211     |1|<span>|10-1/2|    94
+1718 |  26,523  |     1884     |1|<span>|14    |    71
+1719 |  28,347  |     3229     |1|<span>|8-3/4 |   114
+1720 |  25,454  |     1440     |1|<span>|17-1/2|    56
+_
+Total—350,503  |<span>|   27,557     |1|<span>|12.7  |    78
+_
+.ta-
+
+.ce
+<s>In this series it appears that the deaths from Small Pox are, to the total mortality, as 1 in 12.7; that is, 78 in 1000.</s>
+
+.pb
+
+.ce
+<xl>TABLE II.</xl>
+
+.ta |c:6 |c:10 |c:14 |l:1 c:2 l:6 |r:10|
+_
+<th><al=c>Years.|<al=c>Total Mortality.|<al=c>Mortality from Small Pox.|<al=c>Proportion.|<span>|<span>|<al=c>Proportion to 1000.
+_
+1745 |  21,296  |     1206     |1|in    |17-3/4|    56
+1746 |  28,157  |     3236     |1|<span>|8-3/4 |   115
+1747 |  25,494  |     1380     |1|<span>|18-1/2|    54
+1748 |  23,869  |     1789     |1|<span>|13-1/2|    75
+1749 |  25,516  |     2625     |1|<span>|9-3/4 |   103
+1750 |  23,727  |     1229     |1|<span>|19-1/4|    52
+1751 |  21,028  |      998     |1|<span>|21    |    48
+1752 |  20,485  |     3538     |1|<span>|5-3/4 |   172
+1753 |  19,276  |      774     |1|<span>|25    |    40
+1754 |  22,696  |     2359     |1|<span>|9-1/2 |   104
+1755 |  21,917  |     1988     |1|<span>|11    |    91
+1756 |  20,872  |     1608     |1|<span>|13    |    77
+1757 |  21,313  |     3296     |1|<span>|6-1/2 |   155
+1758 |  17,576  |     1273     |1|<span>|13-3/4|    73
+1759 |  19,604  |     2596     |1|<span>|7-1/2 |   132
+_
+Total—332,826  |<span>|    29,895    |1|<span>|11.2  |    89
+_
+.ta-
+
+.ce
+<s>In this series it appears that the proportion of deaths from Small Pox is, to the total mortality, as 1 in 11.2; that is, 89 in 1000.</s>
+
+// 018.png
+.bn 018.png
+.pn +1
+
+.pb
+
+.ce
+<xl>TABLE III.</xl>
+
+.ta |c:6 |c:10 |c:14 |l:1 c:2 l:6 |r:10|
+_
+<th><al=c>Years.|<al=c>Total Mortality.|<al=c>Mortality from Small Pox.|<al=c>Proportion.|<span>|<span>|<al=c>Proportion to 1000.
+_
+1784 |  20,454  |     1210     |1|in    |17    |    59
+1785 |  18,919  |     1999     |1|<span>|9-1/2|   106
+1786 |  20,445  |     1210     |1|<span>|17    |    59
+1787 |  19,349  |     2418     |1|<span>|8    |   125
+1788 |  19,697  |     1101     |1|<span>|17-3/4|    56
+1789 |  20,749  |     2077     |1|<span>|10    |   100
+1790 |  18,038  |     1617     |1|<span>|11-1/4|    89
+1791 |  18,760  |     1747     |1|<span>|10-3/4|    93
+1792 |  20,313  |     1568     |1|<span>|13    |    77
+1793 |  21,749  |     2382     |1|<span>|9    |    11
+1794 |  19,241  |     1913     |1|<span>|10    |    99
+1795 |  21,179  |     1040     |1|<span>|20-1/4|    49
+1796 |  19,288  |     3548     |1|<span>|54    |    18
+1797 |  17,014  |      512     |1|<span>|33-1/2|    30
+1798 |  18,155  |     2237     |1|<span>|8    |   123
+_
+Total—293,350  |<span>|   26,579     |1|<span>|11    |    90.9
+_
+.ta-
+
+.ce
+<s>In this series it appears that the proportion of deaths from Small Pox to the total mortality is 1 in 11, that is, 90.9 in 1000.</s>
+
+.pb
+
+.ce
+<xl>TABLE IV.</xl>
+
+.ta |c:6 |c:10 |c:14 |l:1 c:2 l:6 |r:10|
+_
+<th><al=c>Years.|<al=c>Total Mortality.|<al=c>Mortality from Small Pox.|<al=c>Proportion.|<span>|<span>|<al=c>Proportion to 1000.
+_
+1804 |  17,038  |      622     |1|in    |27-1/2|    36
+1805 |  17,565  |     1685     |1|<span>|10-1/2|    96
+1806 |  18,334  |     1297     |1|<span>|14    |    71
+1807 |  17,938  |     1158     |1|<span>|15-1/2|    65
+1808 |  19,964  |     1169     |1|<span>|17-1/4|    58
+1809 |  16,680  |     1163     |1|<span>|14-1/4|    70
+1810 |  19,893  |     1198     |1|<span>|16-1/2|    60
+1811 |  17,043  |      751     |1|<span>|22-3/4|    44
+1812 |  18,295  |     1287     |1|<span>|14-1/4|    70
+1813 |  17,322  |      898     |1|<span>|19-1/4|    52
+1814 |  19,783  |      638     |1|<span>|31    |    32
+1815 |  19,560  |      725     |1|<span>|27    |    37
+1816 |  20,316  |      653     |1|<span>|31-1/4|    32
+1817 |  19,968  |     1051     |1|<span>|19    |    53
+1818 |  19,705  |      421     |1|<span>|47    |    21
+_
+Total—279,404  |<span>|   14,716     |1|<span>|18.9  |    53
+_
+.ta-
+
+.ce
+<s>In this series it appears that the proportion of deaths from Small Pox to the total mortality is 1 in 18.9, that is, 53 in 1000.</s>
+
+// 019.png
+.bn 019.png
+.pn +1
+.pb
+
+.ce
+LONDON:
+
+.ce
+<s>PRINTED BY J. MOYES, GREVILLE STREET.</s>
+
+.fm lz=th
+
+.tb
+
+.h2
+Transcriber’s Notes
+
+Some inconsistencies in spelling, hyphenation, and punctuation have been
+retained.
+
+.if t
+This file uses _underscores_ to indicate italic text.
+.if-

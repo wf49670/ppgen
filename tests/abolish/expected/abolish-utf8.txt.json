@@ -1,0 +1,77 @@
+{
+    "languages": "en",
+    "pagedetails": {
+        "001": {
+            "index": "4.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "002": {
+            "index": "42.55",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "003": {
+            "index": "81.16",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "004": {
+            "index": "119.25",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "005": {
+            "index": "158.54",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "006": {
+            "index": "196.39",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "007": {
+            "index": "235.8",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "008": {
+            "index": "273.61",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "009": {
+            "index": "316.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "010": {
+            "index": "349.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "011": {
+            "index": "382.14",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "012": {
+            "index": "428.9",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        }
+    }
+}

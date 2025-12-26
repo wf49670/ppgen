@@ -1,0 +1,119 @@
+{
+    "languages": "en",
+    "pagedetails": {
+        "001": {
+            "index": "1.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "002": {
+            "index": "42.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "003": {
+            "index": "46.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "004": {
+            "index": "91.29",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "005": {
+            "index": "135.53",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "006": {
+            "index": "173.9",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "007": {
+            "index": "215.49",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "008": {
+            "index": "260.54",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "009": {
+            "index": "300.50",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "010": {
+            "index": "342.44",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "011": {
+            "index": "384.57",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "012": {
+            "index": "425.20",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "013": {
+            "index": "459.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "014": {
+            "index": "500.57",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "015": {
+            "index": "537.35",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "016": {
+            "index": "577.10",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "017": {
+            "index": "590.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "018": {
+            "index": "650.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        },
+        "019": {
+            "index": "710.0",
+            "label": "",
+            "number": "0",
+            "style": "\""
+        }
+    }
+}
