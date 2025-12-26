@@ -35,7 +35,7 @@ import struct
 import traceback
 import json
 
-VERSION="3.57g" + with_regex   # 24-Dec-2025
+VERSION="3.57h" + with_regex   # 26-Dec-2025
 #3.57a:
 #  Initial 3.57 release
 #  Enh: Provide context for "Unclosed tags in .nf block" error
@@ -72,6 +72,9 @@ VERSION="3.57g" + with_regex   # 24-Dec-2025
 #  Bug: resolve re exception in processing .bn command
 #  Enh: Skip over dotfiles when reviewing image extensions
 #  Enh: Add "viewport" meta tag per current HTML5 guidelines
+#3.57h:
+#  Bug: Line rewrap issue in centered text
+#  Bug: Pending vertical space before an illustration emitted after illo in HTML
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
