@@ -73,8 +73,6 @@ VERSION="3.57g" + with_regex   # 24-Dec-2025
 #  Enh: Skip over dotfiles when reviewing image extensions
 #  Enh: Add "viewport" meta tag per current HTML5 guidelines
 
-###  Todo Bug: In HTML, a .sp placed before a .il does not take effect until the next text after the illustration/caption.
-
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
 
