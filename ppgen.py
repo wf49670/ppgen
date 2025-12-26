@@ -9835,11 +9835,11 @@ class Pph(Book):
     # create replacement stanza for illustration
     u = []
 
-    #if self.pvs > 0: # pending vertical space?
-    #  mtop = " style='margin-top: {}em; '".format(self.pvs)
-    #  self.pvs=0
-    #else:
-    mtop = "" # prepare for experimental version that applies pvs to illos
+    if self.pvs > 0: # pending vertical space?
+      mtop = " style='margin-top: {}em; '".format(self.pvs)
+      self.pvs=0
+    else:
+      mtop = ""
 
     if ia["align"] == "c":  # with fix for missing id= problem
       u.append("<div {}{} class='figcenter {}'>".format(ia["id"], mtop, idn))
