@@ -35,7 +35,7 @@ import struct
 import traceback
 import json
 
-VERSION="3.57h" + with_regex   # 26-Dec-2025
+VERSION="3.57i" + with_regex   # 28-Dec-2025
 #3.57a:
 #  Initial 3.57 release
 #  Enh: Provide context for "Unclosed tags in .nf block" error
@@ -75,6 +75,8 @@ VERSION="3.57h" + with_regex   # 26-Dec-2025
 #3.57h:
 #  Bug: Line rewrap issue in centered text
 #  Bug: Pending vertical space before an illustration emitted after illo in HTML
+#3.57i:
+#  Bug: Issue 117, PR 123: Output files on Windows ended up double-spaced after the 3.57g changes to codecs.open(). 
 
 NOW = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " GMT"
 
