@@ -7863,8 +7863,10 @@ class Ppt(Book):
           wraplen -= indent_first # if not collapsing, need to reduce wrap width by indent width
 
         if self.options["hang"]:
-          ti = -2
-          indent = 2
+          # Use dindent if specified, otherwise default to 2
+          hang_indent = self.options["dindent"] if self.options["dindent"] > 0 else 2
+          ti = -hang_indent
+          indent = hang_indent
         else:
           ti = 0
           indent = 0
@@ -7959,15 +7961,19 @@ class Ppt(Book):
 
         if self.options["collapse"]:
           if self.options["hang"]: ### does this need to differ depending on whether term has data?
-            windent = self.options["dindent"] + 2
-            wti = -2
+            # Use dindent if specified, otherwise default to 2
+            hang_indent = self.options["dindent"] if self.options["dindent"] > 0 else 2
+            windent = self.options["dindent"] + hang_indent
+            wti = -hang_indent
           else:
             windent = self.options["dindent"]
             wti = 0
         else:
           if self.options["hang"]:
-            windent = 2
-            wti = -2
+            # Use dindent if specified, otherwise default to 2
+            hang_indent = self.options["dindent"] if self.options["dindent"] > 0 else 2
+            windent = hang_indent
+            wti = -hang_indent
           else:
             windent = 0
             wti = 0
@@ -11983,6 +11989,9 @@ class Pph(Book):
             if dtalign == "right":
               ddparms += " padding-left: .5em;"
 
+            # Use dindent for hanging indent amount if specified, otherwise default to 1
+            hang_amt = dindent if dindent > 0 else 1
+
             if self.options["combine"]: # combine=y
               if self.options["collapse"]: # collapse=y
                 if self.options["dindent"]:
@@ -11990,21 +11999,21 @@ class Pph(Book):
                 else:
                   ddparms += " text-indent: .2em;" # allow a bit of padding when floated
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: 1em;"
+                  ddparms += " margin-left: {}em;".format(hang_amt)
                 else: # hang=n
                   ddparms += " margin-left: 0em;"
 
               else: # collapse=n
                 extra = 0 if (dindent) else .2 # allow a bit of left padding (via margin) if dindent not specified
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: {}em; text-indent: -1em;".format(dtwidth + 1 + dindent + extra)
+                  ddparms += " margin-left: {}em; text-indent: -{}em;".format(dtwidth + hang_amt + extra, hang_amt)
                 else: # hang=n
                   ddparms += " margin-left: {}em;".format(dtwidth + dindent + extra)
 
             else: # combine=n
               if self.options["collapse"]: # collapse=y
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: 1em;"
+                  ddparms += " margin-left: {}em;".format(hang_amt)
                 else: # hang=n
                   ddparms += " margin-left: 0em;"
                 #ddparms += " text-indent: {}em;".format(dtwidth + dindent)
@@ -12013,7 +12022,7 @@ class Pph(Book):
 
               else: # collapse=n
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: {}em; text-indent: -1em;".format(dtwidth + 1 + dindent)
+                  ddparms += " margin-left: {}em; text-indent: -{}em;".format(dtwidth + hang_amt, hang_amt)
                 else: # hang=n
                   ddparms += " margin-left: {}em;".format(dtwidth + dindent)
 
@@ -12025,17 +12034,20 @@ class Pph(Book):
             if self.options["tindent"]: # tindent non-zero?
               dtparms += " text-indent: {}em;".format(tindent)
 
+            # Use dindent for hanging indent amount if specified, otherwise default to 1
+            hang_amt = dindent if dindent > 0 else 1
+
             if self.options["combine"]: # combine=y
               if self.options["collapse"]: # collapse=y
                 ddparms += " text-indent: {}em;".format(dtwidth + dindent)
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: 1em;"
+                  ddparms += " margin-left: {}em;".format(hang_amt)
                 else: # hang=n
                   ddparms += " margin-left: 0em;"
 
               else: # collapse=n
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: {}em; text-indent: -1em;".format(dtwidth + 1 + dindent)
+                  ddparms += " margin-left: {}em; text-indent: -{}em;".format(dtwidth + hang_amt, hang_amt)
                 else: # hang=n
                   ddparms += " margin-left: {}em;".format(dtwidth + dindent)
 
@@ -12043,13 +12055,13 @@ class Pph(Book):
               if self.options["collapse"]: # collapse=y
                 ddparms += " text-indent: {}em;".format(dtwidth + dindent)
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: 1em;"
+                  ddparms += " margin-left: {}em;".format(hang_amt)
                 else: # hang=n
                   ddparms += " margin-left: 0em;"
 
               else: # collapse=n
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: {}em; text-indent: -1em;".format(dtwidth + 1 + dindent)
+                  ddparms += " margin-left: {}em; text-indent: -{}em;".format(dtwidth + hang_amt, hang_amt)
                 else: # hang=n
                   ddparms += " margin-left: {}em;".format(dtwidth + dindent)
 
@@ -12266,12 +12278,28 @@ class Pph(Book):
               dd_indent_class += "_{}".format(self.nregsusage["nf-spaces-per-em"])
 
             divisor = float(b.nregs["nf-spaces-per-em"])
-            iamt = round(leadsp/divisor, 1) # calculate based on "2" spaces per em, and
-                                               #  add in the base padding-left calculated from self.list_item_width
+            iamt = round(leadsp/divisor, 1) # calculate based on "2" spaces per em
             if self.options["hang"]: # hang=y
-              b.css.addcss("[1241] .{} {{ padding-left: {}em; text-indent: -1em}}".format(dd_indent_class, iamt+1))
+              # For hang=y: the base dd already has text-indent: -1em, so we just need to add
+              # the desired amount of padding. The text-indent will pull the first line back by 1em
+              # creating the visual effect of: first line at base+iamt-1, wrapped lines at base+iamt.
+              # But we want first line at base+iamt, so we need to add padding of iamt.
+              # Use priority [1242] so this comes after the base [1241] dd CSS
+              # Use selector .dl_class dd.dd_inN to have higher specificity than .dl_class dd
+              b.css.addcss("[1242] .{} dd.{} {{ padding-left: {}em}}".format(self.dl_class, dd_indent_class, iamt))
             else: # hang=n
-              b.css.addcss("[1241] .{} {{ padding-left: {}em}}".format(dd_indent_class, iamt))
+              b.css.addcss("[1242] .{} dd.{} {{ padding-left: {}em}}".format(self.dl_class, dd_indent_class, iamt))
+
+            # Also generate CSS for style=p (uses <p> instead of <dd>)
+            # For style=p, the base padding is dtwidth (term width), and we need to add iamt to it
+            # Calculate dtwidth the same way as in begin_dl()
+            dtwidth = round(self.options["width"]/divisor, 1) + round(self.options["tindent"]/divisor, 1)
+            p_padding = dtwidth + iamt  # total padding for style=p
+            b.css.addcss("[1242] .{} p.{} {{ padding-left: {}em}}".format(self.dl_class, dd_indent_class, p_padding))
+
+            self.dd_indent_class = dd_indent_class
+            # strip the leading spaces from s since they'll be represented by CSS padding
+            s = ss + tmp.lstrip()
 
         if self.dd_indent_class or self.dd_class:
           if self.dd_indent_class and self.dd_class:
@@ -12299,12 +12327,17 @@ class Pph(Book):
         if self.options["style"] == "d":
           self.dlbuffer.append(self.dtddspaces + "<dd{}{}>".format(clss, cstyle) + t[0])
         else: # style=p
-          #if self.term:
-          #  self.dlbuffer.append(self.dtddspaces + "<p{}{}>".format(clss, cstyle) + self.term + " ")
-          #  extraspaces = "  "
-          #  self.dlbuffer.append(self.dtddspaces + extraspaces + "<span class='dlpspan'>" + t[0])
-          #else:
-          #  self.dlbuffer.append(self.dtddspaces + "<p{}{}>".format(clss, cstyle) + t[0])
+          # For style=p, the <p> tag was already opened in build_dt()
+          # If we have an indent class, we need to add it to that <p> tag
+          if clss:
+            # Modify the last line in the buffer to add the class to the <p> tag
+            last_line = self.dlbuffer[-1]
+            # Replace <p> or <p style='...'> with the class added
+            if "<p>" in last_line:
+              self.dlbuffer[-1] = last_line.replace("<p>", "<p{}>".format(clss))
+            elif "<p style=" in last_line:
+              # Insert class before the style attribute
+              self.dlbuffer[-1] = re.sub(r"<p (style='[^']*'>)", r"<p{} \1".format(clss), last_line)
           extraspaces = "  "
           t[-1] += "</p>" # always close paragraphs
           self.dlbuffer.append(self.dtddspaces + extraspaces + t[0])
