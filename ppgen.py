@@ -7863,8 +7863,10 @@ class Ppt(Book):
           wraplen -= indent_first # if not collapsing, need to reduce wrap width by indent width
 
         if self.options["hang"]:
-          ti = -2
-          indent = 2
+          # Use dindent if specified, otherwise default to 2
+          hang_indent = self.options["dindent"] if self.options["dindent"] > 0 else 2
+          ti = -hang_indent
+          indent = hang_indent
         else:
           ti = 0
           indent = 0
@@ -7959,15 +7961,19 @@ class Ppt(Book):
 
         if self.options["collapse"]:
           if self.options["hang"]: ### does this need to differ depending on whether term has data?
-            windent = self.options["dindent"] + 2
-            wti = -2
+            # Use dindent if specified, otherwise default to 2
+            hang_indent = self.options["dindent"] if self.options["dindent"] > 0 else 2
+            windent = self.options["dindent"] + hang_indent
+            wti = -hang_indent
           else:
             windent = self.options["dindent"]
             wti = 0
         else:
           if self.options["hang"]:
-            windent = 2
-            wti = -2
+            # Use dindent if specified, otherwise default to 2
+            hang_indent = self.options["dindent"] if self.options["dindent"] > 0 else 2
+            windent = hang_indent
+            wti = -hang_indent
           else:
             windent = 0
             wti = 0
