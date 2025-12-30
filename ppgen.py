@@ -11989,6 +11989,9 @@ class Pph(Book):
             if dtalign == "right":
               ddparms += " padding-left: .5em;"
 
+            # Use dindent for hanging indent amount if specified, otherwise default to 1
+            hang_amt = dindent if dindent > 0 else 1
+
             if self.options["combine"]: # combine=y
               if self.options["collapse"]: # collapse=y
                 if self.options["dindent"]:
@@ -11996,21 +11999,21 @@ class Pph(Book):
                 else:
                   ddparms += " text-indent: .2em;" # allow a bit of padding when floated
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: 1em;"
+                  ddparms += " margin-left: {}em;".format(hang_amt)
                 else: # hang=n
                   ddparms += " margin-left: 0em;"
 
               else: # collapse=n
                 extra = 0 if (dindent) else .2 # allow a bit of left padding (via margin) if dindent not specified
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: {}em; text-indent: -1em;".format(dtwidth + 1 + dindent + extra)
+                  ddparms += " margin-left: {}em; text-indent: -{}em;".format(dtwidth + hang_amt + extra, hang_amt)
                 else: # hang=n
                   ddparms += " margin-left: {}em;".format(dtwidth + dindent + extra)
 
             else: # combine=n
               if self.options["collapse"]: # collapse=y
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: 1em;"
+                  ddparms += " margin-left: {}em;".format(hang_amt)
                 else: # hang=n
                   ddparms += " margin-left: 0em;"
                 #ddparms += " text-indent: {}em;".format(dtwidth + dindent)
@@ -12019,7 +12022,7 @@ class Pph(Book):
 
               else: # collapse=n
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: {}em; text-indent: -1em;".format(dtwidth + 1 + dindent)
+                  ddparms += " margin-left: {}em; text-indent: -{}em;".format(dtwidth + hang_amt, hang_amt)
                 else: # hang=n
                   ddparms += " margin-left: {}em;".format(dtwidth + dindent)
 
@@ -12031,17 +12034,20 @@ class Pph(Book):
             if self.options["tindent"]: # tindent non-zero?
               dtparms += " text-indent: {}em;".format(tindent)
 
+            # Use dindent for hanging indent amount if specified, otherwise default to 1
+            hang_amt = dindent if dindent > 0 else 1
+
             if self.options["combine"]: # combine=y
               if self.options["collapse"]: # collapse=y
                 ddparms += " text-indent: {}em;".format(dtwidth + dindent)
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: 1em;"
+                  ddparms += " margin-left: {}em;".format(hang_amt)
                 else: # hang=n
                   ddparms += " margin-left: 0em;"
 
               else: # collapse=n
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: {}em; text-indent: -1em;".format(dtwidth + 1 + dindent)
+                  ddparms += " margin-left: {}em; text-indent: -{}em;".format(dtwidth + hang_amt, hang_amt)
                 else: # hang=n
                   ddparms += " margin-left: {}em;".format(dtwidth + dindent)
 
@@ -12049,13 +12055,13 @@ class Pph(Book):
               if self.options["collapse"]: # collapse=y
                 ddparms += " text-indent: {}em;".format(dtwidth + dindent)
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: 1em;"
+                  ddparms += " margin-left: {}em;".format(hang_amt)
                 else: # hang=n
                   ddparms += " margin-left: 0em;"
 
               else: # collapse=n
                 if self.options["hang"]: # hang=y
-                  ddparms += " margin-left: {}em; text-indent: -1em;".format(dtwidth + 1 + dindent)
+                  ddparms += " margin-left: {}em; text-indent: -{}em;".format(dtwidth + hang_amt, hang_amt)
                 else: # hang=n
                   ddparms += " margin-left: {}em;".format(dtwidth + dindent)
 
