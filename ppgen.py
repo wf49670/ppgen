@@ -12266,12 +12266,28 @@ class Pph(Book):
               dd_indent_class += "_{}".format(self.nregsusage["nf-spaces-per-em"])
 
             divisor = float(b.nregs["nf-spaces-per-em"])
-            iamt = round(leadsp/divisor, 1) # calculate based on "2" spaces per em, and
-                                               #  add in the base padding-left calculated from self.list_item_width
+            iamt = round(leadsp/divisor, 1) # calculate based on "2" spaces per em
             if self.options["hang"]: # hang=y
-              b.css.addcss("[1241] .{} {{ padding-left: {}em; text-indent: -1em}}".format(dd_indent_class, iamt+1))
+              # For hang=y: the base dd already has text-indent: -1em, so we just need to add
+              # the desired amount of padding. The text-indent will pull the first line back by 1em
+              # creating the visual effect of: first line at base+iamt-1, wrapped lines at base+iamt.
+              # But we want first line at base+iamt, so we need to add padding of iamt.
+              # Use priority [1242] so this comes after the base [1241] dd CSS
+              # Use selector .dl_class dd.dd_inN to have higher specificity than .dl_class dd
+              b.css.addcss("[1242] .{} dd.{} {{ padding-left: {}em}}".format(self.dl_class, dd_indent_class, iamt))
             else: # hang=n
-              b.css.addcss("[1241] .{} {{ padding-left: {}em}}".format(dd_indent_class, iamt))
+              b.css.addcss("[1242] .{} dd.{} {{ padding-left: {}em}}".format(self.dl_class, dd_indent_class, iamt))
+
+            # Also generate CSS for style=p (uses <p> instead of <dd>)
+            # For style=p, the base padding is dtwidth (term width), and we need to add iamt to it
+            # Calculate dtwidth the same way as in begin_dl()
+            dtwidth = round(self.options["width"]/divisor, 1) + round(self.options["tindent"]/divisor, 1)
+            p_padding = dtwidth + iamt  # total padding for style=p
+            b.css.addcss("[1242] .{} p.{} {{ padding-left: {}em}}".format(self.dl_class, dd_indent_class, p_padding))
+
+            self.dd_indent_class = dd_indent_class
+            # strip the leading spaces from s since they'll be represented by CSS padding
+            s = ss + tmp.lstrip()
 
         if self.dd_indent_class or self.dd_class:
           if self.dd_indent_class and self.dd_class:
@@ -12299,12 +12315,17 @@ class Pph(Book):
         if self.options["style"] == "d":
           self.dlbuffer.append(self.dtddspaces + "<dd{}{}>".format(clss, cstyle) + t[0])
         else: # style=p
-          #if self.term:
-          #  self.dlbuffer.append(self.dtddspaces + "<p{}{}>".format(clss, cstyle) + self.term + " ")
-          #  extraspaces = "  "
-          #  self.dlbuffer.append(self.dtddspaces + extraspaces + "<span class='dlpspan'>" + t[0])
-          #else:
-          #  self.dlbuffer.append(self.dtddspaces + "<p{}{}>".format(clss, cstyle) + t[0])
+          # For style=p, the <p> tag was already opened in build_dt()
+          # If we have an indent class, we need to add it to that <p> tag
+          if clss:
+            # Modify the last line in the buffer to add the class to the <p> tag
+            last_line = self.dlbuffer[-1]
+            # Replace <p> or <p style='...'> with the class added
+            if "<p>" in last_line:
+              self.dlbuffer[-1] = last_line.replace("<p>", "<p{}>".format(clss))
+            elif "<p style=" in last_line:
+              # Insert class before the style attribute
+              self.dlbuffer[-1] = re.sub(r"<p (style='[^']*'>)", r"<p{} \1".format(clss), last_line)
           extraspaces = "  "
           t[-1] += "</p>" # always close paragraphs
           self.dlbuffer.append(self.dtddspaces + extraspaces + t[0])
