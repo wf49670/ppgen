@@ -9032,6 +9032,7 @@ class Pph(Book):
     t.append("    \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">")
     t.append("<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"" + self.nregs["lang"] + "\" lang=\"" + self.nregs["lang"] + "\">") # include base language in header
     t.append("  <head>")
+    t.append("    <meta name=\"format-detection\" content=\"telephone=no,date=no,address=no,email=no,url=no\">")
 
     if self.encoding == "utf_8":
       t.append("    <meta http-equiv=\"Content-Type\" content=\"text/html;charset=UTF-8\" />")
